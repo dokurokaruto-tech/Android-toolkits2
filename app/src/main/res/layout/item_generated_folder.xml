@@ -9,7 +9,7 @@
         android:id="@+id/card_folder"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:cardBackgroundColor="#1E1F20"
+        app:cardBackgroundColor="#1A2235"
         app:cardCornerRadius="16dp"
         app:cardElevation="4dp"
         app:layout_constraintDimensionRatio="1:1"
@@ -47,7 +47,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_folder"
-                    app:tint="#8AB4F8" />
+                    app:tint="#00F0FF" />
 
                 <TextView
                     android:id="@+id/tv_folder_name"
@@ -64,7 +64,7 @@
                     android:id="@+id/tv_image_count"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="#9AA0A6"
+                    android:textColor="#8892B0"
                     android:textSize="10sp" />
             </LinearLayout>
         </FrameLayout>

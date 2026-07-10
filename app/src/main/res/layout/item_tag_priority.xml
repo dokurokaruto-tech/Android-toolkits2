@@ -26,5 +26,5 @@
         android:layout_height="32dp"
         android:padding="4dp"
         android:src="@android:drawable/ic_menu_sort_by_size"
-        app:tint="#9AA0A6" />
+        app:tint="#8892B0" />
 </LinearLayout>

@@ -70,7 +70,7 @@ class TapSettingsActivity : AppCompatActivity() {
             val currentAction = prefs.getString(prefKey, defaultAction) ?: defaultAction
             text = getActionDisplayName(currentAction)
             textSize = 14f
-            setTextColor(Color.parseColor("#8AB4F8"))
+            setTextColor(Color.parseColor("#00F0FF"))
             setPadding(0, 8, 0, 0)
         }
 
@@ -91,7 +91,7 @@ class TapSettingsActivity : AppCompatActivity() {
             ).apply {
                 setMargins(0, 16, 0, 16)
             }
-            setBackgroundColor(Color.parseColor("#1E1F20"))
+            setBackgroundColor(Color.parseColor("#1A2235"))
         }
     }
 

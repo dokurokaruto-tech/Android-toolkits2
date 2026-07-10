@@ -13,7 +13,7 @@ class CurrentWallpaperIndicatorDecoration(
 ) : RecyclerView.ItemDecoration() {
 
     private val paintFill = Paint().apply {
-        color = Color.parseColor("#F28B82") // アクセントカラー
+        color = Color.parseColor("#FF3366") // 目立つピンク色
         style = Paint.Style.FILL
         isAntiAlias = true
     }

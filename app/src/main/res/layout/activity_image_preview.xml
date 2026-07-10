@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#131314"
+    android:background="#6C7F8C"
     android:clipChildren="false"
     android:clipToPadding="false">
 
@@ -26,7 +26,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="/Storage/Download/example.png\n1296x2096 - 5106 KB"
-        android:textColor="#E8EAED"
+        android:textColor="#E2E8F0"
         android:textSize="12sp"
         android:maxLines="2"
         android:ellipsize="end"
@@ -57,7 +57,7 @@
         android:orientation="horizontal"
         android:gravity="center"
         android:padding="16dp"
-        android:background="#1F1F1F"
+        android:background="#5A6D7A"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <LinearLayout

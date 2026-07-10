@@ -4,8 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="4dp"
-    app:cardCornerRadius="16dp"
-    app:cardBackgroundColor="#1E1F20"
+    app:cardCornerRadius="12dp"
+    app:cardBackgroundColor="#1A2235"
     app:cardElevation="3dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -78,7 +78,7 @@
             android:padding="5dp"
             android:background="@drawable/rounded_rect_bg_dark"
             android:src="@android:drawable/ic_menu_crop"
-            app:tint="#8AB4F8"
+            app:tint="#00F0FF"
             android:visibility="gone"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
@@ -99,7 +99,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="再生中"
-            android:textColor="#8AB4F8"
+            android:textColor="#00F0FF"
             android:textSize="10sp"
             android:textStyle="bold"
             android:visibility="gone"
@@ -125,7 +125,7 @@
             android:id="@+id/selection_overlay"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:background="#668AB4F8"
+            android:background="#6600F0FF"
             android:visibility="gone"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"

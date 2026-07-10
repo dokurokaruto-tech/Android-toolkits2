@@ -109,12 +109,12 @@ class PromptCardAdapter(
                 
                 // Random Button state
                 val isRandom = PromptCardManager.randomEnabledCategories.contains(header.title)
-                holder.btnRandom.setColorFilter(if (isRandom) Color.parseColor("#8AB4F8") else Color.parseColor("#9AA0A6"))
+                holder.btnRandom.setColorFilter(if (isRandom) Color.parseColor("#00F0FF") else Color.parseColor("#8892B0"))
                 holder.btnRandom.alpha = if (isRandom) 1.0f else 0.5f
 
                 // Random Edit Button state
                 val isEditing = randomizerEditingCategory == header.title
-                holder.btnRandomEdit.setColorFilter(if (isEditing) Color.parseColor("#FDD663") else Color.parseColor("#9AA0A6"))
+                holder.btnRandomEdit.setColorFilter(if (isEditing) Color.parseColor("#FFCC00") else Color.parseColor("#8892B0"))
                 holder.btnRandomEdit.alpha = if (isEditing) 1.0f else 0.5f
 
                 holder.itemView.setOnClickListener {

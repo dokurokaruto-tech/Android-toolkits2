@@ -3,15 +3,14 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/md_background">
+    android:background="#0B0F19">
 
-    <com.google.android.material.appbar.MaterialToolbar
+    <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@color/md_surface"
-        app:titleTextColor="@color/md_on_surface"
-        app:navigationIconTint="@color/md_on_surface"
+        android:background="#151A28"
+        app:titleTextColor="#00F0FF"
         app:layout_constraintTop_toTopOf="parent" />
 
     <ScrollView

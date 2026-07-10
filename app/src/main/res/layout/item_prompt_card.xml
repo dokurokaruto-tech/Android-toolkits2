@@ -9,9 +9,9 @@
         android:id="@+id/card_view"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:cardBackgroundColor="#1E1F20"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="1dp"
+        app:cardBackgroundColor="#1A2235"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="4dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -26,7 +26,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:scaleType="centerCrop"
-                android:background="#131314" />
+                android:background="#0D1117" />
 
             <View
                 android:layout_width="match_parent"
@@ -63,7 +63,7 @@
                 android:src="@android:drawable/stat_notify_sync"
                 android:background="@drawable/bg_persona_item"
                 android:padding="4dp"
-                app:tint="#8AB4F8"
+                app:tint="#00F0FF"
                 android:visibility="gone" />
 
             <TextView
@@ -76,7 +76,7 @@
                 android:paddingVertical="2dp"
                 android:background="@drawable/bg_persona_item"
                 android:text="50%"
-                android:textColor="#8AB4F8"
+                android:textColor="#00F0FF"
                 android:textSize="10sp"
                 android:textStyle="bold"
                 android:visibility="gone" />

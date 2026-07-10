@@ -43,7 +43,7 @@ object CharacterImportEditor {
         // 説明文
         val descText = TextView(context).apply {
             text = "インポートするキャラクターの情報を確認・編集できるわよ♪\nChubのキャラは英語だから、下のAI翻訳ボタンを押すと、自動的に魅力的な日本語に翻訳・リライトしてくれるわよ！"
-            setTextColor(Color.parseColor("#E8EAED"))
+            setTextColor(Color.parseColor("#E2E8F0"))
             textSize = 14f
             setPadding(0, 0, 0, 24)
         }
@@ -64,7 +64,7 @@ object CharacterImportEditor {
             textSize = 15f
             val grad = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.parseColor("#8B5CF6"), Color.parseColor("#C58AF9"))
+                intArrayOf(Color.parseColor("#8B5CF6"), Color.parseColor("#EC4899"))
             ).apply {
                 cornerRadius = 24f
             }
@@ -119,7 +119,7 @@ object CharacterImportEditor {
                 setBackgroundColor(Color.parseColor("#1E1E24"))
             }
             val pb = ProgressBar(context).apply {
-                indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#C58AF9"))
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#EC4899"))
             }
             val loadingText = TextView(context).apply {
                 text = "キャラクターを魅力的な日本語に翻訳中...\n（これには10秒〜20秒ほどかかるわよ）"

@@ -3,17 +3,16 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/md_background">
+    android:background="#0D1117">
 
+    <!-- ヘッダー -->
     <LinearLayout
         android:id="@+id/ll_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:paddingHorizontal="8dp"
-        android:paddingVertical="12dp"
+        android:padding="16dp"
         android:gravity="center_vertical"
-        android:background="@color/md_surface"
         app:layout_constraintTop_toTopOf="parent">
 
         <ImageButton
@@ -23,16 +22,17 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_menu_revert"
             android:contentDescription="Back"
-            app:tint="@color/md_on_surface" />
+            app:tint="#00F0FF" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="ローカル LLM"
-            android:textColor="@color/md_on_surface"
-            android:textSize="20sp"
+            android:text="LOCAL LLM MANAGER"
+            android:textColor="#00F0FF"
+            android:textSize="18sp"
             android:textStyle="bold"
-            android:layout_marginStart="8dp" />
+            android:letterSpacing="0.1"
+            android:layout_marginStart="16dp" />
     </LinearLayout>
 
     <ScrollView
@@ -45,62 +45,62 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="20dp">
+            android:padding="24dp">
 
+            <!-- ダウンロードセクション -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="新しいモデルをダウンロード"
-                android:textColor="@color/md_on_surface_variant"
-                android:textSize="13sp"
-                android:textAllCaps="true"
-                android:letterSpacing="0.04" />
+                android:text="NEW MODEL DOWNLOAD"
+                android:textColor="#FF2A6D"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.2" />
 
             <EditText
                 android:id="@+id/et_model_url"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="16dp"
                 android:background="@drawable/bg_chat_input_pill"
                 android:hint="https://..."
-                android:textColor="@color/md_on_surface"
-                android:textColorHint="@color/md_on_surface_variant"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#8892B0"
                 android:padding="16dp"
-                android:textSize="14sp"
-                android:inputType="textUri" />
+                android:textSize="14sp" />
 
-            <com.google.android.material.button.MaterialButton
+            <Button
                 android:id="@+id/btn_download"
                 android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="12dp"
-                android:text="ダウンロード開始"
-                android:textAllCaps="false"
-                app:cornerRadius="26dp"
-                android:backgroundTint="@color/md_primary"
-                android:textColor="@color/md_on_primary" />
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="DOWNLOAD START"
+                android:backgroundTint="#00F0FF"
+                android:textColor="#000000"
+                android:textStyle="bold" />
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="@color/divider"
-                android:layout_marginTop="28dp"
-                android:layout_marginBottom="28dp" />
+                android:background="#3300F0FF"
+                android:layout_marginTop="32dp"
+                android:layout_marginBottom="32dp" />
 
+            <!-- インストール済みモデル一覧 -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="インストール済み"
-                android:textColor="@color/md_on_surface_variant"
-                android:textSize="13sp"
-                android:textAllCaps="true"
-                android:letterSpacing="0.04" />
+                android:text="INSTALLED MODELS"
+                android:textColor="#FF2A6D"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.2" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_installed_models"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="16dp"
                 android:nestedScrollingEnabled="false" />
 
         </LinearLayout>

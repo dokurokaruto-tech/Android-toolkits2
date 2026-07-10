@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:layout_margin="6dp"
     app:cardCornerRadius="12dp"
-    app:cardBackgroundColor="#1E1F20"
+    app:cardBackgroundColor="#1A2235"
     app:cardElevation="2dp">
 
     <LinearLayout
@@ -21,14 +21,14 @@
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:src="@android:drawable/ic_menu_agenda"
-            app:tint="#8AB4F8" />
+            app:tint="#00F0FF" />
 
         <TextView
             android:id="@+id/folder_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
-            android:textColor="#E8EAED"
+            android:textColor="#E2E8F0"
             android:textSize="14sp"
             android:textStyle="bold"
             android:maxLines="2"

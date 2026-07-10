@@ -217,8 +217,8 @@ class ChatAdapter(
             if (!giftKey.isNullOrEmpty()) {
                 holder.layoutUserGift.visibility = View.VISIBLE
                 holder.layoutUserGift.background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#1E1F20")) // ダークパープル
-                    setStroke(2, android.graphics.Color.parseColor("#F28B82")) // エラー強調の枠線
+                    setColor(android.graphics.Color.parseColor("#1C1625")) // ダークパープル
+                    setStroke(2, android.graphics.Color.parseColor("#FF2A6D")) // ネオンピンク枠線
                     cornerRadius = 24f
                 }
                 val (emoji, giftName) = if (giftKey.startsWith("money_")) {
@@ -739,8 +739,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 orientation = LinearLayout.VERTICAL
                 setPadding(64, 64, 64, 64)
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#E61E1F20"))
-                    setStroke(3, android.graphics.Color.parseColor("#B3F28B82"))
+                    setColor(android.graphics.Color.parseColor("#E60D1117"))
+                    setStroke(3, android.graphics.Color.parseColor("#B3FF2A6D"))
                     cornerRadius = 48f
                 }
                 
@@ -750,7 +750,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
                 addView(TextView(this@ChatOverlayActivity).apply {
                     text = "ACTIVE CONTEXT"
-                    setTextColor(android.graphics.Color.parseColor("#F28B82"))
+                    setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
                     textSize = 12f
                     letterSpacing = 0.2f
                     setTypeface(null, android.graphics.Typeface.BOLD)
@@ -758,7 +758,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
                 addView(TextView(this@ChatOverlayActivity).apply {
                     text = "Total: $charCount chars | Approx. $tokenCount tokens"
-                    setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                    setTextColor(android.graphics.Color.parseColor("#8892B0"))
                     textSize = 10f
                     setPadding(0, 4, 0, 32)
                 })
@@ -793,8 +793,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                             gravity = android.view.Gravity.CENTER_VERTICAL
                             setPadding(48, 32, 48, 32)
                             background = android.graphics.drawable.GradientDrawable().apply {
-                                setColor(android.graphics.Color.parseColor("#1AF28B82"))
-                                setStroke(2, android.graphics.Color.parseColor("#80F28B82"))
+                                setColor(android.graphics.Color.parseColor("#1AFF2A6D"))
+                                setStroke(2, android.graphics.Color.parseColor("#80FF2A6D"))
                                 cornerRadius = 24f
                             }
                             layoutParams = LinearLayout.LayoutParams(
@@ -806,7 +806,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                             
                             addView(TextView(this@ChatOverlayActivity).apply {
                                 text = "# "
-                                setTextColor(android.graphics.Color.parseColor("#F28B82"))
+                                setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
                                 textSize = 16f
                                 setTypeface(null, android.graphics.Typeface.BOLD)
                             })
@@ -823,14 +823,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                                 
                                 addView(TextView(this@ChatOverlayActivity).apply {
                                     text = "$tChars chars | approx. $tTokens tokens"
-                                    setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                                    setTextColor(android.graphics.Color.parseColor("#8892B0"))
                                     textSize = 10f
                                 })
                             })
                             
                             addView(TextView(this@ChatOverlayActivity).apply {
                                 text = "EDIT"
-                                setTextColor(android.graphics.Color.parseColor("#F28B82"))
+                                setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
                                 textSize = 12f
                                 letterSpacing = 0.1f
                                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -854,7 +854,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
                         setMargins(0, 48, 0, 32)
                     }
-                    setBackgroundColor(android.graphics.Color.parseColor("#33F28B82"))
+                    setBackgroundColor(android.graphics.Color.parseColor("#33FF2A6D"))
                 })
 
                 val viewAllPromptsBtn = LinearLayout(this@ChatOverlayActivity).apply {
@@ -862,8 +862,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     gravity = android.view.Gravity.CENTER
                     setPadding(32, 24, 32, 24)
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(android.graphics.Color.parseColor("#1AF28B82"))
-                        setStroke(2, android.graphics.Color.parseColor("#80F28B82"))
+                        setColor(android.graphics.Color.parseColor("#1AFF2A6D"))
+                        setStroke(2, android.graphics.Color.parseColor("#80FF2A6D"))
                         cornerRadius = 24f
                     }
                     layoutParams = LinearLayout.LayoutParams(
@@ -875,7 +875,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     
                     addView(TextView(this@ChatOverlayActivity).apply {
                         text = "📋 VIEW ALL INSTRUCTIONS"
-                        setTextColor(android.graphics.Color.parseColor("#F28B82"))
+                        setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
                         textSize = 14f
                         letterSpacing = 0.1f
                         setTypeface(null, android.graphics.Typeface.BOLD)
@@ -892,13 +892,13 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     gravity = android.view.Gravity.CENTER
                     setPadding(32, 24, 32, 24)
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(android.graphics.Color.parseColor("#2A131314"))
+                        setColor(android.graphics.Color.parseColor("#2A0D1117"))
                         cornerRadius = 24f
                     }
                     
                     addView(TextView(this@ChatOverlayActivity).apply {
                         text = "✖  CLOSE"
-                        setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                        setTextColor(android.graphics.Color.parseColor("#8892B0"))
                         textSize = 14f
                         letterSpacing = 0.1f
                         setTypeface(null, android.graphics.Typeface.BOLD)
@@ -1098,15 +1098,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#F2131314"))
-                setStroke(4, android.graphics.Color.parseColor("#B38AB4F8"))
+                setColor(android.graphics.Color.parseColor("#F20D1117"))
+                setStroke(4, android.graphics.Color.parseColor("#B300F0FF"))
                 cornerRadius = 48f
             }
         }
 
         mainLayout.addView(TextView(this).apply {
             text = "SUGGESTION SETTINGS"
-            setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
             textSize = 16f
             letterSpacing = 0.2f
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -1143,7 +1143,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         scrollContent.addView(TextView(this).apply {
             text = "サジェスト指示・例文設定"
-            setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
             textSize = 13f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 24, 0, 8)
@@ -1151,20 +1151,20 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         scrollContent.addView(TextView(this).apply {
             text = "ノアちゃんが選択肢を作るときに意識してほしいルールや例文を自由に書いてね♡\n例：『語尾に「〜にゃ」をつけさせて』『甘やかす返答を多めにして』など！"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+            setTextColor(android.graphics.Color.parseColor("#A0AEC0"))
             textSize = 12f
             setPadding(0, 0, 0, 16)
         })
 
         val editText = android.widget.EditText(this).apply {
             hint = "例：もっと甘々なセリフにして、時々ツンツンした選択肢も混ぜてほしいな〜♡"
-            setHintTextColor(android.graphics.Color.parseColor("#5F6368"))
+            setHintTextColor(android.graphics.Color.parseColor("#4A5568"))
             setTextColor(android.graphics.Color.WHITE)
             setText(customInstructions)
             textSize = 14f
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#2D2E30"))
-                setStroke(2, android.graphics.Color.parseColor("#5F6368"))
+                setColor(android.graphics.Color.parseColor("#1A202C"))
+                setStroke(2, android.graphics.Color.parseColor("#4A5568"))
                 cornerRadius = 16f
             }
             setPadding(24, 24, 24, 24)
@@ -1188,7 +1188,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#3C4043"))
+                setColor(android.graphics.Color.parseColor("#2D3748"))
                 cornerRadius = 24f
             }
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -1200,11 +1200,11 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
         val btnSave = Button(this).apply {
             text = "保存するよ〜♡"
-            setTextColor(android.graphics.Color.parseColor("#131314"))
+            setTextColor(android.graphics.Color.parseColor("#0D1117"))
             textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#8AB4F8"))
+                setColor(android.graphics.Color.parseColor("#00F0FF"))
                 cornerRadius = 24f
             }
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -1858,12 +1858,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         if (monitorImageDesc && entry.description.isNullOrBlank()) {
             val warningView = TextView(this).apply {
                 text = "⚠️ 個別プロンプトが未設定です"
-                setTextColor(Color.parseColor("#FDD663"))
+                setTextColor(Color.parseColor("#FFCC00"))
                 textSize = 12f
                 setTypeface(null, Typeface.BOLD)
                 setPadding(16, 8, 16, 8)
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#33FDD663"))
+                    setColor(Color.parseColor("#33FFCC00"))
                     cornerRadius = 8f
                 }
                 layoutParams = LinearLayout.LayoutParams(
@@ -1884,12 +1884,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             if (!hasTagInCategory) {
                 val warningView = TextView(this).apply {
                     text = "⚠️ $catName タグが入っていません"
-                    setTextColor(Color.parseColor("#FDD663"))
+                    setTextColor(Color.parseColor("#FFCC00"))
                     textSize = 12f
                     setTypeface(null, Typeface.BOLD)
                     setPadding(16, 8, 16, 8)
                     background = GradientDrawable().apply {
-                        setColor(Color.parseColor("#33FDD663"))
+                        setColor(Color.parseColor("#33FFCC00"))
                         cornerRadius = 8f
                     }
                     layoutParams = LinearLayout.LayoutParams(
@@ -1941,14 +1941,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(64, 64, 64, 64)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#E61E1F20"))
-                setStroke(3, android.graphics.Color.parseColor("#B38AB4F8")) 
+                setColor(android.graphics.Color.parseColor("#E60D1117"))
+                setStroke(3, android.graphics.Color.parseColor("#B300F0FF")) 
                 cornerRadius = 48f
             }
             
             addView(TextView(this@ChatOverlayActivity).apply {
                 text = "START NEW CHAT"
-                setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+                setTextColor(android.graphics.Color.parseColor("#00F0FF"))
                 textSize = 14f
                 letterSpacing = 0.2f
                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -1962,7 +1962,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 )
                 text = "現在のチャット履歴を完全に削除する"
                 setTextColor(android.graphics.Color.WHITE)
-                buttonTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#8AB4F8"))
+                buttonTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#00F0FF"))
                 setPadding(16, 16, 16, 16)
             }
             addView(cbDelete)
@@ -1974,7 +1974,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 )
                 text = "このチャットを結びつけている他の全画像も、一斉に新しいチャットへ切り替える"
                 setTextColor(android.graphics.Color.WHITE)
-                buttonTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#8AB4F8"))
+                buttonTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#00F0FF"))
                 setPadding(16, 16, 16, 32)
             }
             addView(cbApplyToOthers)
@@ -1985,7 +1985,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 
                 val btnCancel = TextView(this@ChatOverlayActivity).apply {
                     text = "CANCEL"
-                    setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                    setTextColor(android.graphics.Color.parseColor("#8892B0"))
                     setPadding(32, 16, 32, 16)
                     setTypeface(null, android.graphics.Typeface.BOLD)
                     setOnClickListener { dialog.dismiss() }
@@ -1996,7 +1996,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     setTextColor(android.graphics.Color.BLACK)
                     setPadding(48, 16, 48, 16)
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(android.graphics.Color.parseColor("#8AB4F8"))
+                        setColor(android.graphics.Color.parseColor("#00F0FF"))
                         cornerRadius = 16f
                     }
                     setTypeface(null, android.graphics.Typeface.BOLD)
@@ -2243,14 +2243,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(64, 64, 64, 64)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#E61E1F20"))
-                setStroke(3, android.graphics.Color.parseColor("#B38AB4F8"))
+                setColor(android.graphics.Color.parseColor("#E60D1117"))
+                setStroke(3, android.graphics.Color.parseColor("#B300F0FF"))
                 cornerRadius = 48f
             }
             
             addView(TextView(this@ChatOverlayActivity).apply {
                 text = "PREVIEW: $sessionName"
-                setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+                setTextColor(android.graphics.Color.parseColor("#00F0FF"))
                 textSize = 14f
                 letterSpacing = 0.1f
                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -2265,7 +2265,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
             val tvPreview = TextView(this@ChatOverlayActivity).apply {
                 text = previewText.toString().trim()
-                setTextColor(Color.parseColor("#E8EAED"))
+                setTextColor(Color.parseColor("#E2E8F0"))
                 textSize = 13f
             }
             scrollView.addView(tvPreview)
@@ -2275,7 +2275,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
                     setMargins(0, 32, 0, 32)
                 }
-                setBackgroundColor(android.graphics.Color.parseColor("#338AB4F8"))
+                setBackgroundColor(android.graphics.Color.parseColor("#3300F0FF"))
             })
             
             val btnLayout = LinearLayout(this@ChatOverlayActivity).apply {
@@ -2287,8 +2287,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     setPadding(32, 24, 32, 24)
                     gravity = android.view.Gravity.CENTER
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(android.graphics.Color.parseColor("#2A131314"))
-                        setStroke(2, android.graphics.Color.parseColor("#8AB4F8"))
+                        setColor(android.graphics.Color.parseColor("#2A0D1117"))
+                        setStroke(2, android.graphics.Color.parseColor("#00F0FF"))
                         cornerRadius = 16f
                     }
                     setTypeface(null, android.graphics.Typeface.BOLD)
@@ -2308,7 +2308,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     setPadding(32, 24, 32, 24)
                     gravity = android.view.Gravity.CENTER
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(android.graphics.Color.parseColor("#8AB4F8"))
+                        setColor(android.graphics.Color.parseColor("#00F0FF"))
                         cornerRadius = 16f
                     }
                     layoutParams = LinearLayout.LayoutParams(
@@ -2328,12 +2328,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
                 val btnDelete = TextView(this@ChatOverlayActivity).apply {
                     text = "このチャットを削除する"
-                    setTextColor(android.graphics.Color.parseColor("#F28B82")) 
+                    setTextColor(android.graphics.Color.parseColor("#FF4444")) 
                     setPadding(32, 24, 32, 24)
                     gravity = android.view.Gravity.CENTER
                     background = android.graphics.drawable.GradientDrawable().apply {
                         setColor(android.graphics.Color.parseColor("#1AFFFFFF"))
-                        setStroke(2, android.graphics.Color.parseColor("#F28B82"))
+                        setStroke(2, android.graphics.Color.parseColor("#FF4444"))
                         cornerRadius = 16f
                     }
                     layoutParams = LinearLayout.LayoutParams(
@@ -2368,7 +2368,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
                 val btnCancel = TextView(this@ChatOverlayActivity).apply {
                     text = "キャンセル"
-                    setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                    setTextColor(android.graphics.Color.parseColor("#8892B0"))
                     setPadding(32, 24, 32, 24)
                     gravity = android.view.Gravity.CENTER
                     setTypeface(null, android.graphics.Typeface.BOLD)
@@ -2630,15 +2630,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(64, 64, 64, 64)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#E61E1F20"))
-                setStroke(3, android.graphics.Color.parseColor("#B38AB4F8")) 
+                setColor(android.graphics.Color.parseColor("#E60D1117"))
+                setStroke(3, android.graphics.Color.parseColor("#B300F0FF")) 
                 cornerRadius = 48f
             }
         }
 
         dialogView.addView(TextView(this).apply {
             text = "SELECT ACCOUNT"
-            setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
             textSize = 14f
             letterSpacing = 0.2f
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -2656,10 +2656,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 else if (isActive) btnText = "○ $btnText (自動選択中)"
                 text = btnText
                 
-                setTextColor(if (isManual || isActive) android.graphics.Color.parseColor("#8AB4F8") else Color.WHITE)
+                setTextColor(if (isManual || isActive) android.graphics.Color.parseColor("#00F0FF") else Color.WHITE)
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(if (isManual || isActive) android.graphics.Color.parseColor("#338AB4F8") else android.graphics.Color.parseColor("#3C4043"))
-                    setStroke(2, if (isManual || isActive) android.graphics.Color.parseColor("#8AB4F8") else android.graphics.Color.TRANSPARENT)
+                    setColor(if (isManual || isActive) android.graphics.Color.parseColor("#3300F0FF") else android.graphics.Color.parseColor("#2D3748"))
+                    setStroke(2, if (isManual || isActive) android.graphics.Color.parseColor("#00F0FF") else android.graphics.Color.TRANSPARENT)
                     cornerRadius = 24f
                 }
                 
@@ -2707,7 +2707,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         val btnManage = Button(this).apply {
             text = "管理画面を開く"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+            setTextColor(android.graphics.Color.parseColor("#8892B0"))
             background = ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
             val params = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2734,15 +2734,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(64, 64, 64, 64)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#E61E1F20"))
-                setStroke(3, android.graphics.Color.parseColor("#B38AB4F8")) 
+                setColor(android.graphics.Color.parseColor("#E60D1117"))
+                setStroke(3, android.graphics.Color.parseColor("#B300F0FF")) 
                 cornerRadius = 48f
             }
         }
 
         dialogView.addView(TextView(this).apply {
             text = "OPENROUTER API KEYS"
-            setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
             textSize = 14f
             letterSpacing = 0.2f
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -2751,7 +2751,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         dialogView.addView(TextView(this).apply {
             text = "ドラッグして優先順位を変更できるわよ！"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+            setTextColor(android.graphics.Color.parseColor("#8892B0"))
             textSize = 10f
             setPadding(0, 0, 0, 32)
         })
@@ -2876,7 +2876,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         val btnDone = Button(this).apply {
             text = "完了"
-            setTextColor(Color.parseColor("#8AB4F8"))
+            setTextColor(Color.parseColor("#00F0FF"))
             background = ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
             val params = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2903,8 +2903,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(dp24, dp24, dp24, dp24)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#E61E1F20"))
-                setStroke(2, android.graphics.Color.parseColor("#B38AB4F8"))
+                setColor(android.graphics.Color.parseColor("#E60D1117"))
+                setStroke(2, android.graphics.Color.parseColor("#B300F0FF"))
                 cornerRadius = 48f
             }
         }
@@ -2956,7 +2956,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         fun addLabel(text: String) {
             container.addView(TextView(this).apply { 
                 this.text = text
-                setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+                setTextColor(android.graphics.Color.parseColor("#00F0FF"))
                 textSize = 11f
                 letterSpacing = 0.1f
                 setPadding(dp12, 0, 0, dp12 / 2)
@@ -3069,14 +3069,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(64, 64, 64, 64)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#E61E1F20"))
-                setStroke(3, android.graphics.Color.parseColor("#B3F28B82")) // Neon Pink border
+                setColor(android.graphics.Color.parseColor("#E60D1117"))
+                setStroke(3, android.graphics.Color.parseColor("#B3FF2A6D")) // Neon Pink border
                 cornerRadius = 48f
             }
             
             addView(TextView(this@ChatOverlayActivity).apply {
                 text = "CHARACTER INSTRUCTIONS"
-                setTextColor(android.graphics.Color.parseColor("#F28B82"))
+                setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
                 textSize = 14f
                 letterSpacing = 0.2f
                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -3084,7 +3084,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
             addView(TextView(this@ChatOverlayActivity).apply {
                 text = "Length: $charCount chars | Approx. $tokenCount tokens"
-                setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                setTextColor(android.graphics.Color.parseColor("#8892B0"))
                 textSize = 10f
                 setPadding(0, 8, 0, 32)
             })
@@ -3110,7 +3110,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
                     setMargins(0, 32, 0, 32)
                 }
-                setBackgroundColor(android.graphics.Color.parseColor("#33F28B82"))
+                setBackgroundColor(android.graphics.Color.parseColor("#33FF2A6D"))
             })
             
             val btnClose = TextView(this@ChatOverlayActivity).apply {
@@ -3119,7 +3119,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 setPadding(48, 24, 48, 24)
                 gravity = android.view.Gravity.CENTER
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#F28B82"))
+                    setColor(android.graphics.Color.parseColor("#FF2A6D"))
                     cornerRadius = 16f
                 }
                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -3149,27 +3149,27 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(64, 64, 64, 64)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#E61E1F20"))
-                setStroke(3, android.graphics.Color.parseColor("#B38AB4F8")) 
+                setColor(android.graphics.Color.parseColor("#E60D1117"))
+                setStroke(3, android.graphics.Color.parseColor("#B300F0FF")) 
                 cornerRadius = 48f
             }
 
             addView(TextView(this@ChatOverlayActivity).apply {
                 text = "CHAT SETTINGS"
-                setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+                setTextColor(android.graphics.Color.parseColor("#00F0FF"))
                 textSize = 14f; letterSpacing = 0.2f; setTypeface(null, android.graphics.Typeface.BOLD)
                 setPadding(0, 0, 0, 8)
             })
             
             addView(TextView(this@ChatOverlayActivity).apply {
                 text = if (isTemporary) "STATUS: TEMPORARY (UNSAVED)" else "STATUS: LINKED SESSION"
-                setTextColor(if (isTemporary) android.graphics.Color.parseColor("#FDD663") else android.graphics.Color.parseColor("#81C995"))
+                setTextColor(if (isTemporary) android.graphics.Color.parseColor("#FFCC00") else android.graphics.Color.parseColor("#00FF99"))
                 textSize = 10f; setPadding(0, 0, 0, 32)
             })
 
             addView(TextView(this@ChatOverlayActivity).apply {
                 text = "SESSION NAME"
-                setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                setTextColor(android.graphics.Color.parseColor("#8892B0"))
                 textSize = 10f; setPadding(0, 0, 0, 8)
             })
             val etName = EditText(this@ChatOverlayActivity).apply {
@@ -3201,7 +3201,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 addView(btnSave)
 
                 addView(android.widget.Space(this@ChatOverlayActivity).apply { layoutParams = LinearLayout.LayoutParams(1, 16) })
-                val btnApplySet = createStyledButton("🔗 今のセット全体に結びつける", "#8AB4F8") {
+                val btnApplySet = createStyledButton("🔗 今のセット全体に結びつける", "#00F0FF") {
                     currentChatId?.let { id ->
                         linkSessionToSet(id)
                         dialog.dismiss()
@@ -3210,7 +3210,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 addView(btnApplySet)
 
                 addView(android.widget.Space(this@ChatOverlayActivity).apply { layoutParams = LinearLayout.LayoutParams(1, 16) })
-                val btnDiscard = createStyledButton("🗑️ この会話を破棄する", "#F28B82") {
+                val btnDiscard = createStyledButton("🗑️ この会話を破棄する", "#FF4444") {
                     handleResetChat()
                     dialog.dismiss()
                 }
@@ -3220,7 +3220,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
             addView(View(this@ChatOverlayActivity).apply {
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply { setMargins(0, 0, 0, 32) }
-                setBackgroundColor(android.graphics.Color.parseColor("#338AB4F8"))
+                setBackgroundColor(android.graphics.Color.parseColor("#3300F0FF"))
             })
             
             val engineBtn = createStyledButton("🧠 エンジン: ${if (currentEngine == "CLOUD") "クラウド" else "ローカル"}") {
@@ -3231,7 +3231,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
             val btnClose = TextView(this@ChatOverlayActivity).apply {
                 text = "CLOSE"
-                setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                setTextColor(android.graphics.Color.parseColor("#8892B0"))
                 gravity = android.view.Gravity.CENTER; setPadding(0, 48, 0, 0)
                 setTypeface(null, android.graphics.Typeface.BOLD)
                 setOnClickListener { dialog.dismiss() }
@@ -3529,8 +3529,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             gravity = android.view.Gravity.CENTER
             setPadding(48, 48, 48, 48)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#EA131314"))
-                setStroke(3, android.graphics.Color.parseColor("#B3F28B82")) 
+                setColor(android.graphics.Color.parseColor("#EA090C15"))
+                setStroke(3, android.graphics.Color.parseColor("#B3FF2A6D")) 
                 cornerRadius = 64f
             }
 
@@ -3548,7 +3548,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
             addView(TextView(this@ChatOverlayActivity).apply {
                 text = "⚠️ 所持金が不足しています"
-                setTextColor(android.graphics.Color.parseColor("#F28B82"))
+                setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
                 textSize = 18f
                 setTypeface(null, android.graphics.Typeface.BOLD)
                 gravity = android.view.Gravity.CENTER
@@ -3569,7 +3569,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 textSize = 14f
                 setTypeface(null, android.graphics.Typeface.BOLD)
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#F28B82"))
+                    setColor(android.graphics.Color.parseColor("#FF2A6D"))
                     cornerRadius = 32f
                 }
                 setPadding(48, 16, 48, 16)
@@ -3584,7 +3584,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
             val btnCancel = Button(this@ChatOverlayActivity).apply {
                 text = "キャンセル"
-                setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                setTextColor(android.graphics.Color.parseColor("#8892B0"))
                 background = null
                 setOnClickListener {
                     builder.dismiss()
@@ -3610,15 +3610,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#EA131314"))
-                setStroke(3, android.graphics.Color.parseColor("#B3F28B82")) 
+                setColor(android.graphics.Color.parseColor("#EA090C15"))
+                setStroke(3, android.graphics.Color.parseColor("#B3FF2A6D")) 
                 cornerRadius = 64f
             }
         }
 
         dialogView.addView(TextView(this).apply {
             text = "🎁 お小遣いリアクション指示書編集"
-            setTextColor(android.graphics.Color.parseColor("#F28B82"))
+            setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
             textSize = 16f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, 16)
@@ -3626,7 +3626,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         dialogView.addView(TextView(this).apply {
             text = "お小遣いを受け取った際のAIキャラクターの反応（品のある冷静な態度）を指定・変更できるわよ♪"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+            setTextColor(android.graphics.Color.parseColor("#8892B0"))
             textSize = 11f
             setPadding(0, 0, 0, 24)
         })
@@ -3635,14 +3635,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             setText(currentInstructions)
             setTextColor(android.graphics.Color.WHITE)
             textSize = 12f
-            setHintTextColor(android.graphics.Color.parseColor("#5F6368"))
+            setHintTextColor(android.graphics.Color.parseColor("#4A5568"))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
             isSingleLine = false
             setPadding(24, 24, 24, 24)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#2D2E30"))
+                setColor(android.graphics.Color.parseColor("#1A202C"))
                 cornerRadius = 16f
-                setStroke(1, android.graphics.Color.parseColor("#5F6368"))
+                setStroke(1, android.graphics.Color.parseColor("#4A5568"))
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -3659,7 +3659,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             
             val btnCancel = TextView(this@ChatOverlayActivity).apply {
                 text = "キャンセル"
-                setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                setTextColor(android.graphics.Color.parseColor("#8892B0"))
                 setPadding(32, 16, 32, 16)
                 setTypeface(null, android.graphics.Typeface.BOLD)
                 setOnClickListener { dialog.dismiss() }
@@ -3670,7 +3670,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 setTextColor(android.graphics.Color.BLACK)
                 setPadding(48, 16, 48, 16)
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#F28B82"))
+                    setColor(android.graphics.Color.parseColor("#FF2A6D"))
                     cornerRadius = 16f
                 }
                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -3703,8 +3703,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#EA131314"))
-                setStroke(3, android.graphics.Color.parseColor("#B3F28B82")) 
+                setColor(android.graphics.Color.parseColor("#EA090C15"))
+                setStroke(3, android.graphics.Color.parseColor("#B3FF2A6D")) 
                 cornerRadius = 64f
             }
         }
@@ -3717,7 +3717,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         
         headerLayout.addView(TextView(this).apply {
             text = "💵 お小遣いをあげる"
-            setTextColor(android.graphics.Color.parseColor("#F28B82"))
+            setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
             textSize = 18f
             setTypeface(null, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -3730,7 +3730,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             textSize = 13f
             setPadding(24, 8, 24, 8)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#3C4043"))
+                setColor(android.graphics.Color.parseColor("#2D3748"))
                 cornerRadius = 24f
             }
         }
@@ -3739,7 +3739,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         dialogView.addView(TextView(this).apply {
             text = "AIキャラに円（100円～50万円）をそのままプレゼントできます。冷静で品のあるリアクションをしてくれるわよ☆"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+            setTextColor(android.graphics.Color.parseColor("#A0AEC0"))
             textSize = 11f
             setPadding(0, 0, 0, 32)
         })
@@ -3751,8 +3751,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setText(selectedMoneyAmount?.toString() ?: "")
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1E1F20"))
-                setStroke(2, android.graphics.Color.parseColor("#3C4043"))
+                setColor(android.graphics.Color.parseColor("#121824"))
+                setStroke(2, android.graphics.Color.parseColor("#2D3748"))
                 cornerRadius = 24f
             }
             setPadding(32, 24, 32, 24)
@@ -3769,7 +3769,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         val btnCharge = TextView(this).apply {
             text = "🔮 チャージする"
-            setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
             textSize = 13f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(16, 16, 16, 16)
@@ -3787,7 +3787,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#F28B82"))
+                setColor(android.graphics.Color.parseColor("#FF2A6D"))
                 cornerRadius = 32f
             }
             setPadding(48, 16, 48, 16)
@@ -3814,7 +3814,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         dialogView.addView(android.widget.Space(this).apply { layoutParams = LinearLayout.LayoutParams(1, 24) })
         val btnClose = Button(this).apply {
             text = "閉じる"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+            setTextColor(android.graphics.Color.parseColor("#8892B0"))
             background = null
             setOnClickListener { dialog.dismiss() }
         }
@@ -3835,7 +3835,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1E1F20")) 
+                setColor(android.graphics.Color.parseColor("#1F2024")) 
                 cornerRadius = 48f
             }
         }
@@ -3861,7 +3861,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             textSize = 13f
             setPadding(24, 8, 24, 8)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#3C4043"))
+                setColor(android.graphics.Color.parseColor("#2D3748"))
                 cornerRadius = 24f
             }
         })
@@ -3869,7 +3869,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         dialogView.addView(TextView(this).apply {
             text = "会話にはメッセージ1回につき500円消費されます。チャージしたい金額（500円～50万円）を自由に入力してください。✨"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+            setTextColor(android.graphics.Color.parseColor("#A0AEC0"))
             textSize = 11f
             setPadding(0, 0, 0, 24)
         })
@@ -3880,8 +3880,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             setHintTextColor(Color.GRAY)
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1E1F20"))
-                setStroke(2, android.graphics.Color.parseColor("#3C4043"))
+                setColor(android.graphics.Color.parseColor("#121824"))
+                setStroke(2, android.graphics.Color.parseColor("#2D3748"))
                 cornerRadius = 24f
             }
             setPadding(32, 24, 32, 24)
@@ -3896,7 +3896,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1A73E8")) 
+                setColor(android.graphics.Color.parseColor("#0B57D0")) 
                 cornerRadius = 32f
             }
             layoutParams = LinearLayout.LayoutParams(
@@ -3920,7 +3920,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         val btnCancel = Button(this).apply {
             text = "閉じる"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+            setTextColor(android.graphics.Color.parseColor("#8892B0"))
             background = null
             setOnClickListener { dialog.dismiss() }
         }
@@ -3996,7 +3996,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1E1F20")) 
+                setColor(android.graphics.Color.parseColor("#1F2024")) 
                 cornerRadius = 48f
             }
         }
@@ -4009,7 +4009,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         gpHeader.addView(TextView(this).apply {
             text = "▶ "
-            setTextColor(android.graphics.Color.parseColor("#81C995")) 
+            setTextColor(android.graphics.Color.parseColor("#00E676")) 
             textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
         })
@@ -4108,7 +4108,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         cardRow.addView(TextView(this).apply {
             text = "お支払い方法"
-            setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
             textSize = 11f
         })
         payMethodLayout.addView(cardRow)
@@ -4179,7 +4179,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#137333")) 
+                setColor(android.graphics.Color.parseColor("#00875A")) 
                 cornerRadius = 32f
             }
             layoutParams = LinearLayout.LayoutParams(
@@ -4222,7 +4222,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             gravity = android.view.Gravity.CENTER
             setPadding(64, 64, 64, 64)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1E1F20"))
+                setColor(android.graphics.Color.parseColor("#1F2024"))
                 cornerRadius = 48f
             }
         }
@@ -4238,7 +4238,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         dialogView.addView(tvStatus)
 
         val progress = android.widget.ProgressBar(this).apply {
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1A73E8"))
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#0B57D0"))
         }
         dialogView.addView(progress)
 
@@ -4289,7 +4289,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         } else {
             val tvDemoNotice = TextView(this).apply {
                 text = "💡 実機指紋センサーが未検出のため、デモモードに移行したよ！以下のボタンを押して決済を進めてね♡"
-                setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                setTextColor(android.graphics.Color.parseColor("#A0AEC0"))
                 textSize = 11f
                 gravity = android.view.Gravity.CENTER
                 setPadding(0, 32, 0, 16)
@@ -4304,7 +4304,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 background = android.graphics.drawable.GradientDrawable().apply {
                     setColor(android.graphics.Color.parseColor("#3C4043"))
                     cornerRadius = 24f
-                    setStroke(2, android.graphics.Color.parseColor("#8AB4F8"))
+                    setStroke(2, android.graphics.Color.parseColor("#00F0FF"))
                 }
                 setPadding(32, 16, 32, 16)
                 setOnClickListener {
@@ -4352,7 +4352,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             gravity = android.view.Gravity.CENTER
             setPadding(64, 64, 64, 64)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1E1F20"))
+                setColor(android.graphics.Color.parseColor("#1F2024"))
                 cornerRadius = 48f
             }
         }
@@ -4392,7 +4392,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1A73E8"))
+                setColor(android.graphics.Color.parseColor("#0B57D0"))
                 cornerRadius = 32f
             }
             setPadding(48, 16, 48, 16)

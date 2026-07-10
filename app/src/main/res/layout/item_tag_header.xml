@@ -25,5 +25,5 @@
         android:layout_height="32dp"
         android:src="@android:drawable/ic_menu_sort_alphabetically"
         android:background="?attr/selectableItemBackgroundBorderless"
-        app:tint="#8AB4F8" />
+        app:tint="#00F0FF" />
 </LinearLayout>

@@ -354,8 +354,8 @@ class TagPromptEditorActivity : AppCompatActivity() {
         val chars = text.length
         val tokens = TagManager.estimateTokenCount(text)
         tvCounter.text = "$chars 文字 | 約 $tokens トークン"
-        if (chars in 300..500) tvCounter.setTextColor(Color.parseColor("#8AB4F8"))
-        else tvCounter.setTextColor(Color.parseColor("#9AA0A6"))
+        if (chars in 300..500) tvCounter.setTextColor(Color.parseColor("#00F0FF"))
+        else tvCounter.setTextColor(Color.parseColor("#8892B0"))
     }
 
     private fun updateImpliedTagsDisplay() {
@@ -364,7 +364,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
             tvImpliedTags.setTextColor(Color.GRAY)
         } else {
             tvImpliedTags.text = currentImpliedTags.joinToString(", ")
-            tvImpliedTags.setTextColor(Color.parseColor("#8AB4F8"))
+            tvImpliedTags.setTextColor(Color.parseColor("#00F0FF"))
         }
     }
 
@@ -374,10 +374,10 @@ class TagPromptEditorActivity : AppCompatActivity() {
         
         if (linkedCard != null) {
             tvLocalCardStatus.text = "紐付け済み: 🎴 [${linkedCard.category}] ${linkedCard.label}"
-            tvLocalCardStatus.setTextColor(Color.parseColor("#8AB4F8"))
+            tvLocalCardStatus.setTextColor(Color.parseColor("#00F0FF"))
         } else {
             tvLocalCardStatus.text = "紐付けられたカード: なし"
-            tvLocalCardStatus.setTextColor(Color.parseColor("#FDD663"))
+            tvLocalCardStatus.setTextColor(Color.parseColor("#FFCC00"))
         }
     }
 

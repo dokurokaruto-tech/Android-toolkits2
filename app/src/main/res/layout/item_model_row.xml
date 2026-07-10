@@ -41,7 +41,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:text="Context | Price"
-            android:textColor="#9AA0A6"
+            android:textColor="#A0ABC0"
             android:textSize="11sp" />
     </LinearLayout>
 

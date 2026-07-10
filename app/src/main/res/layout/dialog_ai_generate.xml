@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#131314">
+    android:background="#121212">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -15,7 +15,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="AI生成の設定"
-            android:textColor="#8AB4F8"
+            android:textColor="#00F0FF"
             android:textSize="22sp"
             android:textStyle="bold"
             android:layout_marginBottom="24dp"/>
@@ -25,9 +25,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="16dp"
-            app:cardBackgroundColor="#1E1F20"
+            app:cardBackgroundColor="#1A2235"
             app:strokeWidth="1dp"
-            app:strokeColor="#338AB4F8"
+            app:strokeColor="#3300F0FF"
             android:layout_marginBottom="16dp">
 
             <LinearLayout
@@ -48,7 +48,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="推論エンジン"
-                        android:textColor="#9AA0A6"
+                        android:textColor="#8892B0"
                         android:textSize="12sp"
                         android:textStyle="bold" />
 
@@ -57,7 +57,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="OR: 0/0"
-                        android:textColor="#FDD663"
+                        android:textColor="#FFCC00"
                         android:textSize="11sp"
                         android:visibility="gone" />
                 </LinearLayout>
@@ -78,11 +78,11 @@
                     android:layout_width="match_parent"
                     android:layout_height="56dp"
                     android:text="🤖 生成モデルを変更する"
-                    android:textColor="#8AB4F8"
-                    app:strokeColor="#8AB4F8"
+                    android:textColor="#00F0FF"
+                    app:strokeColor="#00F0FF"
                     app:cornerRadius="12dp"
                     app:icon="@android:drawable/ic_menu_manage"
-                    app:iconTint="#8AB4F8" />
+                    app:iconTint="#00F0FF" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -91,7 +91,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="指示プロファイル"
-            android:textColor="#9AA0A6"
+            android:textColor="#8892B0"
             android:textSize="12sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
@@ -114,10 +114,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="追加の指示（例: 活発な感じで）"
-            android:textColorHint="#9AA0A6"
-            app:boxStrokeColor="#8AB4F8"
-            app:hintTextColor="#8AB4F8"
-            app:boxBackgroundColor="#1E1F20"
+            android:textColorHint="#8892B0"
+            app:boxStrokeColor="#00F0FF"
+            app:hintTextColor="#00F0FF"
+            app:boxBackgroundColor="#1A2235"
             app:boxCornerRadiusTopStart="12dp"
             app:boxCornerRadiusTopEnd="12dp"
             app:boxCornerRadiusBottomStart="12dp"
@@ -139,7 +139,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="16dp"
-            app:cardBackgroundColor="#1E1F20"
+            app:cardBackgroundColor="#1A2235"
             android:layout_marginBottom="16dp">
 
             <LinearLayout
@@ -155,7 +155,7 @@
                     android:text="入力中の「タグ名」を対象にする"
                     android:checked="true"
                     android:textColor="#FFFFFF"
-                    app:buttonTint="#8AB4F8" />
+                    app:buttonTint="#00F0FF" />
 
                 <com.google.android.material.checkbox.MaterialCheckBox
                     android:id="@+id/cb_use_existing"
@@ -163,7 +163,7 @@
                     android:layout_height="wrap_content"
                     android:text="既存のプロンプト設定をベースにする"
                     android:textColor="#FFFFFF"
-                    app:buttonTint="#8AB4F8" />
+                    app:buttonTint="#00F0FF" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -181,7 +181,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="🖼️ 画像を選ぶ（任意）"
-                android:textColor="#9AA0A6" />
+                android:textColor="#8892B0" />
 
             <Space
                 android:layout_width="0dp"
@@ -215,7 +215,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="60dp"
                 android:text="キャンセル"
-                android:textColor="#9AA0A6"
+                android:textColor="#8892B0"
                 android:layout_marginEnd="8dp"/>
 
             <com.google.android.material.button.MaterialButton
@@ -223,9 +223,9 @@
                 android:layout_width="140dp"
                 android:layout_height="60dp"
                 android:text="✨ 錬成開始"
-                android:textColor="#131314"
+                android:textColor="#121212"
                 android:textStyle="bold"
-                app:backgroundTint="#8AB4F8"
+                app:backgroundTint="#00F0FF"
                 app:cornerRadius="30dp" />
         </LinearLayout>
     </LinearLayout>

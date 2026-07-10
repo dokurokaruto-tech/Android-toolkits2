@@ -12,7 +12,7 @@
         android:layout_height="24dp"
         android:src="@android:drawable/ic_menu_my_calendar"
         android:layout_marginEnd="16dp"
-        app:tint="#8AB4F8"
+        app:tint="#00F0FF"
         xmlns:app="http://schemas.android.com/apk/res-auto"/>
 
     <TextView
@@ -31,5 +31,5 @@
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@android:drawable/ic_menu_delete"
         xmlns:app="http://schemas.android.com/apk/res-auto"
-        app:tint="#F28B82" />
+        app:tint="#FF3366" />
 </LinearLayout>

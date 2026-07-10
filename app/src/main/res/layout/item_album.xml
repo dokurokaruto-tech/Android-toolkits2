@@ -7,9 +7,9 @@
     android:layout_margin="4dp"
     android:clickable="true"
     android:focusable="true"
-    app:cardBackgroundColor="#1E1F20"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="1dp">
+    app:cardBackgroundColor="#1A2235"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="4dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
@@ -63,9 +63,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/rounded_rect_bg_dark"
-                android:backgroundTint="#8AB4F8"
+                android:backgroundTint="#00F0FF"
                 android:text="ホーム"
-                android:textColor="#062E6F"
+                android:textColor="#0D1117"
                 android:textSize="9sp"
                 android:textStyle="bold"
                 android:paddingHorizontal="6dp"
@@ -78,7 +78,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/rounded_rect_bg_dark"
-                android:backgroundTint="#A142F4"
+                android:backgroundTint="#E040FB"
                 android:text="チャット"
                 android:textColor="#FFFFFF"
                 android:textSize="9sp"
@@ -96,7 +96,7 @@
                 android:padding="5dp"
                 android:background="@drawable/rounded_rect_bg_dark"
                 android:src="@android:drawable/ic_menu_crop"
-                app:tint="#8AB4F8"
+                app:tint="#00F0FF"
                 android:visibility="gone" />
         </LinearLayout>
 
@@ -143,7 +143,7 @@
             android:layout_marginEnd="36dp"
             android:layout_marginBottom="8dp"
             android:text="0 photos"
-            android:textColor="#E8EAED"
+            android:textColor="#E2E8F0"
             android:textSize="11sp"
             android:maxLines="2"
             android:ellipsize="end"

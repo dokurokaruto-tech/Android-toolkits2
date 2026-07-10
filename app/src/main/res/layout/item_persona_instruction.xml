@@ -16,7 +16,7 @@
         android:layout_height="36dp"
         android:gravity="center"
         android:text="☰"
-        android:textColor="#8AB4F8"
+        android:textColor="#00F0FF"
         android:textSize="20sp"
         android:textStyle="bold"
         android:clickable="false"
@@ -28,7 +28,7 @@
         android:id="@+id/cb_enabled"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:buttonTint="#C58AF9"
+        android:buttonTint="#FF0088"
         android:layout_marginEnd="6dp" />
 
     <!-- 指示テキスト表示枠 -->
@@ -57,7 +57,7 @@
         android:layout_height="36dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@android:drawable/ic_menu_close_clear_cancel"
-        app:tint="#F28B82"
+        app:tint="#FF4444"
         android:contentDescription="削除" />
 
 </LinearLayout>

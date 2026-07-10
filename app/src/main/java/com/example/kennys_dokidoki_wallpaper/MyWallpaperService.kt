@@ -89,7 +89,7 @@ class MyWallpaperService : WallpaperService() {
         
         private val textPaint by lazy {
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#9AA0A6")
+                color = Color.parseColor("#8892B0")
                 val density = applicationContext.resources.displayMetrics.density
                 textSize = 10f * density
                 textAlign = Paint.Align.CENTER

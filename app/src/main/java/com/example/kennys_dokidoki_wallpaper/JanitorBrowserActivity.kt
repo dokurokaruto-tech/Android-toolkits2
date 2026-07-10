@@ -75,7 +75,7 @@ class JanitorBrowserActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.parseColor("#131314"))
+            setBackgroundColor(Color.parseColor("#121212"))
         }
 
         // Top Toolbar
@@ -208,7 +208,7 @@ class JanitorBrowserActivity : AppCompatActivity() {
             text = "💞 この神キャラをお迎えするもん！✨"
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
-            setBackgroundColor(Color.parseColor("#C58AF9")) // Playful cute pink!
+            setBackgroundColor(Color.parseColor("#EC4899")) // Playful cute pink!
             setPadding(dpToPx(24), dpToPx(16), dpToPx(24), dpToPx(16))
             gravity = Gravity.CENTER
             visibility = View.GONE // Hidden initially until character page is detected

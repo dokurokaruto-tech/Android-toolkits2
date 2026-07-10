@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#131314"
+    android:background="#121212"
     android:padding="16dp">
 
     <TextView
@@ -12,7 +12,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="タグの編集"
-        android:textColor="#8AB4F8"
+        android:textColor="#00F0FF"
         android:textSize="20sp"
         android:textStyle="bold"
         android:layout_marginBottom="16dp" />
@@ -21,7 +21,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="タグ名"
-        android:textColor="#9AA0A6"
+        android:textColor="#8892B0"
         android:textSize="12sp"
         android:layout_marginBottom="4dp" />
 
@@ -34,7 +34,7 @@
         android:inputType="text"
         android:padding="12dp"
         android:textColor="@android:color/white"
-        android:textColorHint="#9AA0A6"
+        android:textColorHint="#8892B0"
         android:textSize="16sp"
         android:layout_marginBottom="16dp" />
 
@@ -43,7 +43,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="このタグを持つ画像が「自動的に持つタグ」（属性の継承）"
-        android:textColor="#9AA0A6"
+        android:textColor="#8892B0"
         android:textSize="12sp"
         android:layout_marginBottom="4dp" />
 
@@ -60,7 +60,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="なし"
-            android:textColor="#8AB4F8"
+            android:textColor="#00F0FF"
             android:textSize="14sp"
             android:padding="8dp" />
 
@@ -70,7 +70,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="＋ 自動付与するタグを選択"
-            android:textColor="#8AB4F8"
+            android:textColor="#00F0FF"
             android:textSize="12sp" />
     </LinearLayout>
 
@@ -78,7 +78,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="AI召喚用プロンプト設定"
-        android:textColor="#9AA0A6"
+        android:textColor="#8892B0"
         android:textSize="12sp"
         android:layout_marginBottom="4dp" />
 
@@ -94,7 +94,7 @@
         android:minLines="5"
         android:padding="16dp"
         android:textColor="@android:color/white"
-        android:textColorHint="#9AA0A6"
+        android:textColorHint="#8892B0"
         android:textSize="16sp" />
 
     <TextView
@@ -102,7 +102,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="0 文字 | 約 0 トークン"
-        android:textColor="#9AA0A6"
+        android:textColor="#8892B0"
         android:textSize="12sp"
         android:gravity="end"
         android:layout_marginTop="8dp" />
@@ -118,7 +118,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="紐付けられたカード: なし"
-            android:textColor="#FDD663"
+            android:textColor="#FFCC00"
             android:textSize="12sp"
             android:gravity="center"
             android:layout_marginBottom="8dp" />
@@ -129,7 +129,7 @@
             android:layout_width="match_parent"
             android:layout_height="50dp"
             android:text="🎴 Prompt Builder のカードと紐付ける"
-            android:textColor="#8AB4F8"
+            android:textColor="#00F0FF"
             android:layout_marginBottom="12dp" />
 
         <Button
@@ -137,9 +137,9 @@
             android:layout_width="match_parent"
             android:layout_height="60dp"
             android:text="✨ AIで自動生成する"
-            android:textColor="#131314"
+            android:textColor="#121212"
             android:textStyle="bold"
-            android:backgroundTint="#8AB4F8"
+            android:backgroundTint="#00F0FF"
             android:layout_marginBottom="12dp" />
 
         <Button
@@ -148,8 +148,8 @@
             android:layout_width="match_parent"
             android:layout_height="50dp"
             android:text="🔄 このタグを他のタグへ移住する"
-            android:textColor="#8AB4F8"
-            app:strokeColor="#8AB4F8"
+            android:textColor="#00F0FF"
+            app:strokeColor="#00F0FF"
             android:layout_marginBottom="12dp" />
 
         <Button
@@ -158,8 +158,8 @@
             android:layout_width="match_parent"
             android:layout_height="50dp"
             android:text="🗑️ このタグを完全に削除する"
-            android:textColor="#F28B82"
-            app:strokeColor="#F28B82"
+            android:textColor="#FF4444"
+            app:strokeColor="#FF4444"
             android:layout_marginBottom="12dp" />
 
         <Button
@@ -169,7 +169,7 @@
             android:text="保存する"
             android:textColor="@android:color/white"
             android:textStyle="bold"
-            android:backgroundTint="#1E1F20" />
+            android:backgroundTint="#1A2235" />
     </LinearLayout>
 
 </LinearLayout>

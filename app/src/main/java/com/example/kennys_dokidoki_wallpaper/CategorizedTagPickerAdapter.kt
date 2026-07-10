@@ -207,12 +207,12 @@ class CategorizedTagPickerAdapter(
         }
 
         if (isSelected) {
-            background.setColor(Color.parseColor("#8AB4F8"))
+            background.setColor(Color.parseColor("#00F0FF"))
             background.setStroke(0, Color.TRANSPARENT)
-            textView.setTextColor(Color.parseColor("#062E6F"))
+            textView.setTextColor(Color.BLACK)
         } else {
-            background.setColor(Color.parseColor("#1E1F20"))
-            background.setStroke((2 * textView.context.resources.displayMetrics.density).toInt(), Color.parseColor("#8AB4F8"))
+            background.setColor(Color.parseColor("#1A2235"))
+            background.setStroke((2 * textView.context.resources.displayMetrics.density).toInt(), Color.parseColor("#00F0FF"))
             textView.setTextColor(Color.WHITE)
         }
         

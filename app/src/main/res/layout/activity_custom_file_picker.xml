@@ -3,14 +3,14 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#131314">
+    android:background="#0B0F19">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="#1F1F1F"
-        app:titleTextColor="#E8EAED"
+        android:background="#151A28"
+        app:titleTextColor="#00F0FF"
         app:layout_constraintTop_toTopOf="parent">
 
         <!-- ツールバー内にお気に入り追加ボタンを配置 -->
@@ -21,7 +21,7 @@
             android:layout_gravity="end"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/btn_star"
-            app:tint="#FDD663"
+            app:tint="#FFD700"
             android:visibility="gone"
             android:contentDescription="お気に入り追加" />
     </androidx.appcompat.widget.Toolbar>
@@ -32,7 +32,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:padding="8dp"
-        android:background="#1A1A1B"
+        android:background="#0F1423"
         app:layout_constraintTop_toBottomOf="@id/toolbar">
 
         <TextView
@@ -41,7 +41,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="名前 ▲"
-            android:textColor="#8AB4F8"
+            android:textColor="#00F0FF"
             android:gravity="center"
             android:padding="12dp"
             android:textSize="14sp"
@@ -54,7 +54,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="更新日 -"
-            android:textColor="#9AA0A6"
+            android:textColor="#8892B0"
             android:gravity="center"
             android:padding="12dp"
             android:textSize="14sp"
@@ -77,7 +77,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:padding="16dp"
-        android:background="#1F1F1F"
+        android:background="#151A28"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <TextView
@@ -86,7 +86,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="選択中: 0"
-            android:textColor="#8AB4F8"
+            android:textColor="#00F0FF"
             android:textSize="16sp"
             android:textStyle="bold"
             android:layout_gravity="center_vertical"/>
@@ -98,7 +98,7 @@
             android:text="追加する"
             android:textStyle="bold"
             app:cornerRadius="8dp"
-            app:backgroundTint="#F28B82"
+            app:backgroundTint="#FF003C"
             android:textColor="#FFFFFF" />
     </LinearLayout>
 

@@ -156,8 +156,8 @@ class CustomFilePickerActivity : AppCompatActivity() {
     }
 
     private fun updateSortUI() {
-        val activeColor = android.graphics.Color.parseColor("#8AB4F8")
-        val inactiveColor = android.graphics.Color.parseColor("#9AA0A6")
+        val activeColor = android.graphics.Color.parseColor("#00F0FF")
+        val inactiveColor = android.graphics.Color.parseColor("#8892B0")
 
         when (currentSortMode) {
             SortMode.NAME_ASC -> {
@@ -348,7 +348,7 @@ class CustomFilePickerActivity : AppCompatActivity() {
                         // お気に入りか、標準のストレージか判定
                         if (favoriteFolders.contains(file.absolutePath)) {
                             holder.name.text = "★ ${file.name}"
-                            holder.name.setTextColor(android.graphics.Color.parseColor("#FDD663"))
+                            holder.name.setTextColor(android.graphics.Color.parseColor("#FFD700"))
                             holder.icon.setImageResource(android.R.drawable.btn_star_big_on)
                         } else {
                             holder.name.text = if (file.absolutePath == Environment.getExternalStorageDirectory().absolutePath) "内部ストレージ" else "SDカード"

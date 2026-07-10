@@ -79,7 +79,7 @@ class ChubBrowserActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.parseColor("#131314")) // Dark background matching the app theme
+            setBackgroundColor(Color.parseColor("#121212")) // Dark background matching the app theme
         }
 
         // Top Toolbar
@@ -212,7 +212,7 @@ class ChubBrowserActivity : AppCompatActivity() {
             text = "🎭 このキャラクターをインポートするわ☆"
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
-            setBackgroundColor(Color.parseColor("#F28B82")) // Cute hot pink accent color
+            setBackgroundColor(Color.parseColor("#E91E63")) // Cute hot pink accent color
             setPadding(dpToPx(24), dpToPx(16), dpToPx(24), dpToPx(16))
             gravity = Gravity.CENTER
             visibility = View.GONE // Hidden initially until character page is detected

@@ -384,8 +384,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 runOnUiThread {
                     if (state.isGenerating) {
                         btnGenerateConcatenatedTop.text = "中止"
-                        btnGenerateConcatenatedTop.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#F28B82")))
-                        btnGenerateConcatenatedTop.setTextColor(Color.parseColor("#601410"))
+                        btnGenerateConcatenatedTop.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3366")))
                         
                         // PiPが閉じてる時だけ復活ボタンを出すわよ
                         if (!GenerationProgressActivity.isPipActive) {
@@ -395,8 +394,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         }
                     } else {
                         btnGenerateConcatenatedTop.text = "生成"
-                        btnGenerateConcatenatedTop.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#8AB4F8")))
-                        btnGenerateConcatenatedTop.setTextColor(Color.parseColor("#062E6F"))
+                        btnGenerateConcatenatedTop.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#00F0FF")))
                         btnRestorePip.visibility = View.GONE
                     }
                 }
@@ -1532,7 +1530,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 tvAppliedTags.setTextColor(Color.GRAY)
             } else {
                 tvAppliedTags.text = tempAppliedTags.joinToString(", ")
-                tvAppliedTags.setTextColor(Color.parseColor("#8AB4F8"))
+                tvAppliedTags.setTextColor(Color.parseColor("#00F0FF"))
             }
         }
         updateAppliedTagsDisplay()
@@ -1926,7 +1924,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val outValue = android.util.TypedValue()
             context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
             setBackgroundResource(outValue.resourceId)
-            addView(TextView(this@MainActivity).apply { text = titleText; setTextColor(Color.parseColor("#8AB4F8")); textSize = 16f })
+            addView(TextView(this@MainActivity).apply { text = titleText; setTextColor(Color.parseColor("#00F0FF")); textSize = 16f })
             if (subTitleText != null) {
                 addView(TextView(this@MainActivity).apply { 
                     if (titleText.contains("通常の生成画像")) tvSaveFolderDisplay = this
@@ -2056,15 +2054,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             orientation = LinearLayout.VERTICAL
             setPadding(64, 64, 64, 64)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#E61E1F20"))
-                setStroke(3, android.graphics.Color.parseColor("#B38AB4F8"))
+                setColor(android.graphics.Color.parseColor("#E60D1117"))
+                setStroke(3, android.graphics.Color.parseColor("#B300F0FF"))
                 cornerRadius = 48f
             }
         }
 
         container.addView(TextView(this).apply {
             text = "疑似課金履歴"
-            setTextColor(android.graphics.Color.parseColor("#8AB4F8"))
+            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
             textSize = 18f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, 16)
@@ -2099,7 +2097,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             historyItems.reversed().forEach { item ->
                 listLayout.addView(TextView(this).apply {
                     text = item
-                    setTextColor(Color.parseColor("#E8EAED"))
+                    setTextColor(Color.parseColor("#E2E8F0"))
                     textSize = 13f
                     setPadding(0, 8, 0, 8)
                 })
@@ -2113,7 +2111,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
                 setMargins(0, 32, 0, 32)
             }
-            setBackgroundColor(android.graphics.Color.parseColor("#338AB4F8"))
+            setBackgroundColor(android.graphics.Color.parseColor("#3300F0FF"))
         })
 
         val btnClose = Button(this).apply {
@@ -2122,7 +2120,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#8AB4F8"))
+                setColor(android.graphics.Color.parseColor("#00F0FF"))
                 cornerRadius = 24f
             }
             setOnClickListener { dialog.dismiss() }
@@ -2147,15 +2145,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#EA131314"))
-                setStroke(3, android.graphics.Color.parseColor("#B3F28B82")) // Error emphasis border
+                setColor(android.graphics.Color.parseColor("#EA090C15"))
+                setStroke(3, android.graphics.Color.parseColor("#B3FF2A6D")) // Neon Pink border
                 cornerRadius = 64f
             }
         }
 
         dialogView.addView(TextView(this).apply {
             text = "💵 お小遣いリアクション指示書編集"
-            setTextColor(android.graphics.Color.parseColor("#F28B82"))
+            setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
             textSize = 16f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, 16)
@@ -2163,7 +2161,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         dialogView.addView(TextView(this).apply {
             text = "お小遣いを受け取った際のAIキャラクターの反応（品のある冷静な態度）を指定・変更できるわよ♪"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+            setTextColor(android.graphics.Color.parseColor("#8892B0"))
             textSize = 11f
             setPadding(0, 0, 0, 24)
         })
@@ -2172,14 +2170,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             setText(currentInstructions)
             setTextColor(android.graphics.Color.WHITE)
             textSize = 12f
-            setHintTextColor(android.graphics.Color.parseColor("#5F6368"))
+            setHintTextColor(android.graphics.Color.parseColor("#4A5568"))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
             isSingleLine = false
             setPadding(24, 24, 24, 24)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#2D2E30"))
+                setColor(android.graphics.Color.parseColor("#1A202C"))
                 cornerRadius = 16f
-                setStroke(1, android.graphics.Color.parseColor("#5F6368"))
+                setStroke(1, android.graphics.Color.parseColor("#4A5568"))
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2196,7 +2194,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             
             val btnCancel = TextView(this@MainActivity).apply {
                 text = "キャンセル"
-                setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
+                setTextColor(android.graphics.Color.parseColor("#8892B0"))
                 setPadding(32, 16, 32, 16)
                 setTypeface(null, android.graphics.Typeface.BOLD)
                 setOnClickListener { dialog.dismiss() }
@@ -2207,7 +2205,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 setTextColor(android.graphics.Color.BLACK)
                 setPadding(48, 16, 48, 16)
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#F28B82"))
+                    setColor(android.graphics.Color.parseColor("#FF2A6D"))
                     cornerRadius = 16f
                 }
                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -2625,7 +2623,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             orientation = LinearLayout.VERTICAL; setPadding(48, 32, 48, 32)
             addView(TextView(this@MainActivity).apply { text = "ソート条件を選んでね"; setTextColor(Color.WHITE); setPadding(0, 0, 0, 24) })
             val btnTarget = Button(this@MainActivity).apply {
-                text = currentFilterTarget ?: "ターゲットを選択..."; setTextColor(Color.parseColor("#8AB4F8"))
+                text = currentFilterTarget ?: "ターゲットを選択..."; setTextColor(Color.parseColor("#00F0FF"))
                 background = ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
                 setOnClickListener {
                     AlertDialog.Builder(this@MainActivity).setTitle("ターゲットを選択").setItems(targets.toTypedArray()) { _, which ->
@@ -2637,7 +2635,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             addView(TextView(this@MainActivity).apply { text = "を"; setTextColor(Color.WHITE); gravity = android.view.Gravity.CENTER; setPadding(0, 16, 0, 16) })
             val conditionOptions = arrayOf("持っている", "持っていない")
             val btnCondition = Button(this@MainActivity).apply {
-                text = conditionOptions[selectedHasIdx]; setTextColor(Color.parseColor("#8AB4F8"))
+                text = conditionOptions[selectedHasIdx]; setTextColor(Color.parseColor("#00F0FF"))
                 background = ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
                 setOnClickListener {
                     AlertDialog.Builder(this@MainActivity).setTitle("条件を選択").setItems(conditionOptions) { _, which ->
@@ -2659,10 +2657,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val btnQuickSort = findViewById<Button>(R.id.btn_quick_sort)
         if (target == null) {
             val sortedList = if (isSortAscending) DataManager.allImages.toList() else DataManager.allImages.reversed()
-            allImagesAdapter.updateList(sortedList); btnQuickSort.text = "クイックソート"; btnQuickSort.setTextColor(Color.parseColor("#8AB4F8"))
+            allImagesAdapter.updateList(sortedList); btnQuickSort.text = "クイックソート"; btnQuickSort.setTextColor(Color.parseColor("#00F0FF"))
             tvFilterCount.text = "${sortedList.size} 枚"; return
         }
-        btnQuickSort.text = "フィルタ中: $target"; btnQuickSort.setTextColor(Color.parseColor("#FDD663"))
+        btnQuickSort.text = "フィルタ中: $target"; btnQuickSort.setTextColor(Color.parseColor("#FFCC00"))
         val filteredList = if (target.startsWith("[ジャンル] ")) {
             val categoryTags = TagManager.categories.find { it.name == target.substringAfter("[ジャンル] ") }?.tags?.toSet() ?: emptySet()
             DataManager.allImages.filter { entry -> (entry.tags.any { it in categoryTags }) == currentFilterHas }

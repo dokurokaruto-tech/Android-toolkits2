@@ -3,14 +3,14 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/md_background">
+    android:background="#0B0F19">
 
     <!-- 複数選択モード用のアクションバー -->
     <LinearLayout
         android:id="@+id/selection_action_bar"
         android:layout_width="match_parent"
         android:layout_height="64dp"
-        android:background="@color/md_surface"
+        android:background="#1A2235"
         android:orientation="horizontal"
         android:padding="8dp"
         android:gravity="center_vertical"
@@ -44,7 +44,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="すべて選択"
-            android:textColor="#8AB4F8"
+            android:textColor="#00F0FF"
             android:textStyle="bold"
             android:backgroundTint="#00000000" />
 
@@ -54,7 +54,7 @@
             android:layout_height="48dp"
             android:src="@android:drawable/ic_menu_view"
             android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="#8AB4F8" />
+            app:tint="#00F0FF" />
 
         <ImageButton
             android:id="@+id/btn_selection_tag"
@@ -62,7 +62,7 @@
             android:layout_height="48dp"
             android:src="@android:drawable/ic_menu_edit"
             android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="#8AB4F8" />
+            app:tint="#00F0FF" />
 
         <ImageButton
             android:id="@+id/btn_selection_delete"
@@ -70,15 +70,15 @@
             android:layout_height="48dp"
             android:src="@android:drawable/ic_menu_delete"
             android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="#F28B82" />
+            app:tint="#FF3366" />
     </LinearLayout>
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@color/md_surface"
-        app:titleTextColor="@color/md_on_surface"
+        android:background="#151A28"
+        app:titleTextColor="#00F0FF"
         app:layout_constraintTop_toBottomOf="@id/selection_action_bar" />
 
     <androidx.recyclerview.widget.RecyclerView

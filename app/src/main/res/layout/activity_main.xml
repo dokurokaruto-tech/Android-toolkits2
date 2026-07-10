@@ -12,7 +12,7 @@
         android:id="@+id/selection_action_bar"
         android:layout_width="match_parent"
         android:layout_height="64dp"
-        android:background="@color/md_surface"
+        android:background="#1A2235"
         android:orientation="horizontal"
         android:padding="8dp"
         android:gravity="center_vertical"
@@ -47,7 +47,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="すべて選択"
-            android:textColor="#8AB4F8"
+            android:textColor="#00F0FF"
             android:textStyle="bold"
             android:backgroundTint="#00000000"
             tools:ignore="HardcodedText" />
@@ -58,7 +58,7 @@
             android:layout_height="48dp"
             android:src="@android:drawable/ic_menu_view"
             android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="#8AB4F8" />
+            app:tint="#00F0FF" />
 
         <ImageButton
             android:id="@+id/btn_selection_tag"
@@ -66,7 +66,7 @@
             android:layout_height="48dp"
             android:src="@android:drawable/ic_menu_edit"
             android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="#8AB4F8" />
+            app:tint="#00F0FF" />
 
         <ImageButton
             android:id="@+id/btn_selection_delete"
@@ -74,7 +74,7 @@
             android:layout_height="48dp"
             android:src="@android:drawable/ic_menu_delete"
             android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="#F28B82" />
+            app:tint="#FF3366" />
     </LinearLayout>
 
     <!-- 操作バーのコンテナ -->
@@ -95,7 +95,7 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:padding="8dp"
-            android:background="@color/md_surface_container_low"
+            android:background="#0D1117"
             android:visibility="visible">
 
             <ImageButton
@@ -105,7 +105,7 @@
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_persona_item"
                 android:src="@android:drawable/stat_notify_sync"
-                app:tint="#8AB4F8"
+                app:tint="#00F0FF"
                 android:contentDescription="優先度順に並べ替え"
                 tools:ignore="HardcodedText" />
 
@@ -116,7 +116,7 @@
                 android:layout_weight="1"
                 android:layout_marginStart="12dp"
                 android:text=""
-                android:textColor="#9AA0A6"
+                android:textColor="#8892B0"
                 android:textSize="12sp"
                 android:textStyle="bold" />
 
@@ -128,7 +128,7 @@
                 android:paddingStart="12dp"
                 android:paddingEnd="12dp"
                 android:text="クイックソート"
-                android:textColor="#8AB4F8"
+                android:textColor="#00F0FF"
                 android:textSize="12sp"
                 android:textAllCaps="false"
                 android:background="@drawable/bg_persona_item"
@@ -142,14 +142,14 @@
                 android:layout_marginEnd="16dp"
                 android:background="@drawable/bg_persona_item"
                 android:src="@android:drawable/arrow_up_float"
-                app:tint="#8AB4F8" />
+                app:tint="#00F0FF" />
 
             <CheckBox
                 android:id="@+id/cb_show_tags"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="タグ表示"
-                android:textColor="#9AA0A6"
+                android:textColor="#8892B0"
                 android:button="@drawable/checkbox_minimal_selector"
                 android:paddingStart="6dp"
                 android:textSize="11sp"
@@ -166,7 +166,7 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:padding="8dp"
-            android:background="@color/md_surface_container_low"
+            android:background="#0D1117"
             android:visibility="gone">
 
             <TextView
@@ -244,7 +244,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Prompt-Builder"
-                        android:textColor="#8AB4F8"
+                        android:textColor="#00F0FF"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         tools:ignore="HardcodedText" />
@@ -255,7 +255,7 @@
                         android:layout_height="36dp"
                         android:text="2列"
                         android:textSize="12sp"
-                        android:textColor="#8AB4F8"
+                        android:textColor="#00F0FF"
                         android:layout_marginEnd="8dp"
                         android:paddingStart="12dp"
                         android:paddingEnd="12dp"
@@ -283,7 +283,7 @@
                         android:padding="0dp"
                         android:text="閲覧"
                         android:textSize="12sp"
-                        android:textColor="#8AB4F8"
+                        android:textColor="#00F0FF"
                         android:background="@drawable/bg_persona_item"
                         style="@style/Widget.MaterialComponents.Button.TextButton"
                         tools:ignore="HardcodedText" />
@@ -296,8 +296,8 @@
                         android:padding="0dp"
                         android:text="生成"
                         android:textSize="12sp"
-                        android:textColor="#062E6F"
-                        android:backgroundTint="#8AB4F8"
+                        android:textColor="#FFFFFF"
+                        android:backgroundTint="#00F0FF"
                         style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                         tools:ignore="HardcodedText" />
                 </LinearLayout>
@@ -310,7 +310,7 @@
                     android:gravity="center_vertical"
                     android:paddingHorizontal="16dp"
                     android:paddingBottom="12dp"
-                    android:background="@color/md_surface_container_low"
+                    android:background="#0D1117"
                     app:layout_constraintTop_toBottomOf="@id/ll_builder_top">
 
                     <HorizontalScrollView
@@ -324,10 +324,10 @@
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
                             android:gravity="center_vertical">
-                            <LinearLayout android:id="@+id/btn_setting_resolution" android:layout_width="wrap_content" android:layout_height="32dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_resolution" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="720 x 1280" android:textColor="#8AB4F8" android:textSize="11sp" android:textStyle="bold" /></LinearLayout>
-                            <LinearLayout android:id="@+id/btn_setting_steps" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_steps" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Steps: 20" android:textColor="#8AB4F8" android:textSize="11sp" /></LinearLayout>
-                            <LinearLayout android:id="@+id/btn_setting_batch" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_batch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Batch: 1" android:textColor="#8AB4F8" android:textSize="11sp" /></LinearLayout>
-                            <LinearLayout android:id="@+id/btn_setting_sampler" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_sampler" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Euler a" android:textColor="#8AB4F8" android:textSize="11sp" /></LinearLayout>
+                            <LinearLayout android:id="@+id/btn_setting_resolution" android:layout_width="wrap_content" android:layout_height="32dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_resolution" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="720 x 1280" android:textColor="#00F0FF" android:textSize="11sp" android:textStyle="bold" /></LinearLayout>
+                            <LinearLayout android:id="@+id/btn_setting_steps" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_steps" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Steps: 20" android:textColor="#00F0FF" android:textSize="11sp" /></LinearLayout>
+                            <LinearLayout android:id="@+id/btn_setting_batch" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_batch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Batch: 1" android:textColor="#00F0FF" android:textSize="11sp" /></LinearLayout>
+                            <LinearLayout android:id="@+id/btn_setting_sampler" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_sampler" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Euler a" android:textColor="#00F0FF" android:textSize="11sp" /></LinearLayout>
                         </LinearLayout>
                     </HorizontalScrollView>
 
@@ -338,7 +338,7 @@
                         android:layout_marginStart="8dp"
                         android:src="@android:drawable/ic_menu_revert"
                         android:background="?attr/selectableItemBackgroundBorderless"
-                        app:tint="#9AA0A6"
+                        app:tint="#8892B0"
                         android:contentDescription="設定のリセット"
                         tools:ignore="HardcodedText" />
                 </LinearLayout>
@@ -349,7 +349,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="▼ プリセット"
-                    android:textColor="#9AA0A6"
+                    android:textColor="#8892B0"
                     android:textSize="12sp"
                     android:paddingStart="16dp"
                     android:layout_marginTop="8dp"
@@ -370,7 +370,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="▼ プロンプトカード"
-                    android:textColor="#9AA0A6"
+                    android:textColor="#8892B0"
                     android:textSize="12sp"
                     android:paddingStart="16dp"
                     android:layout_marginTop="16dp"
@@ -409,8 +409,8 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:srcCompat="@android:drawable/ic_input_add"
-        android:backgroundTint="#1A73E8"
-        app:tint="#D3E3FD" />
+        android:backgroundTint="#4A148C"
+        app:tint="#FFFFFF" />
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fab_add_prompt_category"
@@ -422,8 +422,8 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:srcCompat="@android:drawable/ic_input_add"
-        android:backgroundTint="#1A73E8"
-        app:tint="#D3E3FD"
+        android:backgroundTint="#4A148C"
+        app:tint="#FFFFFF"
         android:contentDescription="新しいカテゴリーを追加"
         tools:ignore="HardcodedText" />
 
@@ -438,8 +438,8 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:srcCompat="@android:drawable/ic_menu_save"
-        android:backgroundTint="#8AB4F8"
-        app:tint="#062E6F"
+        android:backgroundTint="#00F0FF"
+        app:tint="#0D1117"
         android:contentDescription="現在の状態をプリセット保存"
         tools:ignore="HardcodedText" />
 
@@ -448,11 +448,6 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:background="?attr/colorSurface"
-        app:itemIconTint="@color/bottom_nav_color"
-        app:itemTextColor="@color/bottom_nav_color"
-        app:itemActiveIndicatorStyle="@style/Widget.App.BottomNav.ActiveIndicator"
-        app:labelVisibilityMode="labeled"
-        app:elevation="3dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#131314"
+    android:background="#121212"
     android:orientation="vertical"
     android:padding="20dp">
 
@@ -29,7 +29,7 @@
             android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
-            android:backgroundTint="#8AB4F8"
+            android:backgroundTint="#00F0FF"
             android:src="@android:drawable/ic_input_add"
             app:fabSize="mini"
             app:tint="#000000" />
@@ -39,7 +39,7 @@
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginBottom="16dp"
-        android:background="#5F6368" />
+        android:background="#333333" />
 
     <!-- 追加の入力項目用コンテナ -->
     <LinearLayout
@@ -63,7 +63,7 @@
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:layout_marginTop="8dp"
-        android:backgroundTint="#8AB4F8"
+        android:backgroundTint="#00F0FF"
         android:text="決定して閉じる"
         android:textColor="#000000"
         android:textStyle="bold" />

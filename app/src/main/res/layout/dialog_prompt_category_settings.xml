@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#1E1F20"
+    android:background="#1A2235"
     android:orientation="vertical"
     android:padding="24dp">
 
@@ -21,10 +21,10 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="32dp"
         android:hint="カテゴリー名"
-        android:textColorHint="#9AA0A6"
-        app:boxBackgroundColor="#131314"
-        app:boxStrokeColor="#8AB4F8"
-        app:hintTextColor="#8AB4F8">
+        android:textColorHint="#8892B0"
+        app:boxBackgroundColor="#0D1117"
+        app:boxStrokeColor="#00F0FF"
+        app:hintTextColor="#00F0FF">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/et_category_name"
@@ -43,9 +43,9 @@
             android:id="@+id/btn_save_category"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:backgroundTint="#8AB4F8"
+            android:backgroundTint="#00F0FF"
             android:text="変更を保存する"
-            android:textColor="#131314"
+            android:textColor="#0D1117"
             android:textStyle="bold"
             app:cornerRadius="12dp" />
 
@@ -56,7 +56,7 @@
             android:layout_height="56dp"
             android:layout_marginTop="12dp"
             android:text="カテゴリーを削除する"
-            android:textColor="#F28B82"
+            android:textColor="#FF3366"
             android:textStyle="bold" />
 
         <Button
@@ -66,6 +66,6 @@
             android:layout_height="48dp"
             android:layout_marginTop="4dp"
             android:text="キャンセル"
-            android:textColor="#9AA0A6" />
+            android:textColor="#8892B0" />
     </LinearLayout>
 </LinearLayout>

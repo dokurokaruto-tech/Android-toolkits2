@@ -12,7 +12,7 @@
         android:layout_width="32dp"
         android:layout_height="32dp"
         android:src="@android:drawable/ic_menu_send"
-        app:tint="#8AB4F8"
+        app:tint="#00F0FF"
         android:layout_marginEnd="12dp" />
 
     <TextView
@@ -32,6 +32,6 @@
         android:layout_height="40dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_more_vert"
-        app:tint="#9AA0A6" />
+        app:tint="#8892B0" />
 
 </LinearLayout>

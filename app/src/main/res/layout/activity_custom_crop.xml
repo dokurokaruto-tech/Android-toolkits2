@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#131314">
+    android:background="#0B0F19">
 
     <!-- 独自のクロップ用ライブラリビュー -->
     <com.canhub.cropper.CropImageView
@@ -20,7 +20,7 @@
         android:layout_height="80dp"
         android:orientation="horizontal"
         android:gravity="center"
-        android:background="#1F1F1F"
+        android:background="#151A28"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <!-- 左下: 戻る（キャンセル） -->
@@ -31,7 +31,7 @@
             android:layout_weight="1"
             android:padding="24dp"
             android:src="@android:drawable/ic_menu_revert"
-            app:tint="#9AA0A6"
+            app:tint="#8892B0"
             android:background="?attr/selectableItemBackgroundBorderless" />
 
         <!-- 中央: オリジナル位置に戻す（リセット） -->
@@ -42,7 +42,7 @@
             android:layout_weight="1"
             android:padding="20dp"
             android:src="@android:drawable/ic_menu_crop"
-            app:tint="#8AB4F8"
+            app:tint="#00F0FF"
             android:background="?attr/selectableItemBackgroundBorderless" />
 
         <!-- 右下: クロップ実行（完了） -->
@@ -54,7 +54,7 @@
             android:layout_weight="1"
             android:padding="20dp"
             android:src="@android:drawable/ic_menu_save"
-            app:tint="#8AB4F8"
+            app:tint="#00F0FF"
             android:background="?attr/selectableItemBackgroundBorderless" />
 
     </LinearLayout>

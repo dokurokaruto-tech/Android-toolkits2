@@ -34,7 +34,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="Label"
-        android:textColor="#E8EAED"
+        android:textColor="#E2E8F0"
         android:textSize="10sp"
         android:textStyle="bold"
         android:gravity="center"
