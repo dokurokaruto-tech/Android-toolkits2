@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="どの項目を検査する？"
+        android:textColor="@color/white"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_marginBottom="16dp">
+        <LinearLayout
+            android:id="@+id/ll_categories"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#5F6368"
+        android:layout_marginBottom="16dp"/>
+
+    <CheckBox
+        android:id="@+id/cb_force_inspection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="登録済みの項目も再検査する"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        android:layout_marginBottom="8dp"/>
+
+    <RadioGroup
+        android:id="@+id/rg_force_behavior"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginStart="24dp"
+        android:visibility="gone">
+
+        <RadioButton
+            android:id="@+id/rb_behavior_overwrite"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="既存タグを入れ替える（上書き）"
+            android:textColor="@color/white"/>
+
+        <RadioButton
+            android:id="@+id/rb_behavior_select"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="削除するタグを自分で選ぶ"
+            android:textColor="@color/white"/>
+
+        <RadioButton
+            android:id="@+id/rb_behavior_keep"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="既存タグはそのまま（追加のみ）"
+            android:textColor="@color/white"/>
+    </RadioGroup>
+
+</LinearLayout>

@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#1A2235">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/tv_dialog_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="プロンプトカードの編集"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="カテゴリー"
+            android:textColor="#8892B0"
+            android:textSize="12sp"/>
+
+        <EditText
+            android:id="@+id/et_card_category"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="例：キャラクター、衣装"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#444444"
+            android:backgroundTint="#00F0FF"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:id="@+id/tv_label_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ラベル"
+            android:textColor="#8892B0"
+            android:textSize="12sp"/>
+
+        <EditText
+            android:id="@+id/et_card_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="カードの表示名"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#444444"
+            android:backgroundTint="#00F0FF"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:id="@+id/tv_main_prompt_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="メインプロンプト"
+            android:textColor="#8892B0"
+            android:textSize="12sp"/>
+
+        <EditText
+            android:id="@+id/et_main_prompt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Positive Prompt"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#444444"
+            android:backgroundTint="#00F0FF"
+            android:minLines="3"
+            android:gravity="top"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:id="@+id/tv_negative_prompt_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ネガティブプロンプト"
+            android:textColor="#8892B0"
+            android:textSize="12sp"/>
+
+        <EditText
+            android:id="@+id/et_negative_prompt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Negative Prompt"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#444444"
+            android:backgroundTint="#00F0FF"
+            android:minLines="2"
+            android:gravity="top"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="自動付与するタグ"
+            android:textColor="#8892B0"
+            android:textSize="12sp"/>
+
+        <TextView
+            android:id="@+id/tv_applied_tags_display"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="なし"
+            android:textColor="#00F0FF"
+            android:textSize="14sp"
+            android:paddingVertical="8dp"/>
+
+        <Button
+            android:id="@+id/btn_edit_applied_tags"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="タグを選択"
+            android:textColor="#00F0FF"
+            android:backgroundTint="#2A354F"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:id="@+id/tv_thumbnail_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="サムネイル (9:16を推奨)"
+            android:textColor="#8892B0"
+            android:textSize="12sp"
+            android:layout_marginBottom="8dp"/>
+
+        <ImageView
+            android:id="@+id/iv_card_thumbnail_preview"
+            android:layout_width="120dp"
+            android:layout_height="213dp"
+            android:layout_gravity="center_horizontal"
+            android:scaleType="centerCrop"
+            android:background="#0D1117"
+            android:layout_marginBottom="8dp"/>
+
+        <Button
+            android:id="@+id/btn_pick_card_thumbnail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="サムネイルを選択"
+            android:textColor="#00F0FF"
+            android:backgroundTint="#2A354F"
+            android:layout_marginBottom="24dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <Button
+                android:id="@+id/btn_delete_card"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="削除"
+                android:textColor="#FF3366"
+                android:backgroundTint="@android:color/transparent"
+                style="?android:attr/borderlessButtonStyle"
+                android:visibility="gone"/>
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <Button
+                android:id="@+id/btn_cancel_edit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="キャンセル"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="@android:color/transparent"
+                style="?android:attr/borderlessButtonStyle"/>
+
+            <Button
+                android:id="@+id/btn_save_card"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="保存"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#00F0FF"/>
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

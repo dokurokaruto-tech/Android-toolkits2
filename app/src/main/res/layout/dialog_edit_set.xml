@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="セット名"
+        android:textSize="12sp"
+        android:textColor="?attr/colorPrimary" />
+
+    <EditText
+        android:id="@+id/edit_set_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="例: お気に入り"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="条件タグ (カンマ区切り)"
+        android:textSize="12sp"
+        android:textColor="?attr/colorPrimary" />
+
+    <EditText
+        android:id="@+id/edit_set_tags"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="例: アニメ, 風景"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="マッチ条件"
+        android:textSize="12sp"
+        android:textColor="?attr/colorPrimary"
+        android:layout_marginBottom="8dp" />
+
+    <RadioGroup
+        android:id="@+id/radio_group_match_mode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/radio_any"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="いずれか一致 (OR)" />
+
+        <RadioButton
+            android:id="@+id/radio_all"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="すべて一致 (AND)" />
+
+    </RadioGroup>
+
+</LinearLayout>

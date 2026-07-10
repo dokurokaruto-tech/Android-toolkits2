@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <ImageView
+        android:id="@+id/iv_inspection_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        tools:ignore="ContentDescription"
+        tools:src="@android:drawable/ic_menu_gallery" />
+
+    <View
+        android:id="@+id/v_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#99000000" />
+
+    <!-- 上部情報エリア -->
+    <LinearLayout
+        android:id="@+id/layout_info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tv_inspection_question"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="この画像のキャラクターは？"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:shadowColor="#000000"
+            android:shadowDx="2"
+            android:shadowDy="2"
+            android:shadowRadius="4"
+            android:gravity="center"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:id="@+id/tv_inspection_progress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1 / 10 枚目"
+                android:textColor="#8AB4F8"
+                android:textSize="16sp" />
+
+            <ImageButton
+                android:id="@+id/btn_inspection_sort"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="16dp"
+                android:background="@drawable/bg_persona_item"
+                android:src="@android:drawable/ic_menu_sort_alphabetically"
+                app:tint="#8AB4F8"
+                tools:ignore="ContentDescription" />
+
+            <ImageButton
+                android:id="@+id/btn_toggle_overlay"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="16dp"
+                android:background="@drawable/bg_persona_item"
+                android:src="@android:drawable/ic_menu_view"
+                app:tint="#8AB4F8"
+                tools:ignore="ContentDescription" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- タグリストエリア（スクロール可能） -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_inspection_tags"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:clipToPadding="false"
+        app:layout_constraintTop_toBottomOf="@id/layout_info"
+        app:layout_constraintBottom_toTopOf="@id/layout_bottom_buttons" />
+
+    <!-- 下部ボタンエリア -->
+    <LinearLayout
+        android:id="@+id/layout_bottom_buttons"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:background="#CC000000"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <Button
+            android:id="@+id/btn_inspection_close"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_margin="4dp"
+            android:text="終了"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:backgroundTint="#F28B82" />
+
+        <Button
+            android:id="@+id/btn_inspection_back"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_margin="4dp"
+            android:text="戻る"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:backgroundTint="#1E1F20" />
+
+        <Button
+            android:id="@+id/btn_inspection_skip"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_margin="4dp"
+            android:text="スキップ"
+            android:textColor="#000000"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:backgroundTint="#8AB4F8" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

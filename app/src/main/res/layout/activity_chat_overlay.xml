@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <!-- 選んだ画像を表示するための背景レイヤー -->
+    <ImageView
+        android:id="@+id/chat_background_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:visibility="gone" />
+
+    <!-- 背景の暗さを調整するためのレイヤー -->
+    <View
+        android:id="@+id/dim_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:alpha="0.0" />
+
+    <!-- フェード効果を適用するためのカスタムレイアウト -->
+    <com.example.kennys_dokidoki_wallpaper.FadingLayout
+        android:id="@+id/fade_layout"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottom_controls_container">
+
+        <!-- メッセージリスト -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/chat_recycler_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingTop="64dp"
+            android:paddingBottom="16dp"
+            android:clipToPadding="false" />
+
+    </com.example.kennys_dokidoki_wallpaper.FadingLayout>
+
+    <!-- 上部のボタンエリア -->
+    <ImageButton
+        android:id="@+id/btn_close_chat"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="16dp"
+        android:background="@drawable/circle_bg_dark"
+        android:src="@drawable/ic_more_vert"
+        android:rotation="45"
+        app:tint="#FFFFFF"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- 属性整合性モニター（ワーニング表示用） -->
+    <LinearLayout
+        android:id="@+id/warning_container"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
+        android:orientation="vertical"
+        app:layout_constraintTop_toBottomOf="@id/btn_close_chat"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <ImageButton
+        android:id="@+id/btn_options"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="16dp"
+        android:background="@drawable/circle_bg_dark"
+        android:src="@drawable/ic_more_vert"
+        app:tint="#FFFFFF"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/tv_magic_stone_counter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/bg_counter_bubble"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:text="💎 100"
+        android:textColor="#F28B82"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        app:layout_goneMarginEnd="8dp"
+        app:layout_constraintBottom_toBottomOf="@id/btn_options"
+        app:layout_constraintEnd_toStartOf="@id/tv_openrouter_counter"
+        app:layout_constraintTop_toTopOf="@id/btn_options" />
+
+    <TextView
+        android:id="@+id/tv_openrouter_counter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/bg_counter_bubble"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:text="OR: 0/50"
+        android:textColor="#8AB4F8"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/btn_options"
+        app:layout_constraintEnd_toStartOf="@id/btn_options"
+        app:layout_constraintTop_toTopOf="@id/btn_options" />
+
+    <!-- チャット入力と拡張メニューのコンテナ -->
+    <LinearLayout
+        android:id="@+id/bottom_controls_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:orientation="vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- 拡張メニュー (スクロール可能) -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/extra_menu_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:visibility="gone">
+            <GridLayout
+                android:id="@+id/extra_menu_grid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_glass_panel"
+                android:columnCount="4"
+                android:padding="12dp">
+                <!-- プログラムから追加されるわ -->
+            </GridLayout>
+        </androidx.core.widget.NestedScrollView>
+
+        <!-- ギフトボタンと選択状態のコンテナ -->
+        <LinearLayout
+            android:id="@+id/gift_status_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_gift_select"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_counter_bubble"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="🎁 ギフトを贈る"
+                android:textColor="#F28B82"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_selected_gift"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_counter_bubble"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:text="🍒 サクランボ"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:visibility="gone" />
+
+            <ImageButton
+                android:id="@+id/btn_clear_gift"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                app:tint="#F28B82"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- チャット入力枠 -->
+        <LinearLayout
+            android:id="@+id/input_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_glass_panel"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <ImageButton
+                android:id="@+id/btn_add"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_input_add"
+                app:tint="#FFFFFF" />
+
+            <EditText
+                android:id="@+id/chat_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@null"
+                android:hint="Enter Your Message"
+                android:padding="12dp"
+                android:textColor="@android:color/white"
+                android:textColorHint="#99FFFFFF"
+                android:inputType="textMultiLine"
+                android:maxLines="4" />
+
+            <ImageButton
+                android:id="@+id/btn_send"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_send"
+                app:tint="#FFFFFF" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="480dp"
+    android:layout_height="wrap_content"
+    android:background="#E61A1A1A">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="28dp"
+        android:paddingRight="28dp"
+        android:paddingTop="28dp"
+        android:paddingBottom="28dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="VISUAL CONFIG"
+            android:textColor="#FF8AB4F8"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Wallpaper Opacity (Dimming) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="WALLPAPER OPACITY"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/tv_wallpaper_opacity_val"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="100%"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+        <SeekBar
+            android:id="@+id/sb_wallpaper_opacity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="100"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp"
+            android:thumbTint="#FF8AB4F8"
+            android:progressTint="#FF8AB4F8" />
+
+        <!-- Bubble Opacity -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="BUBBLE OPACITY"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/tv_bubble_opacity_val"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="60%"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+        <SeekBar
+            android:id="@+id/sb_bubble_opacity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="60"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp"
+            android:thumbTint="#FF8AB4F8"
+            android:progressTint="#FF8AB4F8" />
+
+        <!-- Bubble Width -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="BUBBLE WIDTH"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/tv_bubble_width_val"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="670px"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+        <SeekBar
+            android:id="@+id/sb_bubble_width"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="1000"
+            android:progress="670"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp"
+            android:thumbTint="#FF8AB4F8"
+            android:progressTint="#FF8AB4F8" />
+
+        <!-- Input Opacity -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="INPUT OPACITY"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/tv_input_opacity_val"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="100%"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+        <SeekBar
+            android:id="@+id/sb_input_opacity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="100"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp"
+            android:thumbTint="#FF8AB4F8"
+            android:progressTint="#FF8AB4F8" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#33FFFFFF"
+            android:layout_marginVertical="8dp" />
+
+        <!-- Top Fade Effect -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="TOP FADE EFFECT"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/sw_fade_effect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:thumbTint="#FF8AB4F8"
+                app:trackTint="#668AB4F8" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layout_fade_controls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="FADE START"
+                    android:textColor="#9AA0A6"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/tv_fade_start_val"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="300px"
+                    android:textColor="#9AA0A6"
+                    android:textSize="12sp" />
+            </LinearLayout>
+            <SeekBar
+                android:id="@+id/sb_fade_start"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="1000"
+                android:progress="300"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="8dp"
+                android:thumbTint="#9AA0A6"
+                android:progressTint="#9AA0A6" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="FADE HEIGHT"
+                    android:textColor="#9AA0A6"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/tv_fade_height_val"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="50px"
+                    android:textColor="#9AA0A6"
+                    android:textSize="12sp" />
+            </LinearLayout>
+            <SeekBar
+                android:id="@+id/sb_fade_height"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="90"
+                android:progress="40"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="8dp"
+                android:thumbTint="#9AA0A6"
+                android:progressTint="#9AA0A6" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

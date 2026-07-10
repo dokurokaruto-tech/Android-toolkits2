@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_persona_dialog"
+    android:padding="20dp">
+
+    <!-- タイトル -->
+    <TextView
+        android:id="@+id/tv_persona_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🎭 ペルソナ切替"
+        android:textColor="#E8EAED"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="タップで切替 ・ 長押しで編集/削除"
+        android:textColor="#9AA0A6"
+        android:textSize="12sp"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <!-- ペルソナ一覧 -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_personas"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:maxHeight="320dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never" />
+
+    <!-- 新しいペルソナを追加ボタン -->
+    <LinearLayout
+        android:id="@+id/btn_add_persona"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_persona_item"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:clickable="true"
+        android:focusable="true">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="＋ 新しいペルソナを追加"
+            android:textColor="#E8EAED"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- ペルソナ解除ボタン -->
+    <LinearLayout
+        android:id="@+id/btn_clear_persona"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:clickable="true"
+        android:focusable="true">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🚫 ペルソナを解除"
+            android:textColor="#9AA0A6"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+</LinearLayout>

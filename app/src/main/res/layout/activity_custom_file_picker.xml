@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#131314">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="#1F1F1F"
+        app:titleTextColor="#E8EAED"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- ツールバー内にお気に入り追加ボタンを配置 -->
+        <ImageButton
+            android:id="@+id/btn_add_favorite_folder"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="end"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/btn_star"
+            app:tint="#FDD663"
+            android:visibility="gone"
+            android:contentDescription="お気に入り追加" />
+    </androidx.appcompat.widget.Toolbar>
+
+    <LinearLayout
+        android:id="@+id/sort_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:background="#1A1A1B"
+        app:layout_constraintTop_toBottomOf="@id/toolbar">
+
+        <TextView
+            android:id="@+id/btn_sort_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="名前 ▲"
+            android:textColor="#8AB4F8"
+            android:gravity="center"
+            android:padding="12dp"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:background="?attr/selectableItemBackground" />
+
+        <TextView
+            android:id="@+id/btn_sort_date"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="更新日 -"
+            android:textColor="#9AA0A6"
+            android:gravity="center"
+            android:padding="12dp"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:background="?attr/selectableItemBackground" />
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/file_recycler_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:padding="4dp"
+        android:clipToPadding="false"
+        app:layout_constraintTop_toBottomOf="@id/sort_panel"
+        app:layout_constraintBottom_toTopOf="@id/bottom_panel" />
+
+    <LinearLayout
+        android:id="@+id/bottom_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:background="#1F1F1F"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <TextView
+            android:id="@+id/selected_count_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="選択中: 0"
+            android:textColor="#8AB4F8"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_gravity="center_vertical"/>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_add_selected"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="追加する"
+            android:textStyle="bold"
+            app:cornerRadius="8dp"
+            app:backgroundTint="#F28B82"
+            android:textColor="#FFFFFF" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

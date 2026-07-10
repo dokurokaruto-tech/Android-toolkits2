@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/bg_persona_dialog"
+    android:padding="20dp">
+
+    <!-- タイトル -->
+    <TextView
+        android:id="@+id/tv_edit_persona_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="✨ ペルソナを編集"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="12dp" />
+
+    <!-- ペルソナ名 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ペルソナの名称"
+        android:textColor="#E8EAED"
+        android:textSize="12sp"
+        android:layout_marginBottom="4dp" />
+
+    <EditText
+        android:id="@+id/et_persona_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_persona_item"
+        android:hint="例: 優しい彼氏、ツンデレマスター"
+        android:textColor="#FFFFFF"
+        android:textColorHint="#9AA0A6"
+        android:textSize="14sp"
+        android:padding="12dp"
+        android:inputType="text"
+        android:maxLines="1"
+        android:layout_marginBottom="12dp" />
+
+    <!-- 複数カスタム指示の見出しと操作 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="カスタム指示一覧 (上から順に連結されるわ☆)"
+            android:textColor="#E8EAED"
+            android:textSize="12sp" />
+
+        <!-- ＋ 指示追加ボタン -->
+        <TextView
+            android:id="@+id/btn_add_instruction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_counter_bubble"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="4dp"
+            android:text="➕ 追加"
+            android:textColor="#8AB4F8"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true" />
+    </LinearLayout>
+
+    <!-- 指示リスト（ドラッグ＆ドロップ対応のRecyclerView） -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_instructions"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginBottom="16dp"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp" />
+
+    <!-- ボタンエリア -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end">
+
+        <TextView
+            android:id="@+id/btn_cancel_persona"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:text="キャンセル"
+            android:textColor="#9AA0A6"
+            android:textSize="14sp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <TextView
+            android:id="@+id/btn_save_persona"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:text="💾 保存"
+            android:textColor="#C58AF9"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:layout_marginStart="8dp"
+            android:clickable="true"
+            android:focusable="true" />
+    </LinearLayout>
+
+</LinearLayout>

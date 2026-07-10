@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Kenny\'s wallpaper toolkits</string>
+    <string name="settings_double_tap_title">ダブルタップで画像を切り替える</string>
+    <string name="add_album">アルバムを追加</string>
+    <string name="album_info_format">%1$d枚 %2$s\n(%3$s)</string>
+    <string name="tags_not_set">タグ未設定</string>
+    <string name="chat_branch_format">%1$d/%2$d</string>
+    <string name="active_context">ACTIVE CONTEXT</string>
+    <string name="edit">EDIT</string>
+    <string name="close_chat">✖  CLOSE CHAT</string>
+    <string name="start_new_chat">START NEW CHAT</string>
+    <string name="cancel">CANCEL</string>
+    <string name="start">START</string>
+    <string name="not_set_tags">タグが設定されていません</string>
+    <string name="thinking">思考中</string>
+    <string name="error_occurred">エラーが発生したみたい...</string>
+</resources>

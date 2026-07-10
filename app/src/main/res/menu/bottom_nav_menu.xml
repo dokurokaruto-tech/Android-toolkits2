@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_all_images"
+        android:icon="@drawable/ic_folder"
+        android:title="全画像" />
+    <item
+        android:id="@+id/nav_sets"
+        android:icon="@drawable/ic_set_wallpaper"
+        android:title="セット" />
+    <item
+        android:id="@+id/nav_tag_prompts"
+        android:icon="@android:drawable/ic_menu_edit"
+        android:title="タグ" />
+    <item
+        android:id="@+id/nav_builder"
+        android:icon="@android:drawable/ic_menu_gallery"
+        android:title="生成" />
+    <item
+        android:id="@+id/nav_settings"
+        android:icon="@drawable/ic_settings"
+        android:title="設定" />
+</menu>

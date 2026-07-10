@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="4dp"
+    app:cardCornerRadius="16dp"
+    app:cardBackgroundColor="#1E1F20"
+    app:cardElevation="1dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <ImageView
+            android:id="@+id/image_view"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:scaleType="centerCrop"
+            app:layout_constraintDimensionRatio="9:16"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
+        <!-- ハイライト枠 (現在再生中の場合) -->
+        <View
+            android:id="@+id/highlight_border"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_highlight_active"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- グラデーション（タグ表示用） -->
+        <View
+            android:id="@+id/tag_gradient"
+            android:layout_width="match_parent"
+            android:layout_height="80dp"
+            android:background="@drawable/gradient_overlay"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
+        <TextView
+            android:id="@+id/tags_view"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_margin="6dp"
+            android:ellipsize="end"
+            android:maxLines="4"
+            android:textColor="@android:color/white"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btn_more" />
+
+        <!-- アクティブアイコン (左上) -->
+        <ImageView
+            android:id="@+id/check_active"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_margin="6dp"
+            android:padding="5dp"
+            android:background="@drawable/rounded_rect_bg_dark"
+            android:src="@drawable/ic_cyber_check"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- クロップ済みアイコン (右上) -->
+        <ImageView
+            android:id="@+id/icon_cropped"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_margin="6dp"
+            android:padding="5dp"
+            android:background="@drawable/rounded_rect_bg_dark"
+            android:src="@android:drawable/ic_menu_crop"
+            app:tint="#8AB4F8"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- 再生中ステータス -->
+        <View
+            android:id="@+id/active_indicator"
+            android:layout_width="40dp"
+            android:layout_height="20dp"
+            android:layout_margin="6dp"
+            android:background="@drawable/rounded_rect_bg_dark"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <TextView
+            android:id="@+id/tv_active_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="再生中"
+            android:textColor="#8AB4F8"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="@id/active_indicator"
+            app:layout_constraintBottom_toBottomOf="@id/active_indicator"
+            app:layout_constraintStart_toStartOf="@id/active_indicator"
+            app:layout_constraintEnd_toEndOf="@id/active_indicator" />
+
+        <!-- メニューアイコン (右下 / ゴミ箱の代わり) -->
+        <ImageView
+            android:id="@+id/btn_more"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_margin="6dp"
+            android:padding="4dp"
+            android:background="@drawable/rounded_rect_bg_dark"
+            android:src="@drawable/ic_more_vert"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- 複数選択時のネオン風ハイライト -->
+        <View
+            android:id="@+id/selection_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#668AB4F8"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- 複数選択時のチェックマーク -->
+        <ImageView
+            android:id="@+id/selection_check"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_margin="8dp"
+            android:src="@drawable/ic_cyber_check"
+            android:background="@drawable/rounded_rect_bg_dark"
+            android:padding="4dp"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.cardview.widget.CardView>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="horizontal"
+    android:padding="16dp"
+    android:layout_margin="4dp"
+    android:background="@drawable/rounded_rect_bg_dark"
+    android:gravity="center_vertical">
+
+    <TextView
+        android:id="@+id/tv_priority_tag_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="#タグ"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <!-- ドラッグハンドル用のアイコンにIDを追加 -->
+    <ImageView
+        android:id="@+id/iv_drag_handle"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:padding="4dp"
+        android:src="@android:drawable/ic_menu_sort_by_size"
+        app:tint="#9AA0A6" />
+</LinearLayout>

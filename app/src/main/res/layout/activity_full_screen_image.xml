@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/full_screen_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- 背景View。背景をクリックしても戻れるように。エフェクトはなしよ！ -->
+    <View
+        android:id="@+id/blank_space_handler"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent" />
+
+    <!-- 画像表示 -->
+    <ImageView
+        android:id="@+id/full_screen_image"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:scaleType="fitCenter"
+        android:contentDescription="Full Screen Image"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintDimensionRatio="1:1" />
+
+    <!-- ナビゲーション用のエリア。backgroundを@nullにすることでエフェクトを消すわ -->
+    <LinearLayout
+        android:id="@+id/image_nav_container"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        app:layout_constraintBottom_toBottomOf="@id/full_screen_image"
+        app:layout_constraintEnd_toEndOf="@id/full_screen_image"
+        app:layout_constraintStart_toStartOf="@id/full_screen_image"
+        app:layout_constraintTop_toTopOf="@id/full_screen_image">
+
+        <View
+            android:id="@+id/zone_left"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@null" />
+
+        <View
+            android:id="@+id/zone_right"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@null" />
+
+    </LinearLayout>
+
+    <!-- 枚数表示（中央下） -->
+    <TextView
+        android:id="@+id/tv_image_counter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp"
+        android:background="@drawable/bg_counter_bubble"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="4dp"
+        android:text="1 / 1"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:fontFamily="sans-serif-medium"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
