@@ -415,103 +415,6 @@ object ChatGenerationManager {
         return history.takeLast(10)
     }
 
-    private fun parseSuggestionsAndCleanText(node: ChatNode) {
-        val rawText = node.text
-        var cleanText = rawText
-        var a: String? = null
-        var b: String? = null
-        var c: String? = null
-
-        // 1. Tag matching using robust regex for <<<SUGGESTIONS>>>
-        val tripleAngleRegex = Regex("<<<SUGGESTIONS>>>\\s*(.*?)\\s*<<</SUGGESTIONS>>>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
-        val tripleMatch = tripleAngleRegex.find(rawText)
-        if (tripleMatch != null) {
-            val suggestionsBlock = tripleMatch.groupValues[1].trim()
-            val parsed = parseBlock(suggestionsBlock)
-            a = parsed.first
-            b = parsed.second
-            c = parsed.third
-            cleanText = rawText.replace(tripleAngleRegex, "").trim()
-        } else {
-            // 2. Tag matching for [SUGGESTIONS]
-            val bracketRegex = Regex("\\[SUGGESTIONS\\]\\s*(.*?)\\s*\\[/SUGGESTIONS\\]", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
-            val bracketMatch = bracketRegex.find(rawText)
-            if (bracketMatch != null) {
-                val suggestionsBlock = bracketMatch.groupValues[1].trim()
-                val parsed = parseBlock(suggestionsBlock)
-                a = parsed.first
-                b = parsed.second
-                c = parsed.third
-                cleanText = rawText.replace(bracketRegex, "").trim()
-            }
-        }
-
-        // If tag was not found as a block, or parsing failed, do a line-by-line fallback on the whole text
-        if (a == null && b == null && c == null) {
-            val lines = rawText.lines()
-            var inBlock = false
-            val cleanedLines = mutableListOf<String>()
-            val blockLines = mutableListOf<String>()
-
-            for (line in lines) {
-                val trimmed = line.trim()
-                if (trimmed.contains("<<<SUGGESTIONS>>>", ignoreCase = true) || trimmed.contains("[SUGGESTIONS]", ignoreCase = true)) {
-                    inBlock = true
-                    continue
-                }
-                if (trimmed.contains("<<</SUGGESTIONS>>>", ignoreCase = true) || trimmed.contains("[/SUGGESTIONS]", ignoreCase = true)) {
-                    inBlock = false
-                    continue
-                }
-                if (inBlock) {
-                    blockLines.add(line)
-                } else {
-                    cleanedLines.add(line)
-                }
-            }
-
-            if (blockLines.isNotEmpty()) {
-                val parsed = parseBlock(blockLines.joinToString("\n"))
-                a = parsed.first
-                b = parsed.second
-                c = parsed.third
-                cleanText = cleanedLines.joinToString("\n").trim()
-            }
-        }
-
-        // If suggestions are found, populate node
-        if (a != null || b != null || c != null) {
-            node.suggestionA = a
-            node.suggestionB = b
-            node.suggestionC = c
-            node.text = cleanText
-        }
-    }
-
-    private fun parseBlock(block: String): Triple<String?, String?, String?> {
-        var a: String? = null
-        var b: String? = null
-        var c: String? = null
-
-        val lines = block.lines()
-        for (line in lines) {
-            val trimmed = line.trim()
-            // Support patterns like: A: text, A. text, - A: text, **A**: text, 1. text, 1: text etc.
-            val aMatch = Regex("^[\\s*-]*\\*?\\*?[aA1]\\*?\\*?[\\s.:：\\)-]+(.*)$").find(trimmed)
-            val bMatch = Regex("^[\\s*-]*\\*?\\*?[bB2]\\*?\\*?[\\s.:：\\)-]+(.*)$").find(trimmed)
-            val cMatch = Regex("^[\\s*-]*\\*?\\*?[cC3]\\*?\\*?[\\s.:：\\)-]+(.*)$").find(trimmed)
-
-            if (aMatch != null && a == null) {
-                a = aMatch.groups[1]?.value?.trim()?.removePrefix("\"")?.removeSuffix("\"")
-            } else if (bMatch != null && b == null) {
-                b = bMatch.groups[1]?.value?.trim()?.removePrefix("\"")?.removeSuffix("\"")
-            } else if (cMatch != null && c == null) {
-                c = cMatch.groups[1]?.value?.trim()?.removePrefix("\"")?.removeSuffix("\"")
-            }
-        }
-        return Triple(a, b, c)
-    }
-
     private fun saveAndNotify(
         context: Context,
         sessionId: String,
@@ -521,7 +424,7 @@ object ChatGenerationManager {
         error: String? = null
     ) {
         if (isComplete && error == null) {
-            parseSuggestionsAndCleanText(aiNode)
+            ChatSuggestionParser.applyTo(aiNode)
         }
 
         // ディスクに即時保存

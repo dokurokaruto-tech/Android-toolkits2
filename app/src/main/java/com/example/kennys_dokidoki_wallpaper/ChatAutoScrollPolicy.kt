@@ -57,6 +57,14 @@ object ChatAutoScrollPolicy {
     fun shouldPreserveViewport(stuckToBottom: Boolean, userInteracting: Boolean): Boolean {
         return !shouldFollowGeneration(stuckToBottom, userInteracting)
     }
+
+    /**
+     * 画面外の末尾アイテムはレイアウトしない。notify すると stackFromEnd が
+     * リストを先頭へ飛ばすことがある。
+     */
+    fun shouldSkipOffscreenUpdate(lastVisiblePosition: Int, changedIndex: Int): Boolean {
+        return lastVisiblePosition >= 0 && changedIndex > lastVisiblePosition
+    }
 }
 
 /**

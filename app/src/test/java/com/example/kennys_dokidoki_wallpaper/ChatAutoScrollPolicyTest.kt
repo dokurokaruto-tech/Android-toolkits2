@@ -137,4 +137,11 @@ class ChatAutoScrollPolicyTest {
         assertFalse(stick.shouldFollowGeneration())
         assertFalse(ChatAutoScrollPolicy.shouldFollowGeneration(stick.stuck))
     }
+
+    @Test
+    fun `offscreen last item should not be laid out`() {
+        assertTrue(ChatAutoScrollPolicy.shouldSkipOffscreenUpdate(lastVisiblePosition = 4, changedIndex = 9))
+        assertFalse(ChatAutoScrollPolicy.shouldSkipOffscreenUpdate(lastVisiblePosition = 9, changedIndex = 9))
+        assertFalse(ChatAutoScrollPolicy.shouldSkipOffscreenUpdate(lastVisiblePosition = -1, changedIndex = 3))
+    }
 }

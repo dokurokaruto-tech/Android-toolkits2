@@ -154,7 +154,8 @@ class ChatAdapter(
             if (node.isUser) {
                 holder.textUser.text = node.text
             } else {
-                holder.textAi.text = node.text
+                holder.textAi.text = ChatSuggestionParser.visibleText(node.text)
+                holder.layoutSuggestions.visibility = View.GONE
                 val streaming = node.text.startsWith("思考中") ||
                     node.text.startsWith("推論中") ||
                     node.text.startsWith("🧠") ||
@@ -346,7 +347,7 @@ class ChatAdapter(
                 holder.imageAi.visibility = View.GONE
                 holder.imageAi.setOnClickListener(null)
             }
-            val displayText = cleanText
+            val displayText = ChatSuggestionParser.visibleText(cleanText)
             
             // モデル名がある場合は小さく表示するわよ！
             if (node.modelName != null && !displayText.startsWith("推論中") && !displayText.startsWith("🧠 推論中") && !displayText.startsWith("📥 モデルをロード")) {
@@ -675,19 +676,24 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         if (dy != 0) recyclerView.scrollBy(0, dy)
     }
 
-    private fun captureChatAnchor(): ChatAutoScrollPolicy.ViewportAnchor? {
-        if (!::recyclerView.isInitialized) return null
-        val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return null
-        val pos = lm.findFirstVisibleItemPosition()
-        if (pos == RecyclerView.NO_POSITION) return null
-        val child = lm.findViewByPosition(pos) ?: return null
-        return ChatAutoScrollPolicy.ViewportAnchor(pos, child.top)
+    private fun lastVisibleChatPosition(): Int {
+        if (!::recyclerView.isInitialized) return RecyclerView.NO_POSITION
+        val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return RecyclerView.NO_POSITION
+        return lm.findLastVisibleItemPosition()
     }
 
-    private fun restoreChatAnchor(anchor: ChatAutoScrollPolicy.ViewportAnchor) {
-        if (!::recyclerView.isInitialized) return
-        val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return
-        lm.scrollToPositionWithOffset(anchor.position, anchor.offsetPx)
+    private fun notifyChatItemPreservingViewport(index: Int, payload: Any? = null) {
+        if (!::adapter.isInitialized) return
+        val lm = if (::recyclerView.isInitialized) recyclerView.layoutManager else null
+        val state = lm?.onSaveInstanceState()
+        if (payload != null) {
+            adapter.notifyItemChanged(index, payload)
+        } else {
+            adapter.notifyItemChanged(index)
+        }
+        if (state != null) {
+            lm?.onRestoreInstanceState(state)
+        }
     }
 
     private fun scrollChatToBottom() {
@@ -714,18 +720,16 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun applyStreamingItemChange(index: Int) {
-        val follow = chatStick.shouldFollowGeneration(isUserInteractingWithChat())
-        val anchor = if (!follow) captureChatAnchor() else null
-        adapter.notifyItemChanged(index, ChatAdapter.PAYLOAD_STREAM)
-        if (follow) {
-            scrollChatToBottom()
-        } else if (anchor != null) {
-            recyclerView.post {
-                if (isUserInteractingWithChat()) return@post
-                if (chatStick.shouldFollowGeneration()) return@post
-                restoreChatAnchor(anchor)
-            }
+        val interacting = isUserInteractingWithChat()
+        val follow = chatStick.shouldFollowGeneration(interacting)
+        if (!follow) {
+            if (interacting) return
+            if (ChatAutoScrollPolicy.shouldSkipOffscreenUpdate(lastVisibleChatPosition(), index)) return
+            notifyChatItemPreservingViewport(index, ChatAdapter.PAYLOAD_STREAM)
+            return
         }
+        adapter.notifyItemChanged(index, ChatAdapter.PAYLOAD_STREAM)
+        scrollChatToBottom()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1643,7 +1647,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         toggleExtraMenu()
     }
 
-    private fun buildDisplayList() {
+    private fun buildDisplayList(preserveViewport: Boolean = false) {
         displayMessages.clear()
         val path = mutableListOf<ChatNode>()
         var trace = chatTree.currentNodeId
@@ -1666,7 +1670,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
         
         if (::adapter.isInitialized) {
+            val lm = if (::recyclerView.isInitialized) recyclerView.layoutManager else null
+            val state = if (preserveViewport) lm?.onSaveInstanceState() else null
             adapter.notifyDataSetChanged()
+            if (state != null) lm?.onRestoreInstanceState(state)
         }
     }
 
@@ -1796,7 +1803,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         currentChatId?.let { chatId ->
             val isGeneratingThisSession = ChatGenerationManager.isGenerating && ChatGenerationManager.activeSessionId == chatId
             if (isGeneratingThisSession) {
-                buildDisplayList()
+                buildDisplayList(preserveViewport = true)
                 recyclerView.post {
                     chatStick.syncFromDistance(chatDistanceFromBottomPx())
                     followChatIfStuck()
@@ -1849,15 +1856,20 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
 
             val index = displayMessages.indexOfLast { it.node.id == aiNodeId }
+            val follow = chatStick.shouldFollowGeneration(isUserInteractingWithChat())
             if (index >= 0 && ::adapter.isInitialized) {
                 if (isComplete || error != null) {
-                    adapter.notifyItemChanged(index)
-                    followChatIfStuck()
+                    if (follow) {
+                        adapter.notifyItemChanged(index)
+                        followChatIfStuck()
+                    } else {
+                        notifyChatItemPreservingViewport(index)
+                    }
                 } else {
                     applyStreamingItemChange(index)
                 }
             } else {
-                buildDisplayList()
+                buildDisplayList(preserveViewport = !follow)
                 followChatIfStuck()
             }
 
