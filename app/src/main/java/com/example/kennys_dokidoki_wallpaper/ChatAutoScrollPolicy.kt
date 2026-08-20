@@ -17,6 +17,14 @@ object ChatAutoScrollPolicy {
 
     data class ViewportAnchor(val position: Int, val offsetPx: Int)
 
+    /**
+     * 生成でアイテムが高くなったあと、同じ行を画面の同じ位置に戻すための dy。
+     * RecyclerView.scrollBy(0, dy) に渡す。正で内容が上へ、負で下へ。
+     */
+    fun scrollByToRestoreChild(currentTop: Int, paddingTop: Int, savedOffsetPx: Int): Int {
+        return currentTop - paddingTop - savedOffsetPx
+    }
+
     fun distanceFromBottom(scrollRange: Int, scrollOffset: Int, scrollExtent: Int): Int {
         if (scrollRange <= 0) return 0
         return (scrollRange - scrollOffset - scrollExtent).coerceAtLeast(0)
@@ -59,17 +67,29 @@ object ChatAutoScrollPolicy {
     }
 
     /**
-     * 生成でリストを末尾へ動かしてよいか。stick 中はバブルが伸びて
-     * distance が一瞬増えても追従を切るな。切ると文章の描画が凍る。
+     * 改行に合わせて画面を動かすのは、更新前に一番下にいるときだけ。
+     * [distanceFromBottomPx] は notify する前の値を渡せ。
      */
-    @Suppress("UNUSED_PARAMETER")
+    fun shouldFollowStreamingNewLine(
+        userInteracting: Boolean,
+        distanceFromBottomPx: Int,
+        followThresholdPx: Int = DEFAULT_LEAVE_THRESHOLD_PX
+    ): Boolean {
+        if (userInteracting) return false
+        return distanceFromBottomPx <= followThresholdPx.coerceAtLeast(0)
+    }
+
+    /**
+     * 生成でリストを末尾へ動かしてよいか。途中まで読んでいるなら動かすな。
+     */
     fun shouldMoveWithGeneration(
         stuckToBottom: Boolean,
         userInteracting: Boolean,
         distanceFromBottomPx: Int = 0,
         leaveThresholdPx: Int = DEFAULT_LEAVE_THRESHOLD_PX
     ): Boolean {
-        return shouldFollowGeneration(stuckToBottom, userInteracting)
+        if (!stuckToBottom) return false
+        return shouldFollowStreamingNewLine(userInteracting, distanceFromBottomPx, leaveThresholdPx)
     }
 
     /**

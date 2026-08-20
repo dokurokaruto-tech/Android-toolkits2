@@ -159,6 +159,7 @@ class ChatAdapter(
     fun bindStreamingPayload(holder: ViewHolder, node: ChatNode) {
         if (node.isUser) {
             holder.textUser.text = node.text
+            holder.itemView.requestLayout()
             return
         }
         holder.textAi.text = ChatSuggestionParser.visibleText(node.text)
@@ -169,18 +170,14 @@ class ChatAdapter(
             node.text.startsWith("📥")
         holder.btnAiRegen.visibility = if (streaming) View.GONE else View.VISIBLE
         holder.btnAiCopy.visibility = if (streaming) View.GONE else View.VISIBLE
+        holder.itemView.requestLayout()
     }
 
     override fun onViewAttachedToWindow(holder: ViewHolder) {
         super.onViewAttachedToWindow(holder)
         val pos = holder.bindingAdapterPosition
         if (pos !in messages.indices) return
-        val node = messages[pos].node
-        if (node.isUser) return
-        val visible = ChatSuggestionParser.visibleText(node.text)
-        if (holder.textAi.text.toString() != visible) {
-            onBindViewHolder(holder, pos)
-        }
+        onBindViewHolder(holder, pos)
     }
 
     override fun getItemId(position: Int): Long {
@@ -492,6 +489,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private val chatStick = ChatStickToBottom()
     private var userScrollingChat = false
     private var bottomScrollSeq = 0
+    private var viewportRestoreSeq = 0
 
     private fun updateCounter() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -683,7 +681,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private val tuneChatToBottomRunnable = Runnable {
         if (!::recyclerView.isInitialized) return@Runnable
         if (isUserInteractingWithChat()) return@Runnable
-        if (!chatStick.stuck) return@Runnable
         if (recyclerView.scrollState == RecyclerView.SCROLL_STATE_DRAGGING) return@Runnable
         if (displayMessages.isEmpty()) return@Runnable
         val last = displayMessages.size - 1
@@ -708,11 +705,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun shouldMoveChatWithGeneration(): Boolean {
-        return ChatAutoScrollPolicy.shouldMoveWithGeneration(
-            stuckToBottom = chatStick.stuck,
+        return ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
             userInteracting = isUserInteractingWithChat(),
             distanceFromBottomPx = chatDistanceFromBottomPx(),
-            leaveThresholdPx = chatStick.leaveThresholdPx
+            followThresholdPx = chatStick.rejoinThresholdPx
         )
     }
 
@@ -720,6 +716,62 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         if (!::recyclerView.isInitialized) return RecyclerView.NO_POSITION
         val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return RecyclerView.NO_POSITION
         return lm.findLastVisibleItemPosition()
+    }
+
+    private fun captureChatViewport(): ChatAutoScrollPolicy.ViewportAnchor? {
+        if (!::recyclerView.isInitialized) return null
+        val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return null
+        val position = lm.findFirstVisibleItemPosition()
+        if (position == RecyclerView.NO_POSITION) return null
+        val child = lm.findViewByPosition(position) ?: recyclerView.getChildAt(0) ?: return null
+        val offsetPx = child.top - recyclerView.paddingTop
+        return ChatAutoScrollPolicy.ViewportAnchor(position, offsetPx)
+    }
+
+    private fun restoreChatViewport(anchor: ChatAutoScrollPolicy.ViewportAnchor) {
+        if (!::recyclerView.isInitialized) return
+        val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return
+        val child = lm.findViewByPosition(anchor.position)
+        if (child != null) {
+            val dy = ChatAutoScrollPolicy.scrollByToRestoreChild(
+                currentTop = child.top,
+                paddingTop = recyclerView.paddingTop,
+                savedOffsetPx = anchor.offsetPx
+            )
+            if (dy != 0) recyclerView.scrollBy(0, dy)
+        } else if (anchor.position in displayMessages.indices) {
+            recyclerView.scrollToPosition(anchor.position)
+        }
+    }
+
+    private fun restoreChatViewportAfterLayout(anchor: ChatAutoScrollPolicy.ViewportAnchor) {
+        if (!::recyclerView.isInitialized) return
+        val seq = ++viewportRestoreSeq
+        fun runRestore() {
+            if (seq != viewportRestoreSeq) return
+            if (isUserInteractingWithChat()) return
+            restoreChatViewport(anchor)
+        }
+        recyclerView.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                v: View?,
+                left: Int,
+                top: Int,
+                right: Int,
+                bottom: Int,
+                oldLeft: Int,
+                oldTop: Int,
+                oldRight: Int,
+                oldBottom: Int
+            ) {
+                recyclerView.removeOnLayoutChangeListener(this)
+                runRestore()
+            }
+        })
+        recyclerView.post {
+            runRestore()
+            recyclerView.post { runRestore() }
+        }
     }
 
     private fun followChatIfStuck() {
@@ -732,28 +784,41 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun applyStreamingItemChange(index: Int) {
         if (!::adapter.isInitialized) return
+        val follow = ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
+            userInteracting = isUserInteractingWithChat(),
+            distanceFromBottomPx = chatDistanceFromBottomPx(),
+            followThresholdPx = chatStick.rejoinThresholdPx
+        )
         val holder = if (::recyclerView.isInitialized) {
             recyclerView.findViewHolderForAdapterPosition(index) as? ChatAdapter.ViewHolder
         } else {
             null
         }
-        val attached = holder != null
         val bind = ChatAutoScrollPolicy.shouldBindStreamingText(
-            itemIsAttached = attached,
+            itemIsAttached = holder != null,
             lastVisiblePosition = lastVisibleChatPosition(),
             changedIndex = index
         )
-        if (bind) {
-            if (holder != null && index in displayMessages.indices) {
-                adapter.bindStreamingPayload(holder, displayMessages[index].node)
+        if (!bind) {
+            if (follow) {
+                viewportRestoreSeq++
+                scrollChatToBottom(force = true)
             } else {
-                adapter.notifyItemChanged(index, ChatAdapter.PAYLOAD_STREAM)
+                cancelPendingBottomScroll()
             }
+            return
         }
-        if (shouldMoveChatWithGeneration()) {
-            scrollChatToBottom()
+        val anchor = if (!follow) captureChatViewport() else null
+        if (holder != null && index in displayMessages.indices) {
+            adapter.bindStreamingPayload(holder, displayMessages[index].node)
+        }
+        adapter.notifyItemChanged(index, ChatAdapter.PAYLOAD_STREAM)
+        if (follow) {
+            viewportRestoreSeq++
+            scrollChatToBottom(force = true)
         } else {
             cancelPendingBottomScroll()
+            if (anchor != null) restoreChatViewportAfterLayout(anchor)
         }
     }
 
@@ -836,6 +901,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 when (newState) {
                     RecyclerView.SCROLL_STATE_DRAGGING -> {
                         userScrollingChat = true
+                        viewportRestoreSeq++
                         cancelPendingBottomScroll()
                         chatStick.onUserMoved(chatDistanceFromBottomPx(), allowRejoin = false)
                     }
@@ -850,12 +916,27 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                         }
                         userScrollingChat = false
                         if (ChatGenerationManager.isGenerating &&
-                            shouldMoveChatWithGeneration() &&
                             ::adapter.isInitialized &&
                             displayMessages.isNotEmpty()
                         ) {
-                            adapter.notifyItemChanged(displayMessages.lastIndex, ChatAdapter.PAYLOAD_STREAM)
-                            followChatIfStuck()
+                            val follow = shouldMoveChatWithGeneration()
+                            val last = displayMessages.lastIndex
+                            val bind = ChatAutoScrollPolicy.shouldBindStreamingText(
+                                itemIsAttached = recyclerView.findViewHolderForAdapterPosition(last) != null,
+                                lastVisiblePosition = lastVisibleChatPosition(),
+                                changedIndex = last
+                            )
+                            val anchor = if (!follow) captureChatViewport() else null
+                            if (bind) {
+                                adapter.notifyItemChanged(last, ChatAdapter.PAYLOAD_STREAM)
+                            }
+                            if (follow) {
+                                viewportRestoreSeq++
+                                scrollChatToBottom(force = true)
+                            } else {
+                                cancelPendingBottomScroll()
+                                if (anchor != null) restoreChatViewportAfterLayout(anchor)
+                            }
                         }
                     }
                 }
@@ -1924,18 +2005,28 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                         lastVisiblePosition = lastVisibleChatPosition(),
                         changedIndex = index
                     )
+                    val anchor = if (!move) captureChatViewport() else null
                     if (bind) {
                         adapter.notifyItemChanged(index)
                     }
-                    followChatIfStuck()
+                    if (move) {
+                        viewportRestoreSeq++
+                        scrollChatToBottom(force = true)
+                    } else {
+                        cancelPendingBottomScroll()
+                        if (anchor != null) restoreChatViewportAfterLayout(anchor)
+                    }
                 } else {
                     applyStreamingItemChange(index)
                 }
             } else if (move) {
                 buildDisplayList()
-                followChatIfStuck()
+                viewportRestoreSeq++
+                scrollChatToBottom(force = true)
             } else if (index < 0 && ::adapter.isInitialized) {
+                val anchor = captureChatViewport()
                 buildDisplayList()
+                if (anchor != null) restoreChatViewportAfterLayout(anchor)
             }
 
             if (isComplete) {

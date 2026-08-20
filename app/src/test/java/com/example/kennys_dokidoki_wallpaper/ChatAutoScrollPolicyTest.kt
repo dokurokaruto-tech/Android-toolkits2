@@ -148,9 +148,21 @@ class ChatAutoScrollPolicyTest {
     @Test
     fun `generation must not move the screen unless pinned to the bottom`() {
         assertTrue(
-            ChatAutoScrollPolicy.shouldMoveWithGeneration(
-                stuckToBottom = true,
+            ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
                 userInteracting = false,
+                distanceFromBottomPx = 0
+            )
+        )
+        assertFalse(
+            ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
+                userInteracting = false,
+                distanceFromBottomPx = 12,
+                followThresholdPx = 8
+            )
+        )
+        assertFalse(
+            ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
+                userInteracting = true,
                 distanceFromBottomPx = 0
             )
         )
@@ -161,23 +173,29 @@ class ChatAutoScrollPolicyTest {
                 distanceFromBottomPx = 0
             )
         )
+        assertTrue(
+            ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
+                userInteracting = false,
+                distanceFromBottomPx = 24,
+                followThresholdPx = 24
+            )
+        )
         assertFalse(
-            ChatAutoScrollPolicy.shouldMoveWithGeneration(
-                stuckToBottom = true,
-                userInteracting = true,
-                distanceFromBottomPx = 0
+            ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
+                userInteracting = false,
+                distanceFromBottomPx = 400,
+                followThresholdPx = 24
             )
         )
     }
 
     @Test
-    fun `growing the last bubble must not freeze text while still stuck`() {
-        assertTrue(
-            ChatAutoScrollPolicy.shouldMoveWithGeneration(
-                stuckToBottom = true,
+    fun `growing the last bubble must keep painting text even when not following`() {
+        assertFalse(
+            ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
                 userInteracting = false,
                 distanceFromBottomPx = 48,
-                leaveThresholdPx = 8
+                followThresholdPx = 8
             )
         )
         assertTrue(
@@ -201,5 +219,19 @@ class ChatAutoScrollPolicyTest {
                 changedIndex = 9
             )
         )
+    }
+
+    @Test
+    fun `viewport restore undoes stackFromEnd shift after a new line`() {
+        assertEquals(0, ChatAutoScrollPolicy.scrollByToRestoreChild(
+            currentTop = 100,
+            paddingTop = 64,
+            savedOffsetPx = 36
+        ))
+        assertEquals(-24, ChatAutoScrollPolicy.scrollByToRestoreChild(
+            currentTop = 76,
+            paddingTop = 64,
+            savedOffsetPx = 36
+        ))
     }
 }
