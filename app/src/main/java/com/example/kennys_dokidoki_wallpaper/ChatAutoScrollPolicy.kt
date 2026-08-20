@@ -4,15 +4,18 @@ package com.example.kennys_dokidoki_wallpaper
  * ストリーム生成中のチャット自動スクロール。
  *
  * 一番下にいるときだけ末尾へ追従する。
- * 画面の一番下から少しでも離したら追従を切り、底へ戻したときだけ再開する。
- * 生成によるレイアウト変化では stick 状態を更新しない（呼び出し側がユーザー操作のときだけ [nextStickState] を使う）。
+ * 画面の一番下から少しでも離したら追従を切り、ユーザー自身が底へ戻したときだけ再開する。
+ * 生成によるレイアウト変化では stick 状態を更新しない。
+ * ドラッグ中に生成が底へ引き戻しても、再着地（rejoin）はさせない。
  */
 object ChatAutoScrollPolicy {
     /** これ以上離れたら「底から離れた」。指で少し動かしただけで切れるよう短め（px）。 */
-    const val DEFAULT_LEAVE_THRESHOLD_PX = 24
+    const val DEFAULT_LEAVE_THRESHOLD_PX = 8
 
     /** 底へ戻ったとみなす再着地の猶予。leave より広くしてピクセル揺れで点滅しないようにする。 */
-    const val DEFAULT_REJOIN_THRESHOLD_PX = 48
+    const val DEFAULT_REJOIN_THRESHOLD_PX = 24
+
+    data class ViewportAnchor(val position: Int, val offsetPx: Int)
 
     fun distanceFromBottom(scrollRange: Int, scrollOffset: Int, scrollExtent: Int): Int {
         if (scrollRange <= 0) return 0
@@ -25,24 +28,35 @@ object ChatAutoScrollPolicy {
 
     /**
      * ユーザーがスクロールしたあとの stick 状態。
-     * 追従中は [leaveThresholdPx] を超えたら切る。切れているときは [rejoinThresholdPx] 以内に戻したら再開。
+     * 追従中は [leaveThresholdPx] を超えたら切る。
+     * 切れているときは [allowRejoin] が true のときだけ [rejoinThresholdPx] 以内で再開する。
+     * ドラッグ中は [allowRejoin] を false にし、生成の引き戻しで再着地しないようにする。
      */
     fun nextStickState(
         currentlyStuck: Boolean,
         distanceFromBottom: Int,
         leaveThresholdPx: Int = DEFAULT_LEAVE_THRESHOLD_PX,
-        rejoinThresholdPx: Int = DEFAULT_REJOIN_THRESHOLD_PX
+        rejoinThresholdPx: Int = DEFAULT_REJOIN_THRESHOLD_PX,
+        allowRejoin: Boolean = true
     ): Boolean {
         val leave = leaveThresholdPx.coerceAtLeast(0)
         val rejoin = rejoinThresholdPx.coerceAtLeast(leave)
         return if (currentlyStuck) {
             distanceFromBottom <= leave
-        } else {
+        } else if (allowRejoin) {
             distanceFromBottom <= rejoin
+        } else {
+            false
         }
     }
 
-    fun shouldFollowGeneration(stuckToBottom: Boolean): Boolean = stuckToBottom
+    fun shouldFollowGeneration(stuckToBottom: Boolean, userInteracting: Boolean = false): Boolean {
+        return stuckToBottom && !userInteracting
+    }
+
+    fun shouldPreserveViewport(stuckToBottom: Boolean, userInteracting: Boolean): Boolean {
+        return !shouldFollowGeneration(stuckToBottom, userInteracting)
+    }
 }
 
 /**
@@ -59,12 +73,17 @@ class ChatStickToBottom(
         stuck = true
     }
 
-    fun onUserMoved(distanceFromBottomPx: Int) {
+    fun release() {
+        stuck = false
+    }
+
+    fun onUserMoved(distanceFromBottomPx: Int, allowRejoin: Boolean = true) {
         stuck = ChatAutoScrollPolicy.nextStickState(
             currentlyStuck = stuck,
             distanceFromBottom = distanceFromBottomPx,
             leaveThresholdPx = leaveThresholdPx,
-            rejoinThresholdPx = rejoinThresholdPx
+            rejoinThresholdPx = rejoinThresholdPx,
+            allowRejoin = allowRejoin
         )
     }
 
@@ -72,5 +91,7 @@ class ChatStickToBottom(
         stuck = ChatAutoScrollPolicy.isNearBottom(distanceFromBottomPx, rejoinThresholdPx)
     }
 
-    fun shouldFollowGeneration(): Boolean = ChatAutoScrollPolicy.shouldFollowGeneration(stuck)
+    fun shouldFollowGeneration(userInteracting: Boolean = false): Boolean {
+        return ChatAutoScrollPolicy.shouldFollowGeneration(stuck, userInteracting)
+    }
 }

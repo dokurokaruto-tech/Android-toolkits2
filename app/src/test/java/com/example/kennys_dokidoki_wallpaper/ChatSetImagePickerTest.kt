@@ -28,4 +28,17 @@ class ChatSetImagePickerTest {
         assertFalse(ChatSetImagePicker.canSelect(0, 0))
         assertFalse(ChatSetImagePicker.canSelect(3, -1))
     }
+
+    @Test
+    fun `blank or missing set name yields no images`() {
+        assertTrue(ChatSetImagePicker.imagesForActiveSet(emptyList(), emptyList(), null).isEmpty())
+        assertTrue(ChatSetImagePicker.imagesForActiveSet(emptyList(), emptyList(), "  ").isEmpty())
+        assertTrue(ChatSetImagePicker.imagesForActiveSet(emptyList(), emptyList(), "missing").isEmpty())
+    }
+
+    @Test
+    fun `indexOfUri is missing-safe`() {
+        assertEquals(-1, ChatSetImagePicker.indexOfUri(emptyList(), null))
+        assertEquals(-1, ChatSetImagePicker.indexOfUri(emptyList(), ""))
+    }
 }

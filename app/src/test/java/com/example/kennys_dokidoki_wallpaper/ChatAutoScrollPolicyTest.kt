@@ -15,7 +15,7 @@ class ChatAutoScrollPolicyTest {
             scrollExtent = 800
         )
         assertEquals(0, distance)
-        assertTrue(ChatAutoScrollPolicy.isNearBottom(distance, 24))
+        assertTrue(ChatAutoScrollPolicy.isNearBottom(distance, 8))
     }
 
     @Test
@@ -37,38 +37,38 @@ class ChatAutoScrollPolicyTest {
     fun `leaving the bottom by more than the leave threshold turns stick off`() {
         val stillStuck = ChatAutoScrollPolicy.nextStickState(
             currentlyStuck = true,
-            distanceFromBottom = 24,
-            leaveThresholdPx = 24,
-            rejoinThresholdPx = 48
+            distanceFromBottom = 8,
+            leaveThresholdPx = 8,
+            rejoinThresholdPx = 24
         )
         assertTrue(stillStuck)
 
         val left = ChatAutoScrollPolicy.nextStickState(
             currentlyStuck = true,
-            distanceFromBottom = 25,
-            leaveThresholdPx = 24,
-            rejoinThresholdPx = 48
+            distanceFromBottom = 9,
+            leaveThresholdPx = 8,
+            rejoinThresholdPx = 24
         )
         assertFalse(left)
     }
 
     @Test
     fun `a small lift off the bottom disables follow during generation`() {
-        val stick = ChatStickToBottom(leaveThresholdPx = 24, rejoinThresholdPx = 48)
+        val stick = ChatStickToBottom(leaveThresholdPx = 8, rejoinThresholdPx = 24)
         assertTrue(stick.shouldFollowGeneration())
-        stick.onUserMoved(8)
+        stick.onUserMoved(4)
         assertTrue(stick.shouldFollowGeneration())
-        stick.onUserMoved(40)
+        stick.onUserMoved(12)
         assertFalse(stick.shouldFollowGeneration())
         assertFalse(ChatAutoScrollPolicy.shouldFollowGeneration(false))
     }
 
     @Test
     fun `returning to the bottom re-enables stick`() {
-        val stick = ChatStickToBottom(leaveThresholdPx = 24, rejoinThresholdPx = 48)
+        val stick = ChatStickToBottom(leaveThresholdPx = 8, rejoinThresholdPx = 24)
         stick.onUserMoved(200)
         assertFalse(stick.shouldFollowGeneration())
-        stick.onUserMoved(48)
+        stick.onUserMoved(24)
         assertTrue(stick.shouldFollowGeneration())
     }
 
@@ -76,19 +76,39 @@ class ChatAutoScrollPolicyTest {
     fun `rejoin uses the wider threshold`() {
         val rejoined = ChatAutoScrollPolicy.nextStickState(
             currentlyStuck = false,
-            distanceFromBottom = 30,
-            leaveThresholdPx = 24,
-            rejoinThresholdPx = 48
+            distanceFromBottom = 20,
+            leaveThresholdPx = 8,
+            rejoinThresholdPx = 24
         )
         assertTrue(rejoined)
 
         val stillAway = ChatAutoScrollPolicy.nextStickState(
             currentlyStuck = false,
-            distanceFromBottom = 49,
-            leaveThresholdPx = 24,
-            rejoinThresholdPx = 48
+            distanceFromBottom = 25,
+            leaveThresholdPx = 8,
+            rejoinThresholdPx = 24
         )
         assertFalse(stillAway)
+    }
+
+    @Test
+    fun `dragging does not rejoin even if generation yanks back to the bottom`() {
+        val stick = ChatStickToBottom(leaveThresholdPx = 8, rejoinThresholdPx = 24)
+        stick.onUserMoved(80, allowRejoin = false)
+        assertFalse(stick.shouldFollowGeneration())
+        stick.onUserMoved(0, allowRejoin = false)
+        assertFalse(stick.shouldFollowGeneration())
+        stick.onUserMoved(0, allowRejoin = true)
+        assertTrue(stick.shouldFollowGeneration())
+    }
+
+    @Test
+    fun `user interaction blocks follow even while stuck`() {
+        val stick = ChatStickToBottom()
+        assertTrue(stick.shouldFollowGeneration())
+        assertFalse(stick.shouldFollowGeneration(userInteracting = true))
+        assertTrue(ChatAutoScrollPolicy.shouldPreserveViewport(true, userInteracting = true))
+        assertFalse(ChatAutoScrollPolicy.shouldPreserveViewport(true, userInteracting = false))
     }
 
     @Test
@@ -101,11 +121,19 @@ class ChatAutoScrollPolicyTest {
     }
 
     @Test
+    fun `release turns follow off until the user returns`() {
+        val stick = ChatStickToBottom()
+        stick.release()
+        assertFalse(stick.shouldFollowGeneration())
+        stick.onUserMoved(0)
+        assertTrue(stick.shouldFollowGeneration())
+    }
+
+    @Test
     fun `programmatic generation must not call nextStickState just because content grew`() {
-        val stick = ChatStickToBottom(leaveThresholdPx = 24, rejoinThresholdPx = 48)
+        val stick = ChatStickToBottom(leaveThresholdPx = 8, rejoinThresholdPx = 24)
         stick.onUserMoved(120)
         assertFalse(stick.shouldFollowGeneration())
-        // 生成でコンテンツが伸びても、ユーザー操作がなければ stuck は変わらない
         assertFalse(stick.shouldFollowGeneration())
         assertFalse(ChatAutoScrollPolicy.shouldFollowGeneration(stick.stuck))
     }
