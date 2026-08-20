@@ -98,15 +98,19 @@
             android:id="@+id/tv_active_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="再生中"
+            android:layout_margin="6dp"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"
+            android:background="@drawable/rounded_rect_bg_dark"
+            android:text="ホーム"
             android:textColor="#00F0FF"
             android:textSize="10sp"
             android:textStyle="bold"
             android:visibility="gone"
-            app:layout_constraintTop_toTopOf="@id/active_indicator"
-            app:layout_constraintBottom_toBottomOf="@id/active_indicator"
-            app:layout_constraintStart_toStartOf="@id/active_indicator"
-            app:layout_constraintEnd_toEndOf="@id/active_indicator" />
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
 
         <!-- メニューアイコン (右下 / ゴミ箱の代わり) -->
         <ImageView
@@ -117,6 +121,8 @@
             android:padding="4dp"
             android:background="@drawable/rounded_rect_bg_dark"
             android:src="@drawable/ic_more_vert"
+            android:clickable="true"
+            android:focusable="true"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 

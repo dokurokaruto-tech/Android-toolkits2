@@ -309,8 +309,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     try {
                         contentResolver.openInputStream(uri)?.use { inputStream ->
                             if (BackupManager.importBackup(this, inputStream)) {
-                                TagManager.loadTags(this)
-                                DataManager.loadData(this)
+                                TagManager.loadTags(this, forceReload = true)
+                                DataManager.loadData(this, forceReload = true)
                                 PromptCardManager.loadCards(this)
                                 PresetManager.loadPresets(this)
                                 
@@ -438,25 +438,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun updateActiveImageHighlight() {
         if (!::allImagesAdapter.isInitialized) return
-        val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val activeAlbum = settingsPrefs.getString("active_album_name", null)
-        val activeIndex = settingsPrefs.getInt("active_image_index", 0)
-
-        if (activeAlbum != null) {
-            val currentSet = DataManager.imageSetList.find { it.name == activeAlbum }
-            if (currentSet != null) {
-                val activeEntries = currentSet.filterImages(DataManager.allImages).filter { it.isActive }
-                if (activeIndex in activeEntries.indices) {
-                    allImagesAdapter.activeImageUri = activeEntries[activeIndex].uri.toString()
-                } else {
-                    allImagesAdapter.activeImageUri = null
-                }
-            } else {
-                allImagesAdapter.activeImageUri = null
-            }
-        } else {
-            allImagesAdapter.activeImageUri = null
-        }
+        val home = DataManager.getActiveWallpaperImage(this, forChat = false)
+        val chat = DataManager.getActiveWallpaperImage(this, forChat = true)
+        allImagesAdapter.homeImageUri = home?.uri?.toString()
+        allImagesAdapter.chatImageUri = chat?.uri?.toString()
+        allImagesAdapter.activeImageUri = home?.uri?.toString() ?: chat?.uri?.toString()
         
         if (::recyclerViewAllImages.isInitialized) {
             recyclerViewAllImages.invalidateItemDecorations()
@@ -598,8 +584,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             getItemCount = { allImagesAdapter.itemCount }
         ))
         
-        setupFastScrollJumper(recyclerViewAllImages)
-        setupFastScrollJumper(recyclerViewSets)
+        FastScrollHelper.attach(recyclerViewAllImages)
+        FastScrollHelper.attach(recyclerViewSets)
+        applyQuickFilter()
 
         imageSetAdapter = ImageSetAdapter(DataManager.imageSetList)
         recyclerViewSets.layoutManager = GridLayoutManager(this, 2)
@@ -1793,27 +1780,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         btnSortDirection.setImageResource(if (isSortAscending) android.R.drawable.arrow_up_float else android.R.drawable.arrow_down_float)
     }
 
-    private fun setupFastScrollJumper(rv: RecyclerView) {
-        rv.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
-            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-                if (e.x > rv.width - 100) { jumpToPosition(rv, e.y); return true }
-                return false
-            }
-            override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-                if (e.action == MotionEvent.ACTION_MOVE || e.action == MotionEvent.ACTION_DOWN) jumpToPosition(rv, e.y)
-            }
-            private fun jumpToPosition(rv: RecyclerView, touchY: Float) {
-                val adapter = rv.adapter ?: return
-                val count = adapter.itemCount
-                if (count == 0) return
-                val percentage = (touchY / rv.height).coerceIn(0f, 1f)
-                val position = (percentage * (count - 1)).toInt()
-                val layoutManager = rv.layoutManager
-                if (layoutManager is LinearLayoutManager) layoutManager.scrollToPositionWithOffset(position, 0)
-                else rv.scrollToPosition(position)
-            }
-        })
-    }
+
 
     private fun setupBottomNavigation() {
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
@@ -2261,8 +2228,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         try {
                             java.io.FileInputStream(selectedFile).use { fis ->
                                 if (BackupManager.importBackup(this, fis)) {
-                                    TagManager.loadTags(this)
-                                    DataManager.loadData(this)
+                                    TagManager.loadTags(this, forceReload = true)
+                                    DataManager.loadData(this, forceReload = true)
                                     PromptCardManager.loadCards(this)
                                     PresetManager.loadPresets(this)
                                     
@@ -2655,12 +2622,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun applyQuickFilter() {
         val target = currentFilterTarget
         val btnQuickSort = findViewById<Button>(R.id.btn_quick_sort)
+        val home = DataManager.getActiveWallpaperImage(this, forChat = false)
+        val chat = DataManager.getActiveWallpaperImage(this, forChat = true)
         if (target == null) {
             val sortedList = if (isSortAscending) DataManager.allImages.toList() else DataManager.allImages.reversed()
-            allImagesAdapter.updateList(sortedList); btnQuickSort.text = "クイックソート"; btnQuickSort.setTextColor(Color.parseColor("#00F0FF"))
-            tvFilterCount.text = "${sortedList.size} 枚"; return
+            val pinned = ImageListOrdering.pinToFront(sortedList, listOf(home, chat)) { it.uri.toString() }
+            allImagesAdapter.updateList(pinned)
+            btnQuickSort.text = "クイックソート"
+            btnQuickSort.setTextColor(Color.parseColor("#00F0FF"))
+            tvFilterCount.text = "${pinned.size} 枚"
+            updateActiveImageHighlight()
+            return
         }
-        btnQuickSort.text = "フィルタ中: $target"; btnQuickSort.setTextColor(Color.parseColor("#FFCC00"))
+        btnQuickSort.text = "フィルタ中: $target"
+        btnQuickSort.setTextColor(Color.parseColor("#FFCC00"))
         val filteredList = if (target.startsWith("[ジャンル] ")) {
             val categoryTags = TagManager.categories.find { it.name == target.substringAfter("[ジャンル] ") }?.tags?.toSet() ?: emptySet()
             DataManager.allImages.filter { entry -> (entry.tags.any { it in categoryTags }) == currentFilterHas }
@@ -2668,7 +2643,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             DataManager.allImages.filter { entry -> entry.tags.contains(target) == currentFilterHas }
         }
         val finalOrderedList = if (isSortAscending) filteredList else filteredList.reversed()
-        allImagesAdapter.updateList(finalOrderedList); tvFilterCount.text = "${finalOrderedList.size} 枚"
+        val pinned = ImageListOrdering.pinToFront(finalOrderedList, listOf(home, chat)) { it.uri.toString() }
+        allImagesAdapter.updateList(pinned)
+        tvFilterCount.text = "${pinned.size} 枚"
+        updateActiveImageHighlight()
     }
 
     private fun showGeneratedImagesFolderPicker() {

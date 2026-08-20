@@ -26,6 +26,8 @@ class AllImagesAdapter(
         private set
 
     var activeImageUri: String? = null
+    var homeImageUri: String? = null
+    var chatImageUri: String? = null
 
     val selectedPositions = mutableSetOf<Int>()
     private var lastLongPressedPosition = -1
@@ -124,12 +126,20 @@ class AllImagesAdapter(
             holder.tagGradient.visibility = View.GONE
         }
         
-        // 再生中のハイライト判定
-        val isCurrentlyActive = activeImageUri != null && entry.uri.toString() == activeImageUri
+        val uriStr = entry.uri.toString()
+        val isHome = homeImageUri != null && uriStr == homeImageUri
+        val isChat = chatImageUri != null && uriStr == chatImageUri
+        val isCurrentlyActive = isHome || isChat || (activeImageUri != null && uriStr == activeImageUri)
         if (isCurrentlyActive && !isSelectionMode) {
             holder.highlightBorder.visibility = View.VISIBLE
-            holder.activeIndicator.visibility = View.VISIBLE
+            holder.activeIndicator.visibility = View.GONE
             holder.tvActiveLabel.visibility = View.VISIBLE
+            holder.tvActiveLabel.text = when {
+                isHome && isChat -> "ホーム・チャット"
+                isHome -> "ホーム"
+                isChat -> "チャット"
+                else -> "再生中"
+            }
         } else {
             holder.highlightBorder.visibility = View.GONE
             holder.activeIndicator.visibility = View.GONE

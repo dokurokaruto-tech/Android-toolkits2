@@ -173,23 +173,26 @@ object DataManager {
     }
 
     @Synchronized
-    fun saveData(context: Context, createBackup: Boolean = true) {
+    fun saveData(context: Context, createBackup: Boolean = true): Boolean {
         if (!isLoaded) {
             Log.e("DataManager", "saveData BLOCKED: Data has not been fully loaded yet. Preventing accidental overwrite!")
-            return
+            return false
         }
 
         if (!BackupManager.validateDataIntegrity(context)) {
-            Log.e("DataManager", "saveData blocked by BackupManager due to data integrity failure!")
-            BackupManager.restoreLatestAutoBackup(context)
-            return
+            if (allImages.isEmpty()) {
+                Log.e("DataManager", "saveData blocked by BackupManager due to data integrity failure!")
+                BackupManager.restoreLatestAutoBackup(context)
+                return false
+            }
+            Log.w("DataManager", "integrity warning, but in-memory images exist. Saving user edits.")
         }
 
         try {
             persistToFile(context)
         } catch (e: Exception) {
             Log.e("DataManager", "saveData failed to persist file!", e)
-            return
+            return false
         }
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -202,6 +205,29 @@ object DataManager {
         if (createBackup) {
             BackupManager.createAutoBackup(context)
         }
+        return true
+    }
+
+    fun findImageByUri(uriString: String?): ImageEntry? {
+        if (uriString.isNullOrBlank()) return null
+        return allImages.find { it.uri.toString() == uriString }
+    }
+
+    fun getActiveWallpaperImage(context: Context, forChat: Boolean): ImageEntry? {
+        val settings = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val setName = if (forChat) {
+            settings.getString("active_album_name_chat", null)
+                ?: settings.getString("active_album_name", null)
+        } else {
+            settings.getString("active_album_name_homescreen", null)
+                ?: settings.getString("active_album_name", null)
+        } ?: return null
+        val set = imageSetList.find { it.name == setName } ?: return null
+        val filtered = set.filterImages(allImages).filter { it.isActive }
+        if (filtered.isEmpty()) return null
+        val savedIndex = settings.getInt("last_index_for_album_$setName", settings.getInt("active_image_index", 0))
+        val index = savedIndex.coerceIn(0, filtered.lastIndex)
+        return filtered[index]
     }
 
     private fun dataFile(context: Context): File {

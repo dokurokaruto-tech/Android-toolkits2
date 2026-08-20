@@ -387,7 +387,7 @@ object BackupManager {
             FileInputStream(latestBackup).use { fis ->
                 if (importBackup(context, fis)) {
                     Log.i("BackupManager", "Automatic restore successful from ${latestBackup.name}!")
-                    TagManager.loadTags(context)
+                    TagManager.loadTags(context, forceReload = true)
                     DataManager.loadData(context, forceReload = true)
                     
                     lastKnownTagCount = TagManager.allTags.size

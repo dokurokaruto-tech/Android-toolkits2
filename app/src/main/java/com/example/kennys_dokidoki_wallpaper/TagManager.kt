@@ -31,7 +31,11 @@ object TagManager {
         get() = categories.flatMap { it.tags }.distinct()
 
     @Synchronized
-    fun loadTags(context: Context) {
+    fun loadTags(context: Context, forceReload: Boolean = false) {
+        if (isLoaded && !forceReload) {
+            Log.d("TagManager", "loadTags: already loaded, skip.")
+            return
+        }
         if (isLoading) {
             Log.d("TagManager", "loadTags: already loading, skip.")
             return
@@ -40,7 +44,7 @@ object TagManager {
         try {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val json = prefs.getString(KEY_CATEGORIES, null)
-            categories.clear()
+            val newCategories = mutableListOf<TagCategory>()
             
             if (json != null) {
                 val array = JSONArray(json)
@@ -50,7 +54,7 @@ object TagManager {
                     
                     if (name == "作品名" || name == "キャラ名") name = "キャラクター"
                     
-                    val category = categories.find { it.name == name } ?: TagCategory(name).also { categories.add(it) }
+                    val category = newCategories.find { it.name == name } ?: TagCategory(name).also { newCategories.add(it) }
                     
                     // 親カテゴリー設定の読み込み
                     category.parentCategoryName = if (obj.has("parentCategoryName")) obj.getString("parentCategoryName") else null
@@ -64,17 +68,20 @@ object TagManager {
                 
                 val essentialCategories = listOf("キャラクター", "衣装", "場所", "ストーリー", "その他")
                 essentialCategories.forEach { defName ->
-                    if (categories.none { it.name == defName }) {
-                        categories.add(TagCategory(defName))
+                    if (newCategories.none { it.name == defName }) {
+                        newCategories.add(TagCategory(defName))
                     }
                 }
             } else {
-                categories.add(TagCategory("キャラクター"))
-                categories.add(TagCategory("衣装"))
-                categories.add(TagCategory("場所"))
-                categories.add(TagCategory("ストーリー"))
-                categories.add(TagCategory("その他"))
+                newCategories.add(TagCategory("キャラクター"))
+                newCategories.add(TagCategory("衣装"))
+                newCategories.add(TagCategory("場所"))
+                newCategories.add(TagCategory("ストーリー"))
+                newCategories.add(TagCategory("その他"))
             }
+
+            categories.clear()
+            categories.addAll(newCategories)
 
             val promptsJson = prefs.getString(KEY_PROMPTS, null)
             tagPrompts.clear()
@@ -132,9 +139,12 @@ object TagManager {
         }
 
         if (!BackupManager.validateDataIntegrity(context)) {
-            Log.e("TagManager", "saveTags blocked by BackupManager due to data integrity failure!")
-            BackupManager.restoreLatestAutoBackup(context)
-            return
+            if (categories.size <= 1) {
+                Log.e("TagManager", "saveTags blocked by BackupManager due to data integrity failure!")
+                BackupManager.restoreLatestAutoBackup(context)
+                return
+            }
+            Log.w("TagManager", "integrity warning, but categories exist. Saving user edits.")
         }
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

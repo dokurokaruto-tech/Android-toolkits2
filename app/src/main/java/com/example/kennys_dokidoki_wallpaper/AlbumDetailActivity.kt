@@ -6,27 +6,20 @@ import android.content.SharedPreferences
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
-import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
-import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.documentfile.provider.DocumentFile
 import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.floatingactionbutton.FloatingActionButton
 
 class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -135,8 +128,12 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                     .setNegativeButton("キャンセル", null)
                     .show()
             },
-            onStartWallpaperClick = { _ -> }, // モードにより不要
-            onEditTagsClick = { _ -> }, // モードにより不要
+            onStartWallpaperClick = { entry -> startWallpaper(entry) },
+            onEditTagsClick = { entry ->
+                val intent = Intent(this, ImageTagEditorActivity::class.java)
+                intent.putExtra("IMAGE_URI", entry.uri.toString())
+                startActivity(intent)
+            },
             onSelectionModeChanged = { isSelectionMode ->
                 if (isSelectionMode) {
                     selectionActionBar.visibility = View.VISIBLE
@@ -158,7 +155,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         ))
 
         setupSelectionBarButtons()
-        setupFastScrollJumper(recyclerView)
+        FastScrollHelper.attach(recyclerView)
 
         settingsPrefs.registerOnSharedPreferenceChangeListener(this)
         
@@ -195,38 +192,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         return super.onOptionsItemSelected(item)
     }
 
-    private fun setupFastScrollJumper(rv: RecyclerView) {
-        rv.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
-            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-                val threshold = rv.width - 100
-                if (e.x > threshold) {
-                    jumpToPosition(rv, e.y)
-                    return true
-                }
-                return false
-            }
 
-            override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-                if (e.action == MotionEvent.ACTION_MOVE || e.action == MotionEvent.ACTION_DOWN) {
-                    jumpToPosition(rv, e.y)
-                }
-            }
-
-            private fun jumpToPosition(rv: RecyclerView, touchY: Float) {
-                val adapter = rv.adapter ?: return
-                val count = adapter.itemCount
-                if (count == 0) return
-                val percentage = (touchY / rv.height).coerceIn(0f, 1f)
-                val position = (percentage * (count - 1)).toInt()
-                val layoutManager = rv.layoutManager
-                if (layoutManager is LinearLayoutManager) {
-                    layoutManager.scrollToPositionWithOffset(position, 0)
-                } else {
-                    rv.scrollToPosition(position)
-                }
-            }
-        })
-    }
 
     private fun setupSelectionBarButtons() {
         findViewById<ImageButton>(R.id.btn_selection_close).setOnClickListener {
@@ -433,6 +399,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
     override fun onResume() {
         super.onResume()
+        loadImages()
         updateActiveImageHighlight()
         imageAdapter.notifyDataSetChanged()
     }
