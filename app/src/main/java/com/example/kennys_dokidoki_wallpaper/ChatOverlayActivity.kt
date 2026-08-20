@@ -52,6 +52,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -138,6 +139,14 @@ class ChatAdapter(
 ) : RecyclerView.Adapter<ChatAdapter.ViewHolder>() {
     private var bubbleOpacity: Int = 60
     private var bubbleWidth: Int = 670
+
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long {
+        return messages[position].node.id.hashCode().toLong()
+    }
 
     fun setBubbleOpacity(opacity: Int) {
         this.bubbleOpacity = opacity
@@ -342,7 +351,11 @@ class ChatAdapter(
             holder.btnAiRegen.setOnClickListener { onRegenerate(node) }
             holder.btnAiCopy.setOnClickListener { copyToClipboard(holder.itemView.context, node.text) }
             
-            if (node.text.startsWith("思考中")) {
+            if (node.text.startsWith("思考中") ||
+                node.text.startsWith("推論中") ||
+                node.text.startsWith("🧠") ||
+                node.text.startsWith("📥")
+            ) {
                 holder.btnAiRegen.visibility = View.GONE
                 holder.btnAiCopy.visibility = View.GONE
             } else {
@@ -437,7 +450,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private lateinit var btnSend: ImageButton
     private lateinit var btnOptions: ImageButton
     private lateinit var recyclerView: RecyclerView
-    private var isAutoScrollEnabled = true
+    private val chatStick = ChatStickToBottom()
+    private var userScrollingChat = false
 
     private fun updateCounter() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -583,9 +597,13 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     persistCurrentChatLink()
                     currentChatId?.let { ChatSessionManager.saveSessionData(this@ChatOverlayActivity, it, chatTree) }
                     DataManager.loadData(this@ChatOverlayActivity)
+                    val previousChatId = currentChatId
                     loadCurrentSession()
-                    if (displayMessages.isNotEmpty()) {
-                        findViewById<RecyclerView>(R.id.chat_recycler_view).scrollToPosition(displayMessages.size - 1)
+                    if (currentChatId != previousChatId) {
+                        chatStick.stickForNewContent()
+                        scrollChatToBottom()
+                    } else {
+                        followChatIfStuck()
                     }
                 }
             }
@@ -597,6 +615,35 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         if (view != null) {
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             imm.hideSoftInputFromWindow(view.windowToken, 0)
+        }
+    }
+
+    private fun chatDistanceFromBottomPx(): Int {
+        if (!::recyclerView.isInitialized) return 0
+        return ChatAutoScrollPolicy.distanceFromBottom(
+            recyclerView.computeVerticalScrollRange(),
+            recyclerView.computeVerticalScrollOffset(),
+            recyclerView.computeVerticalScrollExtent()
+        )
+    }
+
+    private fun scrollChatToBottom() {
+        if (!::recyclerView.isInitialized) return
+        if (displayMessages.isEmpty()) return
+        if (recyclerView.scrollState == RecyclerView.SCROLL_STATE_DRAGGING) return
+        val last = displayMessages.size - 1
+        recyclerView.scrollToPosition(last)
+        recyclerView.post {
+            if (recyclerView.scrollState == RecyclerView.SCROLL_STATE_DRAGGING) return@post
+            val lastView = recyclerView.layoutManager?.findViewByPosition(last) ?: return@post
+            val dy = lastView.bottom - (recyclerView.height - recyclerView.paddingBottom)
+            if (dy != 0) recyclerView.scrollBy(0, dy)
+        }
+    }
+
+    private fun followChatIfStuck() {
+        if (chatStick.shouldFollowGeneration()) {
+            scrollChatToBottom()
         }
     }
 
@@ -644,6 +691,11 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         recyclerView = findViewById(R.id.chat_recycler_view)
         recyclerView.isFocusable = false
         recyclerView.isFocusableInTouchMode = false
+        recyclerView.itemAnimator = null
+
+        val density = resources.displayMetrics.density
+        chatStick.leaveThresholdPx = (8 * density).toInt().coerceAtLeast(16)
+        chatStick.rejoinThresholdPx = (16 * density).toInt().coerceAtLeast(32)
         
         val layoutManager = LinearLayoutManager(this).apply {
             stackFromEnd = true
@@ -660,7 +712,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             },
             onNavigateBranch = { node, newIndex ->
                 navigateBranch(node, newIndex)
-                recyclerView.scrollToPosition(displayMessages.size - 1)
+                chatStick.stickForNewContent()
+                scrollChatToBottom()
             },
             onSelectSuggestion = { text ->
                 sendSuggestedMessage(text)
@@ -669,19 +722,29 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         recyclerView.adapter = adapter
 
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
-                super.onScrolled(rv, dx, dy)
-                if (dy < 0) {
-                    isAutoScrollEnabled = false
-                } else if (dy > 0) {
-                    val layoutManager = rv.layoutManager as LinearLayoutManager
-                    val totalItemCount = layoutManager.itemCount
-                    val lastVisibleItemPosition = layoutManager.findLastVisibleItemPosition()
-                    
-                    if (lastVisibleItemPosition >= totalItemCount - 2) {
-                        isAutoScrollEnabled = true
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                when (newState) {
+                    RecyclerView.SCROLL_STATE_DRAGGING -> {
+                        userScrollingChat = true
+                        chatStick.onUserMoved(chatDistanceFromBottomPx())
+                    }
+                    RecyclerView.SCROLL_STATE_SETTLING -> {
+                        if (userScrollingChat) {
+                            chatStick.onUserMoved(chatDistanceFromBottomPx())
+                        }
+                    }
+                    RecyclerView.SCROLL_STATE_IDLE -> {
+                        if (userScrollingChat) {
+                            chatStick.onUserMoved(chatDistanceFromBottomPx())
+                        }
+                        userScrollingChat = false
                     }
                 }
+            }
+
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (!userScrollingChat && rv.scrollState != RecyclerView.SCROLL_STATE_DRAGGING) return
+                chatStick.onUserMoved(chatDistanceFromBottomPx())
             }
         })
 
@@ -690,6 +753,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         val btnClose = findViewById<ImageButton>(R.id.btn_close_chat)
         btnOptions = findViewById(R.id.btn_options)
+        findViewById<ImageButton>(R.id.btn_chat_set_images).setOnClickListener {
+            showChatSetImagePicker()
+        }
         btnSend = findViewById(R.id.btn_send)
         chatInput = findViewById(R.id.chat_input)
         tvOpenRouterCounter = findViewById(R.id.tv_openrouter_counter)
@@ -1047,6 +1113,25 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@ChatOverlayActivity, "モデルリストの更新に失敗しました。", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun setupExtraMenu() {
+        loadCachedOpenRouterModels()
+        showMainMenu()
+    }
+
+    private fun showMainMenu() {
+        val grid = findViewById<GridLayout>(R.id.extra_menu_grid)
+        grid.removeAllViews()
+        grid.columnCount = 4
+
+        val items = listOf(
+            Triple("Storylines", android.R.drawable.ic_menu_agenda, { showSessionSelectionDialog() }),
+            Triple("User", android.R.drawable.ic_menu_myplaces, { showPersonaDialog() }),
+            Triple("Character", android.R.drawable.ic_menu_gallery, { �に失敗しました。", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -1556,7 +1641,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val parentId = aiNode.parentId 
         val newAiNode = ChatNode(text = "思考中...", isUser = false, parentId = parentId)
         addNodeToTree(newAiNode)
-        recyclerView.scrollToPosition(displayMessages.size - 1)
+        chatStick.stickForNewContent()
+        scrollChatToBottom()
         
         val currentStones = getWalletBalance()
         if (currentStones < 500) { // 1回500円
@@ -1564,7 +1650,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 newAiNode.text = "⚠️ 残高が足りません。チャットを継続するにはチャージしてください。"
                 currentChatId?.let { ChatSessionManager.saveSessionData(this, it, chatTree) }
                 buildDisplayList()
-                recyclerView.scrollToPosition(displayMessages.size - 1)
+                followChatIfStuck()
             }, 800)
             return
         }
@@ -1645,9 +1731,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             val isGeneratingThisSession = ChatGenerationManager.isGenerating && ChatGenerationManager.activeSessionId == chatId
             if (isGeneratingThisSession) {
                 buildDisplayList()
-                isAutoScrollEnabled = true
                 recyclerView.post {
-                    recyclerView.scrollToPosition(displayMessages.size - 1)
+                    chatStick.syncFromDistance(chatDistanceFromBottomPx())
+                    followChatIfStuck()
                 }
             } else if (chatTree.nodes.isEmpty()) {
                 chatTree = ChatSessionManager.loadSessionData(this, chatId)
@@ -1696,20 +1782,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 }
             }
 
-            val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
-            val wasAtBottom = if (layoutManager != null) {
-                val totalItemCount = layoutManager.itemCount
-                val lastVisibleItemPosition = layoutManager.findLastVisibleItemPosition()
-                isAutoScrollEnabled && (totalItemCount <= 1 || lastVisibleItemPosition >= totalItemCount - 2)
+            val index = displayMessages.indexOfLast { it.node.id == aiNodeId }
+            if (index >= 0 && ::adapter.isInitialized) {
+                adapter.notifyItemChanged(index)
             } else {
-                isAutoScrollEnabled
+                buildDisplayList()
             }
 
-            buildDisplayList()
-
-            if (wasAtBottom) {
-                recyclerView.scrollToPosition(displayMessages.size - 1)
-            }
+            followChatIfStuck()
 
             if (isComplete) {
                 updateCounter()
@@ -2517,8 +2597,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private fun sendToLlm(userNode: ChatNode, recyclerView: RecyclerView, pendingCost: Int) {
         val aiNode = ChatNode(text = "思考中...", isUser = false, parentId = userNode.id)
         addNodeToTree(aiNode)
-        isAutoScrollEnabled = true 
-        recyclerView.scrollToPosition(displayMessages.size - 1)
+        chatStick.stickForNewContent()
+        scrollChatToBottom()
         
         val currentStones = getWalletBalance()
         if (currentStones < pendingCost) {
@@ -2526,7 +2606,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 aiNode.text = "⚠️ 所持金が足りません。チャットを継続するにはチャージしてください。"
                 currentChatId?.let { ChatSessionManager.saveSessionData(this, it, chatTree) }
                 buildDisplayList()
-                recyclerView.scrollToPosition(displayMessages.size - 1)
+                followChatIfStuck()
             }, 800)
             return
         }
@@ -3331,6 +3411,112 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             putExtra("CREATE_NEW_SET", false)
         }
         startActivity(intent)
+    }
+
+    private fun currentChatSetName(): String? {
+        val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        return settingsPrefs.getString("active_album_name_chat", null)
+            ?: settingsPrefs.getString("active_album_name", null)
+    }
+
+    private fun showChatSetImagePicker() {
+        DataManager.loadData(this)
+        val setName = currentChatSetName()
+        val images = ChatSetImagePicker.imagesForActiveSet(
+            DataManager.allImages,
+            DataManager.imageSetList,
+            setName
+        )
+        if (images.isEmpty()) {
+            Toast.makeText(this, "今のセットに表示できる画像がない。", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val currentUri = currentImageEntry?.uri?.toString()
+        val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog).create()
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(36, 36, 36, 36)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#EA090C15"))
+                setStroke(3, Color.parseColor("#B300F0FF"))
+                cornerRadius = 40f
+            }
+        }
+        root.addView(TextView(this).apply {
+            text = "SET IMAGES"
+            setTextColor(Color.parseColor("#00F0FF"))
+            textSize = 14f
+            letterSpacing = 0.15f
+            setTypeface(null, Typeface.BOLD)
+        })
+        root.addView(TextView(this).apply {
+            text = "${setName ?: ""}  ・  ${images.size}枚  ・  1列3枚"
+            setTextColor(Color.parseColor("#8892B0"))
+            textSize = 11f
+            setPadding(0, 8, 0, 16)
+        })
+
+        val rv = RecyclerView(this).apply {
+            layoutManager = GridLayoutManager(this@ChatOverlayActivity, ChatSetImagePicker.GRID_COLUMNS)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.62).toInt()
+            )
+            adapter = ChatSetImageAdapter(images, currentUri) { index, entry ->
+                switchToChatSetImage(index, entry)
+                dialog.dismiss()
+            }
+            setHasFixedSize(true)
+        }
+        root.addView(rv)
+        root.addView(TextView(this).apply {
+            text = "閉じる"
+            setTextColor(Color.parseColor("#8892B0"))
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 24, 0, 0)
+            setTypeface(null, Typeface.BOLD)
+            setOnClickListener { dialog.dismiss() }
+        })
+
+        dialog.setView(root)
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.94).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        val currentIndex = ChatSetImagePicker.indexOfUri(images, currentUri)
+        if (currentIndex >= 0) {
+            rv.post { rv.scrollToPosition(currentIndex) }
+        }
+    }
+
+    private fun switchToChatSetImage(index: Int, entry: ImageEntry) {
+        val setName = currentChatSetName() ?: return
+        if (!ChatSetImagePicker.canSelect(
+                ChatSetImagePicker.imagesForActiveSet(
+                    DataManager.allImages,
+                    DataManager.imageSetList,
+                    setName
+                ).size,
+                index
+            )
+        ) return
+
+        getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
+            .putInt("last_index_for_album_$setName", index)
+            .putInt("active_image_index", index)
+            .apply()
+
+        if (intent.hasExtra("IMAGE_URI")) {
+            intent.putExtra("IMAGE_URI", entry.uri.toString())
+            setIntent(intent)
+        }
+
+        val broadcast = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
+        broadcast.setPackage(packageName)
+        sendBroadcast(broadcast)
     }
 
     private fun showPersonaOptionsDialog(persona: UserPersona, anchor: View, onUpdate: () -> Unit) {
@@ -4499,6 +4685,13 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         dialog.setView(dialogView)
         dialog.show()
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.9).toInt(),
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    }
+}
+dDrawableResource(android.R.color.transparent)
         dialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.9).toInt(),
             android.view.ViewGroup.LayoutParams.WRAP_CONTENT

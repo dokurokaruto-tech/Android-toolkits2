@@ -76,6 +76,19 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <ImageButton
+        android:id="@+id/btn_chat_set_images"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/circle_bg_dark"
+        android:contentDescription="現在のセットの画像"
+        android:src="@drawable/ic_image_grid"
+        app:tint="#FFFFFF"
+        app:layout_constraintBottom_toBottomOf="@id/btn_options"
+        app:layout_constraintEnd_toStartOf="@id/btn_options"
+        app:layout_constraintTop_toTopOf="@id/btn_options" />
+
     <TextView
         android:id="@+id/tv_magic_stone_counter"
         android:layout_width="wrap_content"
@@ -111,7 +124,7 @@
         android:textStyle="bold"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/btn_options"
-        app:layout_constraintEnd_toStartOf="@id/btn_options"
+        app:layout_constraintEnd_toStartOf="@id/btn_chat_set_images"
         app:layout_constraintTop_toTopOf="@id/btn_options" />
 
     <!-- チャット入力と拡張メニューのコンテナ -->
