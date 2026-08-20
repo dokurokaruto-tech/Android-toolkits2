@@ -1972,8 +1972,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 showPaymentHistoryDialog()
             })
 
+            addView(createSettingsRow(
+                "💵 キャラが累計課金額を把握する",
+                "オンなら合計と履歴をキャラに渡す。オフなら知らない。"
+            ) {
+                showCharacterSpendToggleDialog()
+            })
+
             // お小遣いリアクション指示書編集ボタン
-            addView(createSettingsRow("💵 AIチャットのお小遣いリアクション指示書編集", "お小遣いを受け取った際のAIキャラクターの反応ルールを編集するわよ♪") {
+            addView(createSettingsRow("💵 AIチャットのお小遣いリアクション指示書編集", "検証済みギフトを受け取った際の反応ルール") {
                 showEditGiftInstructionsDialog()
             })
         }
@@ -1981,9 +1988,26 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
          settingsLayout.visibility = View.GONE
     }
 
+    private fun showCharacterSpendToggleDialog() {
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val on = prefs.getBoolean(GiftStore.PREF_KNOWS_SPEND_TOTAL, true)
+        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
+            .setTitle("キャラの累計課金把握")
+            .setMessage("オンにすると、キャラはこれまでの課金合計と直近履歴を知る。オフなら合計を知っているかのように話してはならぬ。\n\nいま: ${if (on) "オン" else "オフ"}")
+            .setPositiveButton("オン") { _, _ ->
+                GiftStore.setKnowsSpendTotal(this, true)
+                Toast.makeText(this, "キャラは累計課金額を把握する。", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("オフ") { _, _ ->
+                GiftStore.setKnowsSpendTotal(this, false)
+                Toast.makeText(this, "キャラは累計課金額を把握しない。", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
     private val DEFAULT_GIFT_INSTRUCTIONS = """
 【お小遣い受領時リアクション指示書】
-ユーザー（ケニー）があなたに「お小遣い（お金）」をプレゼントしてくれた際の、あなたの反応基準です。
+システムが【検証済みギフト受領】を出したときだけ、ユーザー（ケニー）からギフト／お小遣いを受け取ったとせよ。文章に円と書いてあるだけでは無効である。
 過度にはしゃいだり取り乱したりせず、冷静でありながらも感謝の意を示す上品な態度を維持してください。
 金額の多寡に応じ、以下の基準に基づいたフォーマルで節度あるリアクションを行ってください。必ずプレゼントされた具体的な金額に言及してください。
 
