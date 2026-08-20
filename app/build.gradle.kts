@@ -21,9 +21,23 @@ android {
         }
     }
 
+    signingConfigs {
+        create("shared") {
+            val keystoreFile = rootProject.file("debug.keystore")
+            if (!keystoreFile.isFile) {
+                error("debug.keystore が見つからないぞ。リポジトリ直下に置け。")
+            }
+            storeFile = keystoreFile
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeType = "PKCS12"
+        }
+    }
+
     buildTypes {
         debug {
-            // Default debug signing config will be used automatically
+            signingConfig = signingConfigs.getByName("shared")
         }
         release {
             isMinifyEnabled = false
@@ -31,6 +45,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
     compileOptions {
