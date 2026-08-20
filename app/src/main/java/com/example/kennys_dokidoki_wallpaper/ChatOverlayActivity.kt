@@ -150,22 +150,37 @@ class ChatAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
         if (payloads.any { it == PAYLOAD_STREAM }) {
-            val node = messages[position].node
-            if (node.isUser) {
-                holder.textUser.text = node.text
-            } else {
-                holder.textAi.text = ChatSuggestionParser.visibleText(node.text)
-                holder.layoutSuggestions.visibility = View.GONE
-                val streaming = node.text.startsWith("思考中") ||
-                    node.text.startsWith("推論中") ||
-                    node.text.startsWith("🧠") ||
-                    node.text.startsWith("📥")
-                holder.btnAiRegen.visibility = if (streaming) View.GONE else View.VISIBLE
-                holder.btnAiCopy.visibility = if (streaming) View.GONE else View.VISIBLE
-            }
+            bindStreamingPayload(holder, messages[position].node)
             return
         }
         super.onBindViewHolder(holder, position, payloads)
+    }
+
+    fun bindStreamingPayload(holder: ViewHolder, node: ChatNode) {
+        if (node.isUser) {
+            holder.textUser.text = node.text
+            return
+        }
+        holder.textAi.text = ChatSuggestionParser.visibleText(node.text)
+        holder.layoutSuggestions.visibility = View.GONE
+        val streaming = node.text.startsWith("思考中") ||
+            node.text.startsWith("推論中") ||
+            node.text.startsWith("🧠") ||
+            node.text.startsWith("📥")
+        holder.btnAiRegen.visibility = if (streaming) View.GONE else View.VISIBLE
+        holder.btnAiCopy.visibility = if (streaming) View.GONE else View.VISIBLE
+    }
+
+    override fun onViewAttachedToWindow(holder: ViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        val pos = holder.bindingAdapterPosition
+        if (pos !in messages.indices) return
+        val node = messages[pos].node
+        if (node.isUser) return
+        val visible = ChatSuggestionParser.visibleText(node.text)
+        if (holder.textAi.text.toString() != visible) {
+            onBindViewHolder(holder, pos)
+        }
     }
 
     override fun getItemId(position: Int): Long {
@@ -701,6 +716,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         )
     }
 
+    private fun lastVisibleChatPosition(): Int {
+        if (!::recyclerView.isInitialized) return RecyclerView.NO_POSITION
+        val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return RecyclerView.NO_POSITION
+        return lm.findLastVisibleItemPosition()
+    }
+
     private fun followChatIfStuck() {
         if (shouldMoveChatWithGeneration()) {
             scrollChatToBottom()
@@ -710,12 +731,30 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun applyStreamingItemChange(index: Int) {
-        if (!shouldMoveChatWithGeneration()) {
-            cancelPendingBottomScroll()
-            return
+        if (!::adapter.isInitialized) return
+        val holder = if (::recyclerView.isInitialized) {
+            recyclerView.findViewHolderForAdapterPosition(index) as? ChatAdapter.ViewHolder
+        } else {
+            null
         }
-        adapter.notifyItemChanged(index, ChatAdapter.PAYLOAD_STREAM)
-        scrollChatToBottom()
+        val attached = holder != null
+        val bind = ChatAutoScrollPolicy.shouldBindStreamingText(
+            itemIsAttached = attached,
+            lastVisiblePosition = lastVisibleChatPosition(),
+            changedIndex = index
+        )
+        if (bind) {
+            if (holder != null && index in displayMessages.indices) {
+                adapter.bindStreamingPayload(holder, displayMessages[index].node)
+            } else {
+                adapter.notifyItemChanged(index, ChatAdapter.PAYLOAD_STREAM)
+            }
+        }
+        if (shouldMoveChatWithGeneration()) {
+            scrollChatToBottom()
+        } else {
+            cancelPendingBottomScroll()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1875,16 +1914,28 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             val move = shouldMoveChatWithGeneration()
             if (index >= 0 && ::adapter.isInitialized) {
                 if (isComplete || error != null) {
-                    if (move) {
-                        adapter.notifyItemChanged(index)
-                        followChatIfStuck()
+                    val holder = if (::recyclerView.isInitialized) {
+                        recyclerView.findViewHolderForAdapterPosition(index)
+                    } else {
+                        null
                     }
+                    val bind = ChatAutoScrollPolicy.shouldBindStreamingText(
+                        itemIsAttached = holder != null,
+                        lastVisiblePosition = lastVisibleChatPosition(),
+                        changedIndex = index
+                    )
+                    if (bind) {
+                        adapter.notifyItemChanged(index)
+                    }
+                    followChatIfStuck()
                 } else {
                     applyStreamingItemChange(index)
                 }
             } else if (move) {
                 buildDisplayList()
                 followChatIfStuck()
+            } else if (index < 0 && ::adapter.isInitialized) {
+                buildDisplayList()
             }
 
             if (isComplete) {

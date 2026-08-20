@@ -156,14 +156,6 @@ class ChatAutoScrollPolicyTest {
         )
         assertFalse(
             ChatAutoScrollPolicy.shouldMoveWithGeneration(
-                stuckToBottom = true,
-                userInteracting = false,
-                distanceFromBottomPx = 12,
-                leaveThresholdPx = 8
-            )
-        )
-        assertFalse(
-            ChatAutoScrollPolicy.shouldMoveWithGeneration(
                 stuckToBottom = false,
                 userInteracting = false,
                 distanceFromBottomPx = 0
@@ -176,20 +168,37 @@ class ChatAutoScrollPolicyTest {
                 distanceFromBottomPx = 0
             )
         )
+    }
+
+    @Test
+    fun `growing the last bubble must not freeze text while still stuck`() {
         assertTrue(
             ChatAutoScrollPolicy.shouldMoveWithGeneration(
                 stuckToBottom = true,
                 userInteracting = false,
-                distanceFromBottomPx = 8,
+                distanceFromBottomPx = 48,
                 leaveThresholdPx = 8
             )
         )
+        assertTrue(
+            ChatAutoScrollPolicy.shouldBindStreamingText(
+                itemIsAttached = true,
+                lastVisiblePosition = 4,
+                changedIndex = 9
+            )
+        )
         assertFalse(
-            ChatAutoScrollPolicy.shouldMoveWithGeneration(
-                stuckToBottom = true,
-                userInteracting = false,
-                distanceFromBottomPx = 1,
-                leaveThresholdPx = 0
+            ChatAutoScrollPolicy.shouldBindStreamingText(
+                itemIsAttached = false,
+                lastVisiblePosition = 4,
+                changedIndex = 9
+            )
+        )
+        assertTrue(
+            ChatAutoScrollPolicy.shouldBindStreamingText(
+                itemIsAttached = false,
+                lastVisiblePosition = 9,
+                changedIndex = 9
             )
         )
     }

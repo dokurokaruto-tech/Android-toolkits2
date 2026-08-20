@@ -59,18 +59,31 @@ object ChatAutoScrollPolicy {
     }
 
     /**
-     * 一番下にいるときだけ生成で画面を動かしてよい。
-     * 中途半端な位置・ドラッグ中は、トークンが増えてもスクロールもレイアウトもするな。
+     * 生成でリストを末尾へ動かしてよいか。stick 中はバブルが伸びて
+     * distance が一瞬増えても追従を切るな。切ると文章の描画が凍る。
      */
+    @Suppress("UNUSED_PARAMETER")
     fun shouldMoveWithGeneration(
         stuckToBottom: Boolean,
         userInteracting: Boolean,
-        distanceFromBottomPx: Int,
+        distanceFromBottomPx: Int = 0,
         leaveThresholdPx: Int = DEFAULT_LEAVE_THRESHOLD_PX
     ): Boolean {
-        if (userInteracting) return false
-        if (!stuckToBottom) return false
-        return distanceFromBottomPx <= leaveThresholdPx.coerceAtLeast(0)
+        return shouldFollowGeneration(stuckToBottom, userInteracting)
+    }
+
+    /**
+     * 生成中の本文は、画面に付いているか見えるなら必ず書け。
+     * 画面外の末尾は notify すると stackFromEnd が跳ねるので触るな。
+     * スクロールで付いたときに bind し直せ。
+     */
+    fun shouldBindStreamingText(
+        itemIsAttached: Boolean,
+        lastVisiblePosition: Int,
+        changedIndex: Int
+    ): Boolean {
+        if (itemIsAttached) return true
+        return !shouldSkipOffscreenUpdate(lastVisiblePosition, changedIndex)
     }
 
     /**
