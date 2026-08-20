@@ -169,7 +169,7 @@ class MyWallpaperService : WallpaperService() {
         }
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-            if (key == "active_album_name" || key == "active_album_name_homescreen" || key == "active_album_name_chat" || key == "is_chat_active" || key == "active_image_index" || key == "all_images" || key == "image_sets") {
+            if (key == "active_album_name" || key == "active_album_name_homescreen" || key == "active_album_name_chat" || key == "is_chat_active" || key == "active_image_index" || key == "all_images" || key == "image_sets" || key == DataManager.KEY_REVISION) {
                 Handler(Looper.getMainLooper()).post {
                     if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                         currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)

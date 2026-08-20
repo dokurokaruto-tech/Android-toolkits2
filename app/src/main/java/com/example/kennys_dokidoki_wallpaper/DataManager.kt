@@ -13,6 +13,7 @@ object DataManager {
     private const val PREFS_NAME = "wallpaper_prefs"
     private const val KEY_ALL_IMAGES = "all_images"
     private const val KEY_IMAGE_SETS = "image_sets"
+    const val KEY_REVISION = "data_revision"
 
     val allImages = mutableListOf<ImageEntry>()
     val imageSetList = mutableListOf<ImageSet>()
@@ -25,7 +26,11 @@ object DataManager {
     private var isLoading = false
 
     @Synchronized
-    fun loadData(context: Context) {
+    fun loadData(context: Context, forceReload: Boolean = false) {
+        if (isLoaded && !forceReload) {
+            Log.d("DataManager", "loadData: already loaded, skip.")
+            return
+        }
         if (isLoading) {
             Log.d("DataManager", "loadData: already loading, skip.")
             return
@@ -33,9 +38,23 @@ object DataManager {
         isLoading = true
         try {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            
-            val imagesJson = prefs.getString(KEY_ALL_IMAGES, null)
-            allImages.clear()
+            val dataFile = dataFile(context)
+            val fileJson = AtomicFiles.readUtf8(dataFile)
+            var loadedFromPrefs = false
+
+            val imagesJson: String?
+            val setsJson: String?
+            if (!fileJson.isNullOrBlank()) {
+                val root = JSONObject(fileJson)
+                imagesJson = root.optJSONArray("all_images")?.toString()
+                setsJson = root.optJSONArray("image_sets")?.toString()
+            } else {
+                imagesJson = prefs.getString(KEY_ALL_IMAGES, null)
+                setsJson = prefs.getString(KEY_IMAGE_SETS, null)
+                loadedFromPrefs = imagesJson != null || setsJson != null
+            }
+
+            val newImages = mutableListOf<ImageEntry>()
             if (imagesJson != null) {
                 val array = JSONArray(imagesJson)
                 for (i in 0 until array.length()) {
@@ -58,10 +77,14 @@ object DataManager {
                     } else null
                     
                     // 紐付けられたチャットIDの読み込み
-                    val linkedChatId = if (obj.has("linkedChatId")) obj.getString("linkedChatId") else null
+                    val linkedChatId = if (obj.has("linkedChatId") && !obj.isNull("linkedChatId")) {
+                        obj.optString("linkedChatId", null)
+                    } else null
                     
                     // 直接説明文の読み込み
-                    val description = if (obj.has("description")) obj.getString("description") else null
+                    val description = if (obj.has("description") && !obj.isNull("description")) {
+                        obj.optString("description", null)
+                    } else null
 
                     val tags = mutableSetOf<String>()
                     val tagsArray = obj.optJSONArray("tags") ?: JSONArray()
@@ -71,12 +94,11 @@ object DataManager {
                     
                     val entry = ImageEntry(uri, tags, isActive, croppedUri, linkedChatId, cropRect, description)
                     sortEntryTags(context, entry)
-                    allImages.add(entry)
+                    newImages.add(entry)
                 }
             }
 
-            val setsJson = prefs.getString(KEY_IMAGE_SETS, null)
-            imageSetList.clear()
+            val newSets = mutableListOf<ImageSet>()
             if (setsJson != null) {
                 val array = JSONArray(setsJson)
                 for (i in 0 until array.length()) {
@@ -106,11 +128,26 @@ object DataManager {
                     for (j in 0 until tagsArray.length()) {
                         set.targetTags.add(tagsArray.getString(j))
                     }
-                    imageSetList.add(set)
+                    newSets.add(set)
                 }
             }
+
+            allImages.clear()
+            allImages.addAll(newImages)
+            imageSetList.clear()
+            imageSetList.addAll(newSets)
+            ChatSessionManager.applyImageLinks(context, allImages)
             isLoaded = true
             Log.i("DataManager", "loadData: successfully loaded ${allImages.size} images and ${imageSetList.size} sets.")
+
+            if (loadedFromPrefs) {
+                persistToFile(context)
+                prefs.edit()
+                    .remove(KEY_ALL_IMAGES)
+                    .remove(KEY_IMAGE_SETS)
+                    .putLong(KEY_REVISION, System.currentTimeMillis())
+                    .apply()
+            }
         } catch (e: Exception) {
             Log.e("DataManager", "loadData failed!", e)
         } finally {
@@ -136,7 +173,7 @@ object DataManager {
     }
 
     @Synchronized
-    fun saveData(context: Context) {
+    fun saveData(context: Context, createBackup: Boolean = true) {
         if (!isLoaded) {
             Log.e("DataManager", "saveData BLOCKED: Data has not been fully loaded yet. Preventing accidental overwrite!")
             return
@@ -148,8 +185,30 @@ object DataManager {
             return
         }
 
+        try {
+            persistToFile(context)
+        } catch (e: Exception) {
+            Log.e("DataManager", "saveData failed to persist file!", e)
+            return
+        }
+
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        
+        prefs.edit()
+            .remove(KEY_ALL_IMAGES)
+            .remove(KEY_IMAGE_SETS)
+            .putLong(KEY_REVISION, System.currentTimeMillis())
+            .apply()
+
+        if (createBackup) {
+            BackupManager.createAutoBackup(context)
+        }
+    }
+
+    private fun dataFile(context: Context): File {
+        return File(File(context.filesDir, "app_data").also { if (!it.exists()) it.mkdirs() }, "images_and_sets.json")
+    }
+
+    private fun persistToFile(context: Context) {
         val imagesArray = JSONArray()
         allImages.forEach { entry ->
             val obj = JSONObject().apply {
@@ -200,15 +259,12 @@ object DataManager {
             }
             setsArray.put(obj)
         }
-        
-        prefs.edit().apply {
-            putString(KEY_ALL_IMAGES, imagesArray.toString())
-            putString(KEY_IMAGE_SETS, setsArray.toString())
-            apply()
-        }
 
-        // セーブ成功後、自動バックアップを作成
-        BackupManager.createAutoBackup(context)
+        val root = JSONObject().apply {
+            put("all_images", imagesArray)
+            put("image_sets", setsArray)
+        }
+        AtomicFiles.writeUtf8(dataFile(context), root.toString())
     }
 
     @Synchronized

@@ -214,6 +214,7 @@ object BackupManager {
                     for (j in 0 until tags.length()) set.targetTags.add(tags.getString(j))
                     DataManager.imageSetList.add(set)
                 }
+                DataManager.forceSetLoaded()
                 DataManager.saveData(context)
             }
 
@@ -308,9 +309,11 @@ object BackupManager {
     }
 
     private const val AUTO_BACKUP_LIMIT = 20
+    private const val AUTO_BACKUP_MIN_INTERVAL_MS = 30_000L
     private var lastKnownTagCount = 0
     private var lastKnownImageCount = 0
     private var isRestoring = false
+    private var lastAutoBackupAt = 0L
 
     /**
      * アプリ起動時に、正常に読み込まれた時点のタグ数と画像数を記憶しておくわ！
@@ -385,7 +388,7 @@ object BackupManager {
                 if (importBackup(context, fis)) {
                     Log.i("BackupManager", "Automatic restore successful from ${latestBackup.name}!")
                     TagManager.loadTags(context)
-                    DataManager.loadData(context)
+                    DataManager.loadData(context, forceReload = true)
                     
                     lastKnownTagCount = TagManager.allTags.size
                     lastKnownImageCount = DataManager.allImages.size

@@ -419,7 +419,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        val watchKeys = listOf("all_images", "image_sets", "tag_prompts", "active_image_index", "active_album_name", "show_tags_on_thumbnail", "sort_by_priority_first", "sort_ascending")
+        val watchKeys = listOf("all_images", "image_sets", DataManager.KEY_REVISION, "tag_prompts", "active_image_index", "active_album_name", "show_tags_on_thumbnail", "sort_by_priority_first", "sort_ascending")
         if (key in watchKeys) {
             runOnUiThread {
                 DataManager.loadData(this)
