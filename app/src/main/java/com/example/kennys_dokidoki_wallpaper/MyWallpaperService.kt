@@ -331,10 +331,19 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun toggleAiChatOverlay() {
-            val intent = Intent(applicationContext, ChatOverlayActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            try {
+                val intent = Intent(applicationContext, ChatOverlayActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    )
+                }
+                applicationContext.startActivity(intent)
+            } catch (e: Exception) {
+                android.util.Log.e("MyWallpaperService", "toggleAiChatOverlay failed", e)
             }
-            applicationContext.startActivity(intent)
         }
 
         private fun openApp() {

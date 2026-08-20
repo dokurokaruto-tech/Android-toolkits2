@@ -59,6 +59,21 @@ object ChatAutoScrollPolicy {
     }
 
     /**
+     * 一番下にいるときだけ生成で画面を動かしてよい。
+     * 中途半端な位置・ドラッグ中は、トークンが増えてもスクロールもレイアウトもするな。
+     */
+    fun shouldMoveWithGeneration(
+        stuckToBottom: Boolean,
+        userInteracting: Boolean,
+        distanceFromBottomPx: Int,
+        leaveThresholdPx: Int = DEFAULT_LEAVE_THRESHOLD_PX
+    ): Boolean {
+        if (userInteracting) return false
+        if (!stuckToBottom) return false
+        return distanceFromBottomPx <= leaveThresholdPx.coerceAtLeast(0)
+    }
+
+    /**
      * 画面外の末尾アイテムはレイアウトしない。notify すると stackFromEnd が
      * リストを先頭へ飛ばすことがある。
      */

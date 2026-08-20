@@ -144,4 +144,53 @@ class ChatAutoScrollPolicyTest {
         assertFalse(ChatAutoScrollPolicy.shouldSkipOffscreenUpdate(lastVisiblePosition = 9, changedIndex = 9))
         assertFalse(ChatAutoScrollPolicy.shouldSkipOffscreenUpdate(lastVisiblePosition = -1, changedIndex = 3))
     }
+
+    @Test
+    fun `generation must not move the screen unless pinned to the bottom`() {
+        assertTrue(
+            ChatAutoScrollPolicy.shouldMoveWithGeneration(
+                stuckToBottom = true,
+                userInteracting = false,
+                distanceFromBottomPx = 0
+            )
+        )
+        assertFalse(
+            ChatAutoScrollPolicy.shouldMoveWithGeneration(
+                stuckToBottom = true,
+                userInteracting = false,
+                distanceFromBottomPx = 12,
+                leaveThresholdPx = 8
+            )
+        )
+        assertFalse(
+            ChatAutoScrollPolicy.shouldMoveWithGeneration(
+                stuckToBottom = false,
+                userInteracting = false,
+                distanceFromBottomPx = 0
+            )
+        )
+        assertFalse(
+            ChatAutoScrollPolicy.shouldMoveWithGeneration(
+                stuckToBottom = true,
+                userInteracting = true,
+                distanceFromBottomPx = 0
+            )
+        )
+        assertTrue(
+            ChatAutoScrollPolicy.shouldMoveWithGeneration(
+                stuckToBottom = true,
+                userInteracting = false,
+                distanceFromBottomPx = 8,
+                leaveThresholdPx = 8
+            )
+        )
+        assertFalse(
+            ChatAutoScrollPolicy.shouldMoveWithGeneration(
+                stuckToBottom = true,
+                userInteracting = false,
+                distanceFromBottomPx = 1,
+                leaveThresholdPx = 0
+            )
+        )
+    }
 }
