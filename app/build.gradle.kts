@@ -22,6 +22,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Default debug signing config will be used automatically
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
