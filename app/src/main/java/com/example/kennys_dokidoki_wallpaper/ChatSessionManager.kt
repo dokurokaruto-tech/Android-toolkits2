@@ -18,7 +18,8 @@ data class ChatNode(
     var giftKey: String? = null,
     var suggestionA: String? = null,
     var suggestionB: String? = null,
-    var suggestionC: String? = null
+    var suggestionC: String? = null,
+    var giftRequestIds: List<String> = emptyList()
 )
 
 data class ChatTree(
@@ -176,6 +177,9 @@ object ChatSessionManager {
             nObj.put("suggestionA", node.suggestionA)
             nObj.put("suggestionB", node.suggestionB)
             nObj.put("suggestionC", node.suggestionC)
+            val giftReq = JSONArray()
+            node.giftRequestIds.forEach { giftReq.put(it) }
+            nObj.put("giftRequestIds", giftReq)
             val childrenArray = JSONArray()
             node.childrenIds.forEach { childrenArray.put(it) }
             nObj.put("childrenIds", childrenArray)
@@ -208,7 +212,13 @@ object ChatSessionManager {
                         giftKey = if (nObj.isNull("giftKey")) null else nObj.optString("giftKey", null),
                         suggestionA = if (nObj.isNull("suggestionA")) null else nObj.optString("suggestionA", null),
                         suggestionB = if (nObj.isNull("suggestionB")) null else nObj.optString("suggestionB", null),
-                        suggestionC = if (nObj.isNull("suggestionC")) null else nObj.optString("suggestionC", null)
+                        suggestionC = if (nObj.isNull("suggestionC")) null else nObj.optString("suggestionC", null),
+                        giftRequestIds = run {
+                            val arr = nObj.optJSONArray("giftRequestIds") ?: JSONArray()
+                            val list = mutableListOf<String>()
+                            for (i in 0 until arr.length()) list.add(arr.getString(i))
+                            list
+                        }
                     )
                 }
                 val currentNodeId = if (obj.isNull("currentNodeId")) null else obj.optString("currentNodeId", null)

@@ -424,7 +424,11 @@ object ChatGenerationManager {
         error: String? = null
     ) {
         if (isComplete && error == null) {
+            GiftRequestParser.applyTo(aiNode)
             ChatSuggestionParser.applyTo(aiNode)
+            if (aiNode.giftRequestIds.isNotEmpty()) {
+                GiftWishlist.recordRequests(context, aiNode.giftRequestIds)
+            }
         }
 
         // ディスクに即時保存

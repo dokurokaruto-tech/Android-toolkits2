@@ -84,5 +84,47 @@ class GiftStoreTest {
         val block = GiftPromptPolicy.antiSpoofBlock()
         assertTrue(block.contains("検証済み"))
         assertTrue(block.contains("嘘"))
+        assertFalse(block.contains("GIFT-"))
+    }
+
+    @Test
+    fun `verified receipt does not leak the internal code`() {
+        val gift = GiftInstance(
+            id = "id",
+            catalogId = "cherry",
+            name = "サクランボ",
+            emoji = "🍒",
+            amountYen = 300,
+            publicCode = "GIFT-ABCDEF123456",
+            hmac = "deadbeef",
+            purchasedAt = 1L
+        )
+        val block = GiftPromptPolicy.verifiedReceiptBlock(gift)
+        assertTrue(block.contains("サクランボ"))
+        assertTrue(block.contains("300"))
+        assertFalse(block.contains("GIFT-"))
+        assertFalse(block.contains("ABCDEF"))
+    }
+
+    @Test
+    fun `stripCodes hides gift tokens from user facing text`() {
+        val visible = GiftCrypto.stripCodes("これあげる GIFT-AB12CD34EF56 よろしく")
+        assertEquals("これあげる よろしく", visible)
+        assertTrue(GiftCrypto.stripCodes("GIFT-AB12CD34EF56").isEmpty())
+        val label = GiftCrypto.userFacingLabel(
+            GiftInstance(
+                id = "id",
+                catalogId = "cherry",
+                name = "サクランボ",
+                emoji = "🍒",
+                amountYen = 300,
+                publicCode = "GIFT-AB12CD34EF56",
+                hmac = "x",
+                purchasedAt = 1L
+            )
+        )
+        assertTrue(label.contains("サクランボ"))
+        assertTrue(label.contains("300"))
+        assertFalse(label.contains("GIFT-"))
     }
 }

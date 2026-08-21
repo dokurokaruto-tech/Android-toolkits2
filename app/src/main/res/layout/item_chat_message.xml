@@ -124,6 +124,35 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- ギフト要求（フラグを読めたときだけ。本文には出さない） -->
+        <LinearLayout
+            android:id="@+id/layout_gift_request"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="10dp"
+            android:padding="10dp"
+            android:visibility="gone"
+            android:background="@drawable/bg_glass_panel">
+
+            <TextView
+                android:id="@+id/tv_gift_request_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🎁 ほしいもの"
+                android:textColor="#FF2A6D"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08" />
+
+            <LinearLayout
+                android:id="@+id/gift_request_items"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="6dp" />
+        </LinearLayout>
+
         <!-- サジェスト返信用のコンテナ -->
         <LinearLayout
             android:id="@+id/layout_suggestions"

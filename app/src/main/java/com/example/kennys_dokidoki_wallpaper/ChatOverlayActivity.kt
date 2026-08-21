@@ -135,7 +135,8 @@ class ChatAdapter(
     private val onRegenerate: (ChatNode) -> Unit,
     private val onEditUser: (ChatNode) -> Unit,
     private val onNavigateBranch: (ChatNode, Int) -> Unit,
-    private val onSelectSuggestion: (String) -> Unit
+    private val onSelectSuggestion: (String) -> Unit,
+    private val onGiftRequestClick: (GiftCatalogItem) -> Unit
 ) : RecyclerView.Adapter<ChatAdapter.ViewHolder>() {
     companion object {
         const val PAYLOAD_STREAM = "stream"
@@ -164,6 +165,7 @@ class ChatAdapter(
         }
         holder.textAi.text = ChatSuggestionParser.visibleText(node.text)
         holder.layoutSuggestions.visibility = View.GONE
+        holder.layoutGiftRequest.visibility = View.GONE
         val streaming = node.text.startsWith("思考中") ||
             node.text.startsWith("推論中") ||
             node.text.startsWith("🧠") ||
@@ -208,6 +210,8 @@ class ChatAdapter(
         val btnSuggestA: TextView = view.findViewById(R.id.btn_suggest_a)
         val btnSuggestB: TextView = view.findViewById(R.id.btn_suggest_b)
         val btnSuggestC: TextView = view.findViewById(R.id.btn_suggest_c)
+        val layoutGiftRequest: LinearLayout = view.findViewById(R.id.layout_gift_request)
+        val giftRequestItems: LinearLayout = view.findViewById(R.id.gift_request_items)
 
         val containerUser: LinearLayout = view.findViewById(R.id.container_user)
         val textUser: TextView = view.findViewById(R.id.text_message_user)
@@ -228,9 +232,50 @@ class ChatAdapter(
 
     private fun copyToClipboard(context: Context, text: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("chat_message", text)
+        val clip = ClipData.newPlainText("chat_message", GiftCrypto.stripCodes(text))
         clipboard.setPrimaryClip(clip)
         Toast.makeText(context, "クリップボードにコピーしました。", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun bindGiftRequestPanel(holder: ViewHolder, node: ChatNode) {
+        val ids = node.giftRequestIds
+        if (ids.isEmpty()) {
+            holder.layoutGiftRequest.visibility = View.GONE
+            return
+        }
+        val ctx = holder.itemView.context
+        val pending = GiftWishlist.pendingIds(ctx)
+        holder.layoutGiftRequest.visibility = View.VISIBLE
+        holder.giftRequestItems.removeAllViews()
+        ids.forEach { id ->
+            val item = GiftStore.catalogItem(id) ?: return@forEach
+            val stillWanted = id in pending
+            val price = item.amountYen?.let { "￥${String.format("%,d", it)}" } ?: "金額指定"
+            val row = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(4, 8, 4, 8)
+            }
+            row.addView(TextView(ctx).apply {
+                text = if (stillWanted) "${item.emoji}  ${item.name}  $price" else "${item.emoji}  ${item.name}  渡した"
+                setTextColor(if (stillWanted) Color.WHITE else Color.parseColor("#8892B0"))
+                textSize = 13f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            row.addView(TextView(ctx).apply {
+                text = if (stillWanted) "渡す" else "済"
+                setTextColor(if (stillWanted) Color.parseColor("#FF2A6D") else Color.parseColor("#8892B0"))
+                textSize = 12f
+                setTypeface(null, Typeface.BOLD)
+            })
+            if (stillWanted) {
+                row.setOnClickListener { onGiftRequestClick(item) }
+            }
+            holder.giftRequestItems.addView(row)
+        }
+        if (holder.giftRequestItems.childCount == 0) {
+            holder.layoutGiftRequest.visibility = View.GONE
+        }
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
@@ -245,7 +290,14 @@ class ChatAdapter(
             holder.containerAi.visibility = View.GONE
             holder.containerUser.visibility = View.VISIBLE
             
-            holder.textUser.text = node.text
+            val giftKey = node.giftKey
+            val verifiedGift = GiftStore.findVerified(holder.itemView.context, giftKey)
+            val visibleUser = GiftCrypto.stripCodes(node.text)
+            holder.textUser.text = when {
+                visibleUser.isNotEmpty() -> visibleUser
+                verifiedGift != null -> "${verifiedGift.emoji} ${verifiedGift.name} を渡した"
+                else -> node.text
+            }
             holder.textUser.background.alpha = alpha
             
             holder.textUser.maxWidth = maxWidthPx
@@ -257,8 +309,6 @@ class ChatAdapter(
                 width = maxWidthPx
             }
 
-            val giftKey = node.giftKey
-            val verifiedGift = GiftStore.findVerified(holder.itemView.context, giftKey)
             if (verifiedGift != null) {
                 holder.layoutUserGift.visibility = View.VISIBLE
                 holder.layoutUserGift.background = android.graphics.drawable.GradientDrawable().apply {
@@ -267,7 +317,7 @@ class ChatAdapter(
                     cornerRadius = 24f
                 }
                 holder.tvUserGiftIcon.text = verifiedGift.emoji
-                holder.tvUserGiftName.text = "検証済: ${verifiedGift.name} ￥${String.format("%,d", verifiedGift.amountYen)}  ${verifiedGift.publicCode}"
+                holder.tvUserGiftName.text = GiftCrypto.userFacingLabel(verifiedGift)
             } else {
                 holder.layoutUserGift.visibility = View.GONE
             }
@@ -433,6 +483,8 @@ class ChatAdapter(
             } else {
                 holder.layoutSuggestions.visibility = View.GONE
             }
+
+            bindGiftRequestPanel(holder, node)
         }
     }
     override fun getItemCount() = messages.size
@@ -477,9 +529,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private lateinit var tvMagicStoneCounter: TextView
     private lateinit var btnGiftSelect: Button
     private lateinit var tvSelectedGift: TextView
+    private lateinit var tvGiftWishBanner: TextView
     private lateinit var btnClearGift: ImageButton
 
-    // 所持ギフトから選んだ、まだ渡していない暗号
+    // 所持ギフトから選んだ、まだ渡していない品（内部符号は画面に出さない）
     private var selectedGiftCode: String? = null
 
     private lateinit var chatInput: EditText
@@ -892,6 +945,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             },
             onSelectSuggestion = { text ->
                 sendSuggestedMessage(text)
+            },
+            onGiftRequestClick = { item ->
+                val match = GiftStore.unused(this).find { it.catalogId == item.id }
+                if (match != null) {
+                    attachGift(match)
+                } else {
+                    Toast.makeText(this, "${item.emoji} ${item.name} はまだ持っておらぬ。ショップで買え。", Toast.LENGTH_SHORT).show()
+                    showGiftHubDialog()
+                }
             }
         )
         recyclerView.adapter = adapter
@@ -980,11 +1042,16 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         btnGiftSelect.text = "🎁 ギフト"
 
         tvSelectedGift = findViewById(R.id.tv_selected_gift)
+        tvGiftWishBanner = findViewById(R.id.tv_gift_wish_banner)
         btnClearGift = findViewById(R.id.btn_clear_gift)
 
         btnGiftSelect.setOnClickListener {
             showGiftHubDialog()
         }
+        tvGiftWishBanner.setOnClickListener {
+            showGiftHubDialog()
+        }
+        updateGiftWishBanner()
 
         btnClearGift.setOnClickListener {
             clearSelectedGift()
@@ -1201,18 +1268,22 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
 
         btnSend.setOnClickListener {
-            val typed = chatInput.text.toString().trim()
+            val typedRaw = chatInput.text.toString().trim()
+            val typed = GiftCrypto.stripCodes(typedRaw)
             val unusedCodes = GiftStore.unused(this).map { it.publicCode }.toSet()
-            val codeToRedeem = GiftPromptPolicy.resolveEvent(selectedGiftCode, typed, unusedCodes)
+            val codeToRedeem = GiftPromptPolicy.resolveEvent(selectedGiftCode, typedRaw, unusedCodes)
             if (typed.isEmpty() && codeToRedeem == null) return@setOnClickListener
 
             val redeemed = codeToRedeem?.let { GiftStore.redeem(this, it) }
             val text = when {
-                typed.isNotEmpty() && redeemed != null && !typed.uppercase().contains(redeemed.publicCode) ->
-                    "$typed\n${redeemed.publicCode}"
                 typed.isNotEmpty() -> typed
-                redeemed != null -> redeemed.publicCode
+                redeemed != null -> "${redeemed.emoji} ${redeemed.name} を渡した"
                 else -> return@setOnClickListener
+            }
+            if (redeemed != null) {
+                GiftWishlist.fulfill(this, redeemed.catalogId)
+            } else if (GiftWishlist.hasPending(this)) {
+                GiftWishlist.onUnfulfilledTurn(this)
             }
 
             hideKeyboard()
@@ -1230,6 +1301,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             sendToLlm(newNode, recyclerView, 500)
             chatInput.text.clear()
             clearSelectedGift()
+            updateGiftWishBanner()
         }
     }
 
@@ -1858,16 +1930,17 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val engine = prefs.getString("chat_llm_engine", "CLOUD") ?: "CLOUD"
         
-        val systemPrompt = "あなたはAIキャラクターです。\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
-        val sessionId = currentChatId ?: ""
         val userNode = chatTree.nodes[parentId] ?: return
+        var systemPrompt = "あなたはAIキャラクターです。\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
+        systemPrompt += giftSystemSuffix(verifiedGift = GiftStore.findVerified(this, userNode.giftKey))
+        val sessionId = currentChatId ?: ""
         
         ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, newAiNode, 500)
     }
 
     private fun showEditUserMessageDialog(userNode: ChatNode, recyclerView: RecyclerView) {
         val input = EditText(this).apply {
-            setText(userNode.text)
+            setText(GiftCrypto.stripCodes(userNode.text))
             setTextColor(Color.WHITE)
         }
         AlertDialog.Builder(this, R.style.Theme_TransparentDialog)
@@ -1950,6 +2023,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
         }
         ChatGenerationManager.registerListener(this)
+        updateGiftWishBanner()
     }
 
     override fun onPause() {
@@ -2031,6 +2105,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
             if (isComplete) {
                 updateCounter()
+                updateGiftWishBanner()
             }
         }
     }
@@ -2587,7 +2662,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         } else {
             recentMessages.forEach { msg ->
                 val speaker = if (msg.isUser) "あなた" else "AI"
-                previewText.append("[$speaker]\n${msg.text}\n\n")
+                previewText.append("[$speaker]\n${GiftCrypto.stripCodes(msg.text)}\n\n")
             }
         }
         
@@ -2823,6 +2898,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             createNewSessionFromTags(isAutoGenerated = true)
         }
 
+        if (GiftWishlist.hasPending(this)) {
+            GiftWishlist.onUnfulfilledTurn(this)
+        }
         val newNode = ChatNode(text = text, isUser = true, parentId = chatTree.currentNodeId, giftKey = null)
         addNodeToTree(newNode)
         sendToLlm(newNode, recyclerView, totalCost)
@@ -2830,6 +2908,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         hideKeyboard()
         chatInput.text.clear()
         clearSelectedGift()
+        updateGiftWishBanner()
     }
 
     private fun sendToLlm(userNode: ChatNode, recyclerView: RecyclerView, pendingCost: Int) {
@@ -2854,21 +2933,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val verifiedGift = GiftStore.findVerified(this, userNode.giftKey)
         
         var systemPrompt = "あなたはAIキャラクターです。\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
-        systemPrompt += "\n\n" + GiftPromptPolicy.antiSpoofBlock()
-        systemPrompt += "\n\n" + GiftPromptPolicy.spendAwarenessBlock(
-            enabled = GiftStore.knowsSpendTotal(this),
-            totalYen = getTotalPaymentAmount(),
-            history = getPaymentHistoryForPrompt()
-        )
-        
+        systemPrompt += giftSystemSuffix(verifiedGift = verifiedGift)
+
         val giftInstructions = prefs.getString("gift_instructions", DEFAULT_GIFT_INSTRUCTIONS) ?: DEFAULT_GIFT_INSTRUCTIONS
         systemPrompt += "\n\n【お小遣い受領時リアクション指示書】\n$giftInstructions"
         
         val unpaidCount = getUnpaidChatCount()
         
-        if (verifiedGift != null) {
-            systemPrompt += "\n\n" + GiftPromptPolicy.verifiedReceiptBlock(verifiedGift)
-        } else if (unpaidCount > 0) {
+        if (verifiedGift == null && unpaidCount > 0) {
             val severityPrompt = when (unpaidCount) {
                 1 -> """
                     【無課金チャット1回目：軽い戸惑い・チャージのおねだり】
@@ -4139,6 +4211,40 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         )
     }
 
+    private fun updateGiftWishBanner() {
+        if (!::tvGiftWishBanner.isInitialized) return
+        val pending = GiftWishlist.pending(this)
+        if (pending.isEmpty()) {
+            tvGiftWishBanner.visibility = View.GONE
+            return
+        }
+        val first = pending.first()
+        val extra = if (pending.size > 1) " ほか${pending.size - 1}" else ""
+        tvGiftWishBanner.text = "${first.emoji} ほしいもの$extra"
+        tvGiftWishBanner.visibility = View.VISIBLE
+    }
+
+    private fun giftSystemSuffix(verifiedGift: GiftInstance?): String {
+        val b = StringBuilder()
+        b.append("\n\n").append(GiftPromptPolicy.antiSpoofBlock())
+        b.append("\n\n").append(
+            GiftPromptPolicy.spendAwarenessBlock(
+                enabled = GiftStore.knowsSpendTotal(this),
+                totalYen = getTotalPaymentAmount(),
+                history = getPaymentHistoryForPrompt()
+            )
+        )
+        b.append("\n\n").append(GiftMoodPolicy.requestInstructionBlock())
+        val pending = GiftWishlist.pending(this)
+        if (pending.isNotEmpty()) {
+            b.append("\n\n").append(GiftMoodPolicy.moodBlock(pending, GiftWishlist.ignoredTurns(this)))
+        }
+        if (verifiedGift != null) {
+            b.append("\n\n").append(GiftPromptPolicy.verifiedReceiptBlock(verifiedGift))
+        }
+        return b.toString()
+    }
+
     private fun clearSelectedGift() {
         selectedGiftCode = null
         tvSelectedGift.visibility = View.GONE
@@ -4147,10 +4253,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun attachGift(gift: GiftInstance) {
         selectedGiftCode = gift.publicCode
-        tvSelectedGift.text = "${gift.emoji} ${gift.name}  ${gift.publicCode}"
+        tvSelectedGift.text = "${gift.emoji} ${gift.name}"
         tvSelectedGift.visibility = View.VISIBLE
         btnClearGift.visibility = View.VISIBLE
-        Toast.makeText(this, "暗号 ${gift.publicCode} を渡す準備ができた。メッセージを送るか、暗号を本文に書け。", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "${gift.emoji} ${gift.name} を渡す準備ができた。メッセージを送れ。", Toast.LENGTH_LONG).show()
     }
 
     private fun showGiftHubDialog() {
@@ -4190,7 +4296,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         root.addView(header)
 
         root.addView(TextView(this).apply {
-            text = "ショップで買ったギフトの暗号（GIFT-…）を渡したときだけ、キャラは本当に受け取ったと認める。文章に円と書いただけでは無効じゃ。"
+            text = "ショップで買ったギフトを選んで渡したときだけ、キャラは本当に受け取ったと認める。文章に円と書いただけでは無効じゃ。"
             setTextColor(android.graphics.Color.parseColor("#A0AEC0"))
             textSize = 11f
             setPadding(0, 0, 0, 16)
@@ -4222,7 +4328,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             })
         } else {
             unused.forEach { gift ->
-                body.addView(makeGiftRow("${gift.emoji} ${gift.name}  ￥${String.format("%,d", gift.amountYen)}\n${gift.publicCode}", GiftStore.catalogItem(gift.catalogId)) {
+                body.addView(makeGiftRow("${gift.emoji} ${gift.name}  ￥${String.format("%,d", gift.amountYen)}", GiftStore.catalogItem(gift.catalogId)) {
                     attachGift(gift)
                     dialog.dismiss()
                 })
@@ -4318,7 +4424,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
         AlertDialog.Builder(this, R.style.Theme_TransparentDialog)
             .setTitle("お小遣い袋を買う")
-            .setMessage("ショップで買って暗号を発行する。文章に円と書いただけではキャラは受け取らぬ。")
+            .setMessage("ショップで買って渡せ。文章に円と書いただけではキャラは受け取らぬ。")
             .setView(input)
             .setPositiveButton("購入") { _, _ ->
                 val amount = input.text.toString().trim().toIntOrNull()
@@ -4345,7 +4451,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 attachGift(result.gift)
                 Toast.makeText(
                     this,
-                    "購入した。暗号は ${result.gift.publicCode} じゃ。これを渡さねば受け取ったことにならぬ。",
+                    "購入した。${result.gift.emoji} ${result.gift.name} を渡す準備ができた。",
                     Toast.LENGTH_LONG
                 ).show()
             }
