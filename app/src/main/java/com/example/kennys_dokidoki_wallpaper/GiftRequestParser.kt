@@ -129,6 +129,15 @@ object GiftMoodPolicy {
         return (currentIgnored + 1).coerceAtMost(99)
     }
 
+    fun moodBlockForPrompt(
+        pending: List<GiftWish>,
+        ignoredTurns: Int,
+        verifiedGift: GiftInstance?
+    ): String {
+        if (verifiedGift != null) return ""
+        return moodBlock(pending, ignoredTurns)
+    }
+
     fun moodBlock(pending: List<GiftWish>, ignoredTurns: Int): String {
         if (pending.isEmpty()) return ""
         val list = pending.joinToString("\n") { "- ${it.emoji} ${it.name} ￥${"%,d".format(it.amountYen)}" }
