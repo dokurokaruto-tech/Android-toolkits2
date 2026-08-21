@@ -139,6 +139,10 @@ object GiftStore {
         return if (verify(context, found)) found else null
     }
 
+    fun orphanedRedeemed(context: Context, usedCodes: Set<String>): GiftInstance? {
+        return all(context).find { it.isRedeemed && it.publicCode !in usedCodes }
+    }
+
     fun extractRedeemableCode(context: Context, text: String): String? {
         val unusedCodes = unused(context).map { it.publicCode }.toSet()
         return GiftCrypto.extractCodes(text).firstOrNull { it in unusedCodes }
