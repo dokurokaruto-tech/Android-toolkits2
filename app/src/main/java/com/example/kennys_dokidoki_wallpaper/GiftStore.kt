@@ -382,7 +382,7 @@ object GiftWishlist {
         val array = JSONArray()
         state.pending.forEach { wish ->
             array.put(JSONObject().apply {
-                put("catalogId", wish.catalogId)
+                put("amountYen", wish.amountYen)
                 put("name", wish.name)
                 put("emoji", wish.emoji)
             })
