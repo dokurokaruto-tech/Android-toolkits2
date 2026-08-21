@@ -496,7 +496,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private lateinit var tvGiftWishBanner: TextView
     private lateinit var btnClearGift: ImageButton
 
-    // 所持ギフトから選んだ、まだ渡していない品（内部符号は画面に出さない）
+    // セットしたお小遣い（内部符号は画面に出さない）
     private var selectedGiftCode: String? = null
 
     private lateinit var chatInput: EditText
