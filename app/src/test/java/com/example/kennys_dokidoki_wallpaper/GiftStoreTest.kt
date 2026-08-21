@@ -127,4 +127,81 @@ class GiftStoreTest {
         assertTrue(label.contains("300"))
         assertFalse(label.contains("GIFT-"))
     }
+
+    @Test
+    fun `wishlist json keeps amountYen and skips legacy catalog rows`() {
+        val state = GiftWishlist.State(
+            pending = listOf(GiftWish(amountYen = 15000)),
+            ignoredTurns = 2
+        )
+        val json = GiftWishlist.encodeState(state)
+        assertTrue(json.contains("15000"))
+        assertTrue(json.contains("amountYen"))
+        assertFalse(json.contains("catalogId"))
+        val loaded = GiftWishlist.decodeState(json)
+        assertEquals(15000, loaded.pending.single().amountYen)
+        assertEquals(2, loaded.ignoredTurns)
+
+        val legacy = """{"pending":[{"catalogId":"cherry","name":"サクランボ","emoji":"🍒"}],"ignoredTurns":1}"""
+        assertTrue(GiftWishlist.decodeState(legacy).pending.isEmpty())
+        assertTrue(GiftWishlist.decodeState(null).pending.isEmpty())
+    }
+
+    @Test
+    fun `charge suggestion covers allowance shortfall plus one chat`() {
+        assertEquals(15500, AllowanceCheckout.suggestedChargeYen(15000, 0))
+        assertEquals(700, AllowanceCheckout.suggestedChargeYen(15000, 14800))
+        assertEquals(500, AllowanceCheckout.suggestedChargeYen(10000, 10000))
+        assertTrue(AllowanceCheckout.canPayChat(500))
+        assertFalse(AllowanceCheckout.canPayChat(499))
+    }
+
+    @Test
+    fun `pending unused allowance is picked even without UI selection`() {
+        val unused = listOf(
+            GiftInstance(
+                id = "id",
+                catalogId = "allowance",
+                name = "お小遣い",
+                emoji = "💴",
+                amountYen = 15000,
+                publicCode = "GIFT-REALCODE0001",
+                hmac = "x",
+                purchasedAt = 1L
+            )
+        )
+        val picked = AllowanceCheckout.pickRedeemCode(
+            selectedCode = null,
+            messageText = "はい",
+            unused = unused,
+            pendingYen = 15000
+        )
+        assertEquals("GIFT-REALCODE0001", picked)
+        assertNull(
+            AllowanceCheckout.pickRedeemCode(
+                selectedCode = null,
+                messageText = "はい",
+                unused = unused,
+                pendingYen = 20000
+            )
+        )
+    }
+
+    @Test
+    fun `verified receipt forbids saying cash did not arrive`() {
+        val gift = GiftInstance(
+            id = "id",
+            catalogId = "allowance",
+            name = "お小遣い",
+            emoji = "💴",
+            amountYen = 15000,
+            publicCode = "GIFT-ABCDEF123456",
+            hmac = "x",
+            purchasedAt = 1L
+        )
+        val block = GiftPromptPolicy.verifiedReceiptBlock(gift)
+        assertTrue(block.contains("届いた"))
+        assertTrue(block.contains("15000"))
+        assertFalse(block.contains("GIFT-"))
+    }
 }

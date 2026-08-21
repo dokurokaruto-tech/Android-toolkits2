@@ -90,6 +90,23 @@ class GiftRequestParserTest {
     }
 
     @Test
+    fun `mood is omitted when a verified receipt is present`() {
+        val gift = GiftInstance(
+            id = "id",
+            catalogId = "allowance",
+            name = "お小遣い",
+            emoji = "💴",
+            amountYen = 15000,
+            publicCode = "GIFT-ABCDEF123456",
+            hmac = "x",
+            purchasedAt = 1L
+        )
+        val pending = listOf(GiftWish(amountYen = 15000))
+        assertEquals("", GiftMoodPolicy.moodBlockForPrompt(pending, ignoredTurns = 4, verifiedGift = gift))
+        assertTrue(GiftMoodPolicy.moodBlockForPrompt(pending, ignoredTurns = 4, verifiedGift = null).contains("届"))
+    }
+
+    @Test
     fun `request instructions ask for cash only`() {
         val block = GiftMoodPolicy.requestInstructionBlock()
         assertTrue(block.contains("<<<ALLOWANCE_REQUEST>>>"))

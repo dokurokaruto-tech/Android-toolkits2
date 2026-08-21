@@ -139,6 +139,17 @@ object GiftStore {
         return if (verify(context, found)) found else null
     }
 
+    /**
+     * 送信前に消費してしまったお小遣い。チャット本文に載っていないなら、次の送信で受領として使える。
+     */
+    fun orphanedRedeemed(context: Context, usedCodes: Set<String>): GiftInstance? {
+        val used = usedCodes.mapNotNull { GiftCrypto.normalizeCode(it) }.toSet()
+        return load(context)
+            .filter { it.isRedeemed && verify(context, it) }
+            .filter { GiftCrypto.normalizeCode(it.publicCode) !in used }
+            .maxByOrNull { it.redeemedAt ?: 0L }
+    }
+
     fun extractRedeemableCode(context: Context, text: String): String? {
         val unusedCodes = unused(context).map { it.publicCode }.toSet()
         return GiftCrypto.extractCodes(text).firstOrNull { it in unusedCodes }
@@ -275,6 +286,8 @@ object GiftPromptPolicy {
             このブロックがあるときだけ、お小遣いを受け取ったことにして反応せよ。
             必ず具体的な金額に言及すること。品物の話はするな。
             検証の仕組みや符号を口にするな。
+            未充足要求や不機嫌の指示と矛盾する場合は、この受領を優先せよ。
+            現金は届いた。届いていないと言うな。
         """.trimIndent()
     }
 
@@ -304,6 +317,37 @@ object GiftPromptPolicy {
         val fromSelection = GiftCrypto.normalizeCode(selectedCode)
         if (fromSelection != null && fromSelection in unusedCodes) return fromSelection
         return GiftCrypto.extractCodes(messageText).firstOrNull { it in unusedCodes }
+    }
+}
+
+/**
+ * お小遣いを渡す直前の判定。課金と会話料金を取り違えないためのもの。
+ */
+object AllowanceCheckout {
+    const val CHAT_COST_YEN = 500
+    const val MAX_CHARGE_YEN = 500_000
+
+    fun suggestedChargeYen(priceYen: Int, walletYen: Int, chatCostYen: Int = CHAT_COST_YEN): Int {
+        val shortfall = (priceYen - walletYen).coerceAtLeast(0)
+        return (shortfall + chatCostYen).coerceAtLeast(chatCostYen).coerceAtMost(MAX_CHARGE_YEN)
+    }
+
+    fun canPayChat(walletYen: Int, chatCostYen: Int = CHAT_COST_YEN): Boolean {
+        return walletYen >= chatCostYen
+    }
+
+    fun pickRedeemCode(
+        selectedCode: String?,
+        messageText: String,
+        unused: List<GiftInstance>,
+        pendingYen: Int?
+    ): String? {
+        val unusedCodes = unused.map { it.publicCode }.toSet()
+        GiftPromptPolicy.resolveEvent(selectedCode, messageText, unusedCodes)?.let { return it }
+        if (pendingYen != null && pendingYen > 0) {
+            unused.firstOrNull { it.amountYen == pendingYen }?.publicCode?.let { return it }
+        }
+        return null
     }
 }
 
@@ -339,6 +383,10 @@ object GiftWishlist {
 
     fun fulfillGift(context: Context, gift: GiftInstance) {
         fulfill(context, gift.amountYen)
+        val leftover = load(context)
+        if (leftover.pending.isNotEmpty()) {
+            save(context, leftover.copy(pending = emptyList(), ignoredTurns = 0))
+        }
     }
 
     fun onUnfulfilledTurn(context: Context) {
@@ -355,7 +403,30 @@ object GiftWishlist {
     }
 
     private fun load(context: Context): State {
-        val json = AtomicFiles.readUtf8(dataFile(context)) ?: return State()
+        return decodeState(AtomicFiles.readUtf8(dataFile(context)))
+    }
+
+    private fun save(context: Context, state: State) {
+        AtomicFiles.writeUtf8(dataFile(context), encodeState(state))
+    }
+
+    fun encodeState(state: State): String {
+        val array = JSONArray()
+        state.pending.forEach { wish ->
+            array.put(JSONObject().apply {
+                put("amountYen", wish.amountYen)
+                put("name", wish.name)
+                put("emoji", wish.emoji)
+            })
+        }
+        return JSONObject()
+            .put("pending", array)
+            .put("ignoredTurns", state.ignoredTurns)
+            .toString()
+    }
+
+    fun decodeState(json: String?): State {
+        if (json.isNullOrBlank()) return State()
         return try {
             val obj = JSONObject(json)
             val array = obj.optJSONArray("pending") ?: JSONArray()
@@ -376,23 +447,5 @@ object GiftWishlist {
         } catch (_: Exception) {
             State()
         }
-    }
-
-    private fun save(context: Context, state: State) {
-        val array = JSONArray()
-        state.pending.forEach { wish ->
-            array.put(JSONObject().apply {
-                put("catalogId", wish.catalogId)
-                put("name", wish.name)
-                put("emoji", wish.emoji)
-            })
-        }
-        AtomicFiles.writeUtf8(
-            dataFile(context),
-            JSONObject()
-                .put("pending", array)
-                .put("ignoredTurns", state.ignoredTurns)
-                .toString()
-        )
     }
 }
