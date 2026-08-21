@@ -8,17 +8,17 @@ import org.junit.Test
 class GiftRequestParserTest {
 
     @Test
-    fun `closed gift request is stripped and ids are resolved`() {
+    fun `closed gift request is stripped and only the first id is kept`() {
         val raw = """
-            ねえ、サクランボほしいな。
+            ねえ、ランジェリーほしいな。
             <<<GIFT_REQUEST>>>
             ID: cherry
             ID: cake
             <<</GIFT_REQUEST>>>
         """.trimIndent()
         val parsed = GiftRequestParser.parse(raw)
-        assertEquals("ねえ、サクランボほしいな。", parsed.cleanText)
-        assertEquals(listOf("cherry", "cake"), parsed.catalogIds)
+        assertEquals("ねえ、ランジェリーほしいな。", parsed.cleanText)
+        assertEquals(listOf("cherry"), parsed.catalogIds)
         assertTrue(parsed.hasRequests)
     }
 
@@ -31,9 +31,9 @@ class GiftRequestParserTest {
     }
 
     @Test
-    fun `name and emoji lines resolve to catalog ids`() {
-        val ids = GiftRequestParser.parseBlock("🍒 サクランボ\nショートケーキ\nallowance")
-        assertEquals(listOf("cherry", "cake", "allowance"), ids)
+    fun `name and emoji lines resolve to catalog ids but keep one`() {
+        val ids = GiftRequestParser.parseBlock("🖤 ランジェリー\nヴィンテージシャンパン\nallowance")
+        assertEquals(listOf("cherry"), ids)
     }
 
     @Test
@@ -78,20 +78,28 @@ class GiftRequestParserTest {
     fun `mood block names the pending gifts and stays quiet when empty`() {
         assertEquals("", GiftMoodPolicy.moodBlock(emptyList(), 0))
         val block = GiftMoodPolicy.moodBlock(
-            listOf(GiftWish("cherry", "サクランボ", "🍒")),
+            listOf(GiftWish("cherry", "ランジェリー", "🖤")),
             ignoredTurns = 3
         )
-        assertTrue(block.contains("サクランボ"))
+        assertTrue(block.contains("ランジェリー"))
         assertTrue(block.contains("不機嫌"))
         assertFalse(block.contains("GIFT-"))
     }
 
     @Test
-    fun `request instructions never mention the internal code prefix`() {
+    fun `request instructions ask for one catalog item and never mention the internal code prefix`() {
         val block = GiftMoodPolicy.requestInstructionBlock()
         assertTrue(block.contains("<<<GIFT_REQUEST>>>"))
-        assertTrue(block.contains("ID: cherry") || block.contains("cherry"))
+        assertTrue(block.contains("1個") || block.contains("1行"))
+        assertFalse(block.contains("1〜3"))
         assertFalse(block.contains("GIFT-"))
         assertFalse(block.contains("HMAC"))
+        GiftStore.catalog.forEach { item ->
+            if (item.amountYen != null) {
+                assertTrue(item.amountYen >= 10_000)
+            } else {
+                assertTrue(item.minYen >= 10_000)
+            }
+        }
     }
 }

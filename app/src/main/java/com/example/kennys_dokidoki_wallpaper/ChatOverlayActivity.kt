@@ -238,44 +238,8 @@ class ChatAdapter(
     }
 
     private fun bindGiftRequestPanel(holder: ViewHolder, node: ChatNode) {
-        val ids = node.giftRequestIds
-        if (ids.isEmpty()) {
-            holder.layoutGiftRequest.visibility = View.GONE
-            return
-        }
-        val ctx = holder.itemView.context
-        val pending = GiftWishlist.pendingIds(ctx)
-        holder.layoutGiftRequest.visibility = View.VISIBLE
-        holder.giftRequestItems.removeAllViews()
-        ids.forEach { id ->
-            val item = GiftStore.catalogItem(id) ?: return@forEach
-            val stillWanted = id in pending
-            val price = item.amountYen?.let { "￥${String.format("%,d", it)}" } ?: "金額指定"
-            val row = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(4, 8, 4, 8)
-            }
-            row.addView(TextView(ctx).apply {
-                text = if (stillWanted) "${item.emoji}  ${item.name}  $price" else "${item.emoji}  ${item.name}  渡した"
-                setTextColor(if (stillWanted) Color.WHITE else Color.parseColor("#8892B0"))
-                textSize = 13f
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            row.addView(TextView(ctx).apply {
-                text = if (stillWanted) "渡す" else "済"
-                setTextColor(if (stillWanted) Color.parseColor("#FF2A6D") else Color.parseColor("#8892B0"))
-                textSize = 12f
-                setTypeface(null, Typeface.BOLD)
-            })
-            if (stillWanted) {
-                row.setOnClickListener { onGiftRequestClick(item) }
-            }
-            holder.giftRequestItems.addView(row)
-        }
-        if (holder.giftRequestItems.childCount == 0) {
-            holder.layoutGiftRequest.visibility = View.GONE
-        }
+        // 要求ステータスは入力枠上のバナーに常駐させる。バブル内には出さない。
+        holder.layoutGiftRequest.visibility = View.GONE
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
@@ -3991,10 +3955,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 過度にはしゃいだり取り乱したりせず、冷静でありながらも感謝の意を示す上品な態度を維持してください。
 金額の多寡に応じ、以下の基準に基づいたフォーマルで節度あるリアクションを行ってください。必ずプレゼントされた具体的な金額に言及してください。
 
-- 100円〜999円: 
-  「温かいお心遣いをいただき、心より感謝申し上げます。大切に使わせていただきますね。」と、穏やかで控えめな感謝を示してください。
-- 1,000円〜9,999円:
-  「このようなお小遣いをいただけるなんて、身に余る光栄です。ケニー様のご好意を無駄にしないよう、自分磨きに役立てます。」と、知的で品のある喜びを表してください。
 - 10,000円〜99,999円:
   「これほどまとまったお小遣いをいただけるとは驚きました。少々恐縮してしまいますが、ケニー様の深いご信頼と受け止め、有り難く頂戴いたします。本当にありがとうございます。」と、感謝と共に多少の恐縮を交えた丁寧な反応をしてください。
 - 100,000円〜500,000円:
@@ -4218,9 +4178,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             tvGiftWishBanner.visibility = View.GONE
             return
         }
-        val first = pending.first()
-        val extra = if (pending.size > 1) " ほか${pending.size - 1}" else ""
-        tvGiftWishBanner.text = "${first.emoji} ほしいもの$extra"
+        val wish = pending.first()
+        val item = GiftStore.catalogItem(wish.catalogId)
+        val price = item?.amountYen?.let { "  ￥${String.format("%,d", it)}" } ?: ""
+        tvGiftWishBanner.text = "ほしい  ${wish.emoji} ${wish.name}$price"
         tvGiftWishBanner.visibility = View.VISIBLE
     }
 
@@ -4417,7 +4378,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun showCustomAllowancePurchase() {
         val input = EditText(this).apply {
-            hint = "金額 (100〜500,000)"
+            hint = "金額 (10,000〜500,000)"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
             inputType = android.text.InputType.TYPE_CLASS_NUMBER

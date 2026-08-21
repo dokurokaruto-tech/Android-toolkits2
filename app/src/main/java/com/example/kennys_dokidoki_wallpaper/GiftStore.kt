@@ -18,7 +18,7 @@ data class GiftCatalogItem(
     val amountYen: Int?,
     val drawableName: String,
     val blurb: String,
-    val minYen: Int = 100,
+    val minYen: Int = 10_000,
     val maxYen: Int = 500_000
 )
 
@@ -51,11 +51,19 @@ object GiftStore {
     val CODE_REGEX = Regex("""GIFT-[A-Z0-9]{8,16}""")
 
     val catalog: List<GiftCatalogItem> = listOf(
-        GiftCatalogItem("cherry", "サクランボ", "🍒", 300, "img_gift_cherry", "小さな手土産。"),
-        GiftCatalogItem("cake", "ショートケーキ", "🍰", 1_200, "img_gift_cake", "甘い贈り物。"),
-        GiftCatalogItem("bouquet", "花束", "💐", 5_000, "img_gift_bouquet", "きちんとした贈り物。"),
-        GiftCatalogItem("ring", "指輪", "💍", 50_000, "img_gift_ring", "かなり思い切った贈り物。"),
-        GiftCatalogItem("allowance", "お小遣い袋", "💵", null, "img_magic_stone", "好きな金額を封入できる袋。")
+        GiftCatalogItem("cherry", "ランジェリー", "🖤", 12_000, "img_gift_cherry", "今夜のための一式。"),
+        GiftCatalogItem("cake", "ヴィンテージシャンパン", "🥂", 18_000, "img_gift_cake", "開けた瞬間から大人の時間。"),
+        GiftCatalogItem("bouquet", "スイート一泊", "🏨", 32_000, "img_gift_bouquet", "都心の夜を二人きりで。"),
+        GiftCatalogItem("ring", "エタニティリング", "💍", 88_000, "img_gift_ring", "指に残す、大人の約束。"),
+        GiftCatalogItem(
+            "allowance",
+            "お小遣い",
+            "💴",
+            null,
+            "img_magic_stone",
+            "1万円から好きな額を渡せる。",
+            minYen = 10_000
+        )
     )
 
     fun catalogItem(id: String): GiftCatalogItem? = catalog.find { it.id == id }
@@ -319,14 +327,12 @@ object GiftWishlist {
     fun hasPending(context: Context): Boolean = pending(context).isNotEmpty()
 
     fun recordRequests(context: Context, catalogIds: List<String>) {
-        if (catalogIds.isEmpty()) return
+        val id = catalogIds.firstOrNull() ?: return
+        val item = GiftStore.catalogItem(id) ?: return
         val current = load(context)
         val merged = current.pending.toMutableList()
-        catalogIds.forEach { id ->
-            val item = GiftStore.catalogItem(id) ?: return@forEach
-            if (merged.none { it.catalogId == item.id }) {
-                merged.add(GiftWish(item.id, item.name, item.emoji))
-            }
+        if (merged.none { it.catalogId == item.id }) {
+            merged.add(GiftWish(item.id, item.name, item.emoji))
         }
         save(context, current.copy(pending = merged))
     }

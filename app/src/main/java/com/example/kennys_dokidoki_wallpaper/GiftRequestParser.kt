@@ -86,7 +86,7 @@ object GiftRequestParser {
             val resolved = resolveLine(line) ?: continue
             ids.add(resolved)
         }
-        return ids.toList()
+        return ids.toList().take(1)
     }
 
     fun resolveLine(rawLine: String): String? {
@@ -168,14 +168,14 @@ object GiftMoodPolicy {
             カタログ（ID はこの中からのみ）:
             $catalog
 
-            出力形式（サジェストより前に置け。ユーザーには見えない）:
+            出力形式（サジェストより前に置け。ユーザーには見えない。ID は1行だけ）:
             <<<GIFT_REQUEST>>>
-            ID: cherry
-            ID: cake
+            ID: ring
             <<</GIFT_REQUEST>>>
 
             ■ 規定:
-            - 1〜3個。カタログに無い ID は書くな。
+            - 1回の返信につき欲しいギフトは1個だけ。2行以上書くな。
+            - カタログに無い ID は書くな。
             - ブロックを付けたなら、本文でもその品を欲しがっていることが分かるようにせよ。
             - ブロックはソフトウェアが読んで消す。本文にフラグの生文を残すな。
         """.trimIndent()
