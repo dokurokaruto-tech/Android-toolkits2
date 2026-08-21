@@ -2,69 +2,71 @@ package com.example.kennys_dokidoki_wallpaper
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GiftRequestParserTest {
 
     @Test
-    fun `closed gift request is stripped and only the first id is kept`() {
+    fun `closed allowance request is stripped and yen is read`() {
         val raw = """
-            ねえ、ランジェリーほしいな。
-            <<<GIFT_REQUEST>>>
-            ID: cherry
-            ID: cake
-            <<</GIFT_REQUEST>>>
+            ねえ、1万5千円ほしいな。
+            <<<ALLOWANCE_REQUEST>>>
+            YEN: 15000
+            <<</ALLOWANCE_REQUEST>>>
         """.trimIndent()
         val parsed = GiftRequestParser.parse(raw)
-        assertEquals("ねえ、ランジェリーほしいな。", parsed.cleanText)
-        assertEquals(listOf("cherry"), parsed.catalogIds)
+        assertEquals("ねえ、1万5千円ほしいな。", parsed.cleanText)
+        assertEquals(15000, parsed.amountYen)
         assertTrue(parsed.hasRequests)
     }
 
     @Test
-    fun `unclosed tag still hides the tail`() {
-        val raw = "本文\n<<<GIFT_REQUEST>>>\nID: bouquet"
+    fun `legacy gift request tag still parses yen`() {
+        val raw = "本文\n<<<GIFT_REQUEST>>>\nYEN: 20000"
         val parsed = GiftRequestParser.parse(raw)
         assertEquals("本文", parsed.cleanText)
-        assertEquals(listOf("bouquet"), parsed.catalogIds)
+        assertEquals(20000, parsed.amountYen)
     }
 
     @Test
-    fun `name and emoji lines resolve to catalog ids but keep one`() {
-        val ids = GiftRequestParser.parseBlock("🖤 ランジェリー\nヴィンテージシャンパン\nallowance")
-        assertEquals(listOf("cherry"), ids)
+    fun `comma and yen marks are accepted`() {
+        assertEquals(32000, GiftRequestParser.parseYenLine("￥32,000円"))
+        assertEquals(10000, GiftRequestParser.parseYenLine("金額: 10000"))
     }
 
     @Test
-    fun `unknown lines are ignored and duplicates collapse`() {
-        val ids = GiftRequestParser.parseBlock("ID: cherry\nID: cherry\nID: spaceship")
-        assertEquals(listOf("cherry"), ids)
+    fun `below minimum or junk is ignored`() {
+        assertNull(GiftRequestParser.parseYenLine("YEN: 500"))
+        assertNull(GiftRequestParser.parseYenLine("ランジェリー"))
+        assertNull(GiftRequestParser.parseBlock("ID: cherry\nID: cake"))
     }
 
     @Test
     fun `failed parse still strips the flag from the bubble`() {
-        val raw = "セリフ\n<<<GIFT_REQUEST>>>\nID: not-a-real-gift\n<<</GIFT_REQUEST>>>"
+        val raw = "セリフ\n<<<ALLOWANCE_REQUEST>>>\nYEN: 12\n<<</ALLOWANCE_REQUEST>>>"
         val parsed = GiftRequestParser.parse(raw)
         assertEquals("セリフ", parsed.cleanText)
         assertFalse(parsed.hasRequests)
     }
 
     @Test
-    fun `applyTo writes ids onto the node and removes the flag`() {
+    fun `applyTo writes yen onto the node and removes the flag`() {
         val node = ChatNode(
-            text = "ほしい。\n<<<GIFT_REQUEST>>>\nID: ring\n<<</GIFT_REQUEST>>>",
+            text = "ほしい。\n<<<ALLOWANCE_REQUEST>>>\nYEN: 88000\n<<</ALLOWANCE_REQUEST>>>",
             isUser = false
         )
         GiftRequestParser.applyTo(node)
         assertEquals("ほしい。", node.text)
-        assertEquals(listOf("ring"), node.giftRequestIds)
+        assertEquals(88000, node.giftRequestYen)
     }
 
     @Test
-    fun `streaming visibleText hides gift request like suggestions`() {
-        val raw = "途中\n<<<GIFT_REQUEST>>>\nID: ch"
+    fun `streaming visibleText hides allowance request like suggestions`() {
+        val raw = "途中\n<<<ALLOWANCE_REQUEST>>>\nYEN: 1"
         assertEquals("途中", ChatSuggestionParser.visibleText(raw))
+        assertEquals("途中", ChatSuggestionParser.visibleText("途中\n<<<GIFT_REQUEST>>>\nYEN: 1"))
     }
 
     @Test
@@ -75,31 +77,28 @@ class GiftRequestParserTest {
     }
 
     @Test
-    fun `mood block names the pending gifts and stays quiet when empty`() {
+    fun `mood block names the pending yen and stays quiet when empty`() {
         assertEquals("", GiftMoodPolicy.moodBlock(emptyList(), 0))
         val block = GiftMoodPolicy.moodBlock(
-            listOf(GiftWish("cherry", "ランジェリー", "🖤")),
+            listOf(GiftWish(amountYen = 15000)),
             ignoredTurns = 3
         )
-        assertTrue(block.contains("ランジェリー"))
+        assertTrue(block.contains("お小遣い"))
+        assertTrue(block.contains("15,000") || block.contains("15000"))
         assertTrue(block.contains("不機嫌"))
         assertFalse(block.contains("GIFT-"))
     }
 
     @Test
-    fun `request instructions ask for one catalog item and never mention the internal code prefix`() {
+    fun `request instructions ask for cash only`() {
         val block = GiftMoodPolicy.requestInstructionBlock()
-        assertTrue(block.contains("<<<GIFT_REQUEST>>>"))
-        assertTrue(block.contains("1個") || block.contains("1行"))
-        assertFalse(block.contains("1〜3"))
+        assertTrue(block.contains("<<<ALLOWANCE_REQUEST>>>"))
+        assertTrue(block.contains("YEN:"))
+        assertFalse(block.contains("ランジェリー"))
         assertFalse(block.contains("GIFT-"))
         assertFalse(block.contains("HMAC"))
-        GiftStore.catalog.forEach { item ->
-            if (item.amountYen != null) {
-                assertTrue(item.amountYen >= 10_000)
-            } else {
-                assertTrue(item.minYen >= 10_000)
-            }
-        }
+        assertEquals(1, GiftStore.catalog.size)
+        assertEquals(GiftStore.ALLOWANCE_ID, GiftStore.catalog.single().id)
+        assertTrue(GiftStore.catalog.single().minYen >= 10_000)
     }
 }

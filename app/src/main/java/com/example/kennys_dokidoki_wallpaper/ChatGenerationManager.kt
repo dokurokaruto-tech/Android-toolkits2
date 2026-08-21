@@ -426,8 +426,8 @@ object ChatGenerationManager {
         if (isComplete && error == null) {
             GiftRequestParser.applyTo(aiNode)
             ChatSuggestionParser.applyTo(aiNode)
-            if (aiNode.giftRequestIds.isNotEmpty()) {
-                GiftWishlist.recordRequests(context, aiNode.giftRequestIds)
+            aiNode.giftRequestYen?.let { yen ->
+                GiftWishlist.recordRequest(context, yen)
             }
         }
 

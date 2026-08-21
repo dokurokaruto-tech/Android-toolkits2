@@ -174,7 +174,7 @@
                 android:background="@drawable/bg_counter_bubble"
                 android:paddingStart="12dp"
                 android:paddingEnd="12dp"
-                android:text="🎁 ギフトを贈る"
+                android:text="💴 お小遣い"
                 android:textColor="#FF2A6D"
                 android:textSize="11sp"
                 android:textStyle="bold" />
@@ -191,7 +191,7 @@
                 android:paddingEnd="10dp"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:text="ほしいもの"
+                android:text="ほしい お小遣い"
                 android:textColor="#FF2A6D"
                 android:textSize="11sp"
                 android:textStyle="bold"
@@ -207,7 +207,7 @@
                 android:paddingEnd="8dp"
                 android:paddingTop="2dp"
                 android:paddingBottom="2dp"
-                android:text="🍒 サクランボ"
+                android:text="💴 お小遣い"
                 android:textColor="#FFFFFF"
                 android:textSize="10sp"
                 android:visibility="gone" />

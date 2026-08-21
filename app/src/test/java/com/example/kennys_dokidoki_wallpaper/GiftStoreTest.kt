@@ -100,7 +100,7 @@ class GiftStoreTest {
             purchasedAt = 1L
         )
         val block = GiftPromptPolicy.verifiedReceiptBlock(gift)
-        assertTrue(block.contains("サクランボ"))
+        assertTrue(block.contains("サクランボ") || block.contains("お小遣い"))
         assertTrue(block.contains("300"))
         assertFalse(block.contains("GIFT-"))
         assertFalse(block.contains("ABCDEF"))

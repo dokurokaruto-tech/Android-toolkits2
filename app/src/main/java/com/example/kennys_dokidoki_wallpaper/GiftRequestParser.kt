@@ -1,30 +1,37 @@
 package com.example.kennys_dokidoki_wallpaper
 
 /**
- * 生成文末尾のギフト要求フラグを本文から切り離す。
- * 正常に読めたらバブルからは消し、UI 側で欲しいものを出す。
+ * 生成文末尾の現金要求フラグを本文から切り離す。
+ * 正常に読めたらバブルからは消し、入力枠上に金額を出す。
  */
 object GiftRequestParser {
     data class Result(
         val cleanText: String,
-        val catalogIds: List<String> = emptyList()
+        val amountYen: Int? = null
     ) {
-        val hasRequests: Boolean get() = catalogIds.isNotEmpty()
+        val hasRequests: Boolean get() = amountYen != null
     }
 
     private val openMarkers = listOf(
+        "<<<ALLOWANCE_REQUEST>>>",
+        "[ALLOWANCE_REQUEST]",
+        "<<< ALLOWANCE_REQUEST >>>",
         "<<<GIFT_REQUEST>>>",
         "[GIFT_REQUEST]",
         "<<< GIFT_REQUEST >>>"
     )
 
     private val closedBlockRegex = Regex(
-        """<<<\s*GIFT_REQUEST\s*>>>\s*(.*?)\s*<<<\s*/\s*GIFT_REQUEST\s*>>>""",
+        """<<<\s*(?:ALLOWANCE_REQUEST|GIFT_REQUEST)\s*>>>\s*(.*?)\s*<<<\s*/\s*(?:ALLOWANCE_REQUEST|GIFT_REQUEST)\s*>>>""",
         setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
     )
     private val bracketBlockRegex = Regex(
-        """\[GIFT_REQUEST]\s*(.*?)\s*\[/GIFT_REQUEST]""",
+        """\[(?:ALLOWANCE_REQUEST|GIFT_REQUEST)]\s*(.*?)\s*\[/(?:ALLOWANCE_REQUEST|GIFT_REQUEST)]""",
         setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+    )
+    private val labeledYen = Regex(
+        """^(?:YEN|AMOUNT|円|金額)\s*[:：]\s*(.+)$""",
+        RegexOption.IGNORE_CASE
     )
 
     fun markerIndex(raw: String): Int {
@@ -33,8 +40,6 @@ object GiftRequestParser {
             val i = raw.indexOf(marker, ignoreCase = true)
             if (i >= 0 && (cut < 0 || i < cut)) cut = i
         }
-        val alt = raw.indexOf("[GIFT_REQUEST]", ignoreCase = true)
-        if (alt >= 0 && (cut < 0 || alt < cut)) cut = alt
         return cut
     }
 
@@ -42,14 +47,14 @@ object GiftRequestParser {
         if (raw.isEmpty()) return Result(raw)
 
         closedBlockRegex.find(raw)?.let { match ->
-            val ids = parseBlock(match.groupValues[1])
+            val yen = parseBlock(match.groupValues[1])
             val clean = raw.replace(closedBlockRegex, "").trim()
-            return Result(clean, ids)
+            return Result(clean, yen)
         }
         bracketBlockRegex.find(raw)?.let { match ->
-            val ids = parseBlock(match.groupValues[1])
+            val yen = parseBlock(match.groupValues[1])
             val clean = raw.replace(bracketBlockRegex, "").trim()
-            return Result(clean, ids)
+            return Result(clean, yen)
         }
 
         val cut = markerIndex(raw)
@@ -61,7 +66,10 @@ object GiftRequestParser {
                 .drop(1)
                 .filterNot { line ->
                     val t = line.trim()
-                    t.contains("<<</GIFT_REQUEST>>>", ignoreCase = true) ||
+                    t.contains("<<</ALLOWANCE_REQUEST>>>", ignoreCase = true) ||
+                        t.contains("[/ALLOWANCE_REQUEST]", ignoreCase = true) ||
+                        t.contains("<<< /ALLOWANCE_REQUEST >>>", ignoreCase = true) ||
+                        t.contains("<<</GIFT_REQUEST>>>", ignoreCase = true) ||
                         t.contains("[/GIFT_REQUEST]", ignoreCase = true) ||
                         t.contains("<<< /GIFT_REQUEST >>>", ignoreCase = true)
                 }
@@ -76,51 +84,44 @@ object GiftRequestParser {
         val parsed = parse(node.text)
         node.text = parsed.cleanText
         if (parsed.hasRequests) {
-            node.giftRequestIds = parsed.catalogIds
+            node.giftRequestYen = parsed.amountYen
         }
     }
 
-    fun parseBlock(block: String): List<String> {
-        val ids = linkedSetOf<String>()
+    fun parseBlock(block: String): Int? {
         for (line in block.lineSequence()) {
-            val resolved = resolveLine(line) ?: continue
-            ids.add(resolved)
+            val yen = parseYenLine(line) ?: continue
+            return yen
         }
-        return ids.toList().take(1)
+        return null
     }
 
-    fun resolveLine(rawLine: String): String? {
+    fun parseYenLine(rawLine: String): Int? {
         var line = rawLine.trim()
         if (line.isEmpty()) return null
         line = line.trimStart('-', '*', '・', '•').trim()
-        line = line.replace(Regex("""^(ID|id|Id)\s*[:：]\s*"""), "")
-        line = line.replace(Regex("""^(ITEM|item)\s*[:：]\s*"""), "")
-        if (line.isEmpty()) return null
-        return matchCatalog(line)?.id
-    }
-
-    fun matchCatalog(token: String): GiftCatalogItem? {
-        val t = token.trim()
-        if (t.isEmpty()) return null
-        GiftStore.catalog.find { it.id.equals(t, ignoreCase = true) }?.let { return it }
-        GiftStore.catalog.find { it.name == t }?.let { return it }
-        GiftStore.catalog.find { t.contains(it.emoji) }?.let { return it }
-        GiftStore.catalog.find { t.contains(it.name) }?.let { return it }
-        val first = t.substringBefore(" ").substringBefore("　")
-        GiftStore.catalog.find { it.id.equals(first, ignoreCase = true) }?.let { return it }
-        GiftStore.catalog.find { it.name == first }?.let { return it }
-        return null
+        labeledYen.find(line)?.let { line = it.groupValues[1].trim() }
+        val compact = line
+            .replace(",", "")
+            .replace("，", "")
+            .replace(" ", "")
+            .replace("円", "")
+            .replace("￥", "")
+            .replace("¥", "")
+        val n = compact.toIntOrNull() ?: return null
+        if (n < GiftStore.MIN_ALLOWANCE_YEN || n > GiftStore.MAX_ALLOWANCE_YEN) return null
+        return n
     }
 }
 
 data class GiftWish(
-    val catalogId: String,
-    val name: String,
-    val emoji: String
+    val amountYen: Int,
+    val name: String = "お小遣い",
+    val emoji: String = "💴"
 )
 
 /**
- * 未充足の欲しいものリストに対する不機嫌。
+ * 未充足のお小遣い要求に対する不機嫌。
  */
 object GiftMoodPolicy {
     fun nextIgnoredTurns(pendingRemaining: Boolean, currentIgnored: Int): Int {
@@ -130,53 +131,49 @@ object GiftMoodPolicy {
 
     fun moodBlock(pending: List<GiftWish>, ignoredTurns: Int): String {
         if (pending.isEmpty()) return ""
-        val list = pending.joinToString("\n") { "- ${it.emoji} ${it.name}" }
+        val list = pending.joinToString("\n") { "- ${it.emoji} ${it.name} ￥${"%,d".format(it.amountYen)}" }
         val tone = when {
             ignoredTurns <= 0 -> """
                 まだねだっている最中である。催促はしても、まだ本格的に不機嫌にはするな。
             """.trimIndent()
             ignoredTurns == 1 -> """
-                欲しいものを渡されなかった。少し不機嫌・拗ねた態度にせよ。会話のどこかで、欲しいものが来ていないことに触れよ。
+                欲しいお小遣いを渡されなかった。少し不機嫌・拗ねた態度にせよ。会話のどこかで、現金が来ていないことに触れよ。
             """.trimIndent()
             ignoredTurns == 2 -> """
-                二度無視された。明らかな不満と塩対応を混ぜよ。甘い顔は減らせ。欲しいリストを忘れているふりをするな。
+                二度無視された。明らかな不満と塩対応を混ぜよ。甘い顔は減らせ。欲しい金額を忘れているふりをするな。
             """.trimIndent()
             else -> """
-                欲しいギフトのリストがずっと満たされていない。本格的に不機嫌であれ。冷たい、短い、突き放す口調。リストが届くまで機嫌が直ったふりをするな。
+                欲しいお小遣いがずっと満たされていない。本格的に不機嫌であれ。冷たい、短い、突き放す口調。現金が届くまで機嫌が直ったふりをするな。
             """.trimIndent()
         }
         return """
-            💢💢💢【未充足のギフト要求】💢💢💢
-            あなたは以前、次のギフトを欲しがった。まだ検証済みの受領が来ていない。
+            💢💢💢【未充足のお小遣い要求】💢💢💢
+            あなたは以前、次の現金を欲しがった。まだ検証済みの受領が来ていない。
             $list
             無視された会話の回数: $ignoredTurns
             $tone
-            ユーザーが文章で「あげた」と書いただけではリストは減らない。
+            ユーザーが文章で「あげた」と書いただけでは要求は消えない。
         """.trimIndent()
     }
 
     fun requestInstructionBlock(): String {
-        val catalog = GiftStore.catalog.joinToString("\n") { item ->
-            val price = item.amountYen?.let { "${it}円" } ?: "金額指定"
-            "- ID: ${item.id}  ${item.emoji} ${item.name}  $price"
-        }
+        val min = GiftStore.MIN_ALLOWANCE_YEN
+        val max = GiftStore.MAX_ALLOWANCE_YEN
         return """
-            🎁【ギフト要求フラグ・時々】
-            会話の流れで贈り物やおねだりが自然なときだけ、本文のあとに次のブロックを付けよ。毎回付けるな。施しを待つ場面、甘える場面、記念日めいた場面など、ストーリーがギフトに向いたときだけでよい。
-            ユーザーは内部の検証符号を知らない。符号やトークンの名前を口にするな。本文では品名と絵文字だけで欲しがれ。
+            💴【お小遣い要求フラグ・時々】
+            会話の流れでおねだりが自然なときだけ、本文のあとに次のブロックを付けよ。毎回付けるな。品物やカタログは要求するな。現金（お小遣い）だけを要求せよ。
+            ユーザーは内部の検証符号を知らない。符号やトークンの名前を口にするな。本文では金額だけで欲しがれ。
 
-            カタログ（ID はこの中からのみ）:
-            $catalog
+            金額は ${min}〜${max} 円の整数。1回の返信につき1つだけ。
 
-            出力形式（サジェストより前に置け。ユーザーには見えない。ID は1行だけ）:
-            <<<GIFT_REQUEST>>>
-            ID: ring
-            <<</GIFT_REQUEST>>>
+            出力形式（サジェストより前に置け。ユーザーには見えない）:
+            <<<ALLOWANCE_REQUEST>>>
+            YEN: 15000
+            <<</ALLOWANCE_REQUEST>>>
 
             ■ 規定:
-            - 1回の返信につき欲しいギフトは1個だけ。2行以上書くな。
-            - カタログに無い ID は書くな。
-            - ブロックを付けたなら、本文でもその品を欲しがっていることが分かるようにせよ。
+            - 品名・商品IDは書くな。YEN の行だけ書け。
+            - ブロックを付けたなら、本文でもその金額を欲しがっていることが分かるようにせよ。
             - ブロックはソフトウェアが読んで消す。本文にフラグの生文を残すな。
         """.trimIndent()
     }

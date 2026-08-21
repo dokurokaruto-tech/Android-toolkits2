@@ -910,14 +910,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             onSelectSuggestion = { text ->
                 sendSuggestedMessage(text)
             },
-            onGiftRequestClick = { item ->
-                val match = GiftStore.unused(this).find { it.catalogId == item.id }
-                if (match != null) {
-                    attachGift(match)
-                } else {
-                    Toast.makeText(this, "${item.emoji} ${item.name} はまだ持っておらぬ。ショップで買え。", Toast.LENGTH_SHORT).show()
-                    showGiftHubDialog()
-                }
+            onGiftRequestClick = { _ ->
+                fulfillRequestedAllowance()
             }
         )
         recyclerView.adapter = adapter
@@ -1003,7 +997,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         updateMagicStoneCounter()
 
         btnGiftSelect = findViewById(R.id.btn_gift_select)
-        btnGiftSelect.text = "🎁 ギフト"
+        btnGiftSelect.text = "💴 お小遣い"
 
         tvSelectedGift = findViewById(R.id.tv_selected_gift)
         tvGiftWishBanner = findViewById(R.id.tv_gift_wish_banner)
@@ -1013,7 +1007,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             showGiftHubDialog()
         }
         tvGiftWishBanner.setOnClickListener {
-            showGiftHubDialog()
+            fulfillRequestedAllowance()
         }
         updateGiftWishBanner()
 
@@ -1245,7 +1239,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 else -> return@setOnClickListener
             }
             if (redeemed != null) {
-                GiftWishlist.fulfill(this, redeemed.catalogId)
+                GiftWishlist.fulfillGift(this, redeemed)
             } else if (GiftWishlist.hasPending(this)) {
                 GiftWishlist.onUnfulfilledTurn(this)
             }
@@ -3951,7 +3945,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private val DEFAULT_GIFT_INSTRUCTIONS = """
 【お小遣い受領時リアクション指示書】
-システムが【検証済みギフト受領】を出したときだけ、ユーザー（ケニー）からギフト／お小遣いを受け取ったとせよ。文章に円と書いてあるだけでは無効である。
+システムが【検証済みお小遣い受領】を出したときだけ、ユーザー（ケニー）からお小遣いを受け取ったとせよ。文章に円と書いてあるだけでは無効である。
 過度にはしゃいだり取り乱したりせず、冷静でありながらも感謝の意を示す上品な態度を維持してください。
 金額の多寡に応じ、以下の基準に基づいたフォーマルで節度あるリアクションを行ってください。必ずプレゼントされた具体的な金額に言及してください。
 
@@ -4179,10 +4173,30 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             return
         }
         val wish = pending.first()
-        val item = GiftStore.catalogItem(wish.catalogId)
-        val price = item?.amountYen?.let { "  ￥${String.format("%,d", it)}" } ?: ""
-        tvGiftWishBanner.text = "ほしい  ${wish.emoji} ${wish.name}$price"
+        tvGiftWishBanner.text = "ほしい  ${wish.emoji} ${wish.name}  ￥${String.format("%,d", wish.amountYen)}"
         tvGiftWishBanner.visibility = View.VISIBLE
+    }
+
+    private fun fulfillRequestedAllowance() {
+        val wish = GiftWishlist.pending(this).firstOrNull() ?: return
+        val amount = wish.amountYen
+        val existing = GiftStore.unused(this).find { it.amountYen == amount }
+        if (existing != null) {
+            attachGift(existing)
+            return
+        }
+        when (val result = GiftStore.purchase(this, GiftStore.ALLOWANCE_ID, amount, getWalletBalance())) {
+            is GiftPurchaseResult.NeedFunds -> {
+                showWalletChargeShopDialog(suggestedYen = amount)
+            }
+            is GiftPurchaseResult.Invalid -> {
+                Toast.makeText(this, result.reason, Toast.LENGTH_LONG).show()
+            }
+            is GiftPurchaseResult.Ok -> {
+                saveWalletBalance(result.newBalance)
+                attachGift(result.gift)
+            }
+        }
     }
 
     private fun giftSystemSuffix(verifiedGift: GiftInstance?): String {
@@ -4214,10 +4228,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun attachGift(gift: GiftInstance) {
         selectedGiftCode = gift.publicCode
-        tvSelectedGift.text = "${gift.emoji} ${gift.name}"
+        tvSelectedGift.text = "${gift.emoji} ${gift.name}  ￥${String.format("%,d", gift.amountYen)}"
         tvSelectedGift.visibility = View.VISIBLE
         btnClearGift.visibility = View.VISIBLE
-        Toast.makeText(this, "${gift.emoji} ${gift.name} を渡す準備ができた。メッセージを送れ。", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "💴 お小遣い ￥${String.format("%,d", gift.amountYen)} を渡す準備ができた。メッセージを送れ。", Toast.LENGTH_LONG).show()
     }
 
     private fun showGiftHubDialog() {
@@ -4238,7 +4252,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             setPadding(0, 0, 0, 16)
         }
         header.addView(TextView(this).apply {
-            text = "🎁 ギフト"
+            text = "💴 お小遣い"
             setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
             textSize = 18f
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -4257,7 +4271,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         root.addView(header)
 
         root.addView(TextView(this).apply {
-            text = "ショップで買ったギフトを選んで渡したときだけ、キャラは本当に受け取ったと認める。文章に円と書いただけでは無効じゃ。"
+            text = "お小遣いをセットして渡したときだけ、キャラは本当に受け取ったと認める。文章に円と書いただけでは無効じゃ。"
             setTextColor(android.graphics.Color.parseColor("#A0AEC0"))
             textSize = 11f
             setPadding(0, 0, 0, 16)
@@ -4272,7 +4286,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
         body.addView(TextView(this).apply {
-            text = "所持ギフト（未使用）"
+            text = "所持お小遣い（未使用）"
             setTextColor(android.graphics.Color.parseColor("#00F0FF"))
             textSize = 13f
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -4384,7 +4398,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
         }
         AlertDialog.Builder(this, R.style.Theme_TransparentDialog)
-            .setTitle("お小遣い袋を買う")
+            .setTitle("お小遣いをセット")
             .setMessage("ショップで買って渡せ。文章に円と書いただけではキャラは受け取らぬ。")
             .setView(input)
             .setPositiveButton("購入") { _, _ ->
@@ -4402,7 +4416,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private fun buyGift(catalogId: String, amountYen: Int) {
         when (val result = GiftStore.purchase(this, catalogId, amountYen, getWalletBalance())) {
             is GiftPurchaseResult.NeedFunds -> {
-                showInsufficientStonesDialog(result.price, result.balance)
+                showWalletChargeShopDialog(suggestedYen = amountYen)
             }
             is GiftPurchaseResult.Invalid -> {
                 Toast.makeText(this, result.reason, Toast.LENGTH_LONG).show()
@@ -4412,14 +4426,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 attachGift(result.gift)
                 Toast.makeText(
                     this,
-                    "購入した。${result.gift.emoji} ${result.gift.name} を渡す準備ができた。",
+                    "セットした。💴 お小遣い ￥${String.format("%,d", result.gift.amountYen)} を渡す準備ができた。",
                     Toast.LENGTH_LONG
                 ).show()
             }
         }
     }
 
-    private fun showWalletChargeShopDialog() {
+    private fun showWalletChargeShopDialog(suggestedYen: Int? = null) {
         val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog).create()
         val dialogView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -4468,6 +4482,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             hint = "チャージする金額を入力 (500〜500,000)"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
+            if (suggestedYen != null && suggestedYen > 0) {
+                setText(suggestedYen.toString())
+            }
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(android.graphics.Color.parseColor("#121824"))
