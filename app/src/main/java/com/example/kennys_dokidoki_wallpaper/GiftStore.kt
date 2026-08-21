@@ -236,6 +236,14 @@ object GiftCrypto {
     fun equal(a: String, b: String): Boolean {
         return MessageDigest.isEqual(a.toByteArray(Charsets.UTF_8), b.toByteArray(Charsets.UTF_8))
     }
+
+    fun stripCodes(text: String): String {
+        return text.replace(GiftStore.CODE_REGEX, "").replace(Regex("""\s+"""), " ").trim()
+    }
+
+    fun userFacingLabel(gift: GiftInstance): String {
+        return "${gift.name} (￥${String.format("%,d", gift.amountYen)})"
+    }
 }
 
 object GiftPromptPolicy {
