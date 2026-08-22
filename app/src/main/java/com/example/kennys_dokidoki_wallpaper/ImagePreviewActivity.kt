@@ -90,6 +90,8 @@ class ImagePreviewActivity : AppCompatActivity() {
             val baseList = DataManager.allImages.toList()
             currentEntries.addAll(if (isSortAscending) baseList else baseList.reversed())
         }
+        // 画像一覧(AlbumDetail)と同じ並びにするため、現在壁紙画像を先頭に
+        DataManager.pinCurrentWallpaperFirst(this, currentEntries)
 
         viewPager = findViewById(R.id.image_view_pager)
         pagerAdapter = ImagePreviewPagerAdapter(currentEntries, this) { position ->
