@@ -291,6 +291,18 @@ class PromptCardAdapter(
     }
 
     /**
+     * 指定カードIDのアダプター上の位置を返す（見つからなければ -1）。
+     * ストリップ長押しで該当カードへスクロールする際に使う。
+     */
+    fun findPositionOfCard(cardId: String): Int {
+        for (i in items.indices) {
+            val item = items[i]
+            if (item is AdapterItem.Card && item.card.id == cardId) return i
+        }
+        return -1
+    }
+
+    /**
      * 選択状態が変わったとき、カテゴリーヘッダーの選択枚数表示だけを更新する。
      */
     fun notifyHeadersChanged() {

@@ -22,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.NestedScrollView
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -48,6 +49,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var presetAdapter: PresetAdapter
     private lateinit var settingsLayout: LinearLayout
     private lateinit var layoutBuilder: View
+    private lateinit var builderScroll: NestedScrollView
     private lateinit var recyclerViewAllImages: RecyclerView
     private lateinit var recyclerViewSets: RecyclerView
     private lateinit var recyclerViewTagPrompts: RecyclerView
@@ -475,6 +477,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         recyclerViewSets = findViewById(R.id.recycler_view_sets)
         recyclerViewTagPrompts = findViewById(R.id.recycler_view_tag_prompts)
         layoutBuilder = findViewById(R.id.layout_builder)
+        builderScroll = findViewById(R.id.builder_scroll)
         recyclerViewPromptCards = findViewById(R.id.recycler_view_prompt_cards)
         recyclerViewPresets = findViewById(R.id.recycler_view_presets)
         fabAddPromptCategory = findViewById(R.id.fab_add_prompt_category)
@@ -860,7 +863,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             promptCardAdapter.updateList(PromptCardManager.promptCards)
             updateSelectedCardStrip()
         }, { card ->
-            showEditPromptCardDialog(card)
+            scrollToCardInBuilder(card)
         })
         recyclerSelectedCards.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         recyclerSelectedCards.adapter = selectedStripAdapter
@@ -1219,6 +1222,38 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             rv.setPadding(pad, 0, pad, 0)
             rv.clipToPadding = false
         }
+    }
+
+    /**
+     * 選択中カードストリップの長押し：プロンプトビルダー内のそのカードの場所まで
+     * アニメーション付きでスクロールする。カードのカテゴリーが折りたたまれていれば
+     * 先に展開する。
+     */
+    private fun scrollToCardInBuilder(card: PromptCard) {
+        val category = card.category
+        if (PromptCardManager.collapsedCategories.contains(category)) {
+            PromptCardManager.toggleCollapsed(this, category)
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+        }
+        recyclerViewPromptCards.post { tryScrollToCard(card.id, 0) }
+    }
+
+    private fun tryScrollToCard(cardId: String, attempts: Int) {
+        val rv = recyclerViewPromptCards
+        val pos = promptCardAdapter.findPositionOfCard(cardId)
+        if (pos < 0) return
+        val lm = rv.layoutManager as? LinearLayoutManager ?: return
+        val itemView = lm.findViewByPosition(pos)
+        if (itemView == null) {
+            // カテゴリー展開直後などレイアウト前なら次フレームで再試行（無限ループ防止）
+            if (attempts < 8) rv.post { tryScrollToCard(cardId, attempts + 1) }
+            return
+        }
+        // ストリップのオーバーレイに隠れないよう、ビューポート上から1/4の位置に来るようスクロール
+        val viewport = builderScroll.height
+        val offset = (viewport / 4).coerceAtLeast(0)
+        val target = (rv.top + itemView.top - offset).coerceAtLeast(0)
+        builderScroll.smoothScrollTo(0, target)
     }
 
     private fun showAddPresetDialog() {
