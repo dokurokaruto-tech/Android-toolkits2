@@ -26,7 +26,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="20dp"
-            android:text="作りたい画像を普通の文章で説明してください。LLMがメイン／ネガティブプロンプトへ変換します。"
+            android:text="作りたい画像を普通の文章で説明してください。書かれている重要要素だけを抽出し、品質タグや時間帯などは勝手に追加しません。"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:ignore="HardcodedText" />

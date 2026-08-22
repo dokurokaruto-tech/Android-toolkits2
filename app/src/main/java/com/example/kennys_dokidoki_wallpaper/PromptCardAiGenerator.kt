@@ -34,11 +34,23 @@ object PromptCardAiGenerator {
     private const val GROK_MODEL = "grok-4-1-fast-non-reasoning"
 
     private val systemPrompt = """
-        You convert Japanese or English natural-language image descriptions into Stable Diffusion prompts.
+        You convert Japanese or English natural-language image descriptions into MINIMAL Stable Diffusion prompts.
         Return exactly one JSON object and no markdown:
         {"main_prompt":"comma-separated English visual tags","negative_prompt":"comma-separated English negative tags"}
-        The main prompt must describe only visible content: subject, appearance, clothes, pose, expression, camera, lighting, and background.
-        Use concise comma-separated English tags suitable for Stable Diffusion/Forge. Preserve useful existing LoRA tokens and weighted syntax.
+
+        ABSOLUTE RULE: output only the smallest set of essential visual elements explicitly stated by the user.
+        Translate stated nouns, attributes, actions, and relationships. Do not enrich, beautify, or complete the scene.
+        Never infer time of day, weather, location, background, lighting, camera, composition, art style, mood, or colors unless explicitly stated.
+        Never add quality boilerplate such as masterpiece, best quality, high quality, detailed, 8k, 4k, HDR, sharp focus, cinematic, or photorealistic unless that exact idea was explicitly requested.
+        Keep negative_prompt empty unless the user explicitly says to exclude or avoid something, or asks to preserve an existing negative prompt.
+        Preserve existing LoRA tokens or weighted syntax only when an existing prompt is supplied.
+
+        Minimal examples:
+        User: 馬
+        Output: {"main_prompt":"horse","negative_prompt":""}
+        User: 赤い馬が走っている
+        Output: {"main_prompt":"red horse, running","negative_prompt":""}
+        Do not turn 馬 into "horse, morning, field, sunlight, masterpiece, 8k".
         Never add commentary, explanations, or JSON fields other than main_prompt and negative_prompt.
     """.trimIndent()
 
@@ -131,7 +143,16 @@ object PromptCardAiGenerator {
             PromptCardLlmProvider.OPENROUTER -> generateOpenRouter(context, choice.modelId, userPrompt)
             PromptCardLlmProvider.LOCAL -> generateLocal(context, choice.modelId, userPrompt)
         }
-        return PromptCardAiResponseParser.parse(raw)
+        val minimized = PromptCardPromptMinimalizer.minimize(
+            result = PromptCardAiResponseParser.parse(raw),
+            naturalLanguage = naturalLanguage,
+            existingNegative = existingNegative,
+            useExisting = useExisting
+        )
+        require(minimized.mainPrompt.isNotBlank()) {
+            "重要要素を抽出できませんでした。説明を少し具体的にしてください"
+        }
+        return minimized
     }
 
     internal fun buildUserPrompt(
@@ -140,7 +161,9 @@ object PromptCardAiGenerator {
         existingNegative: String,
         useExisting: Boolean
     ): String = buildString {
-        appendLine("Convert this description into an image-generation prompt:")
+        appendLine("Convert this description using only its explicitly stated essential elements.")
+        appendLine("Do not add plausible context or generic quality tags.")
+        appendLine("Description:")
         appendLine(naturalLanguage.trim())
         if (useExisting) {
             appendLine()
@@ -171,7 +194,7 @@ object PromptCardAiGenerator {
         withContext(Dispatchers.IO) {
             val body = JSONObject().apply {
                 put("model", model)
-                put("temperature", 0.2)
+                put("temperature", 0.0)
                 put("messages", JSONArray().apply {
                     put(JSONObject().put("role", "system").put("content", systemPrompt))
                     put(JSONObject().put("role", "user").put("content", userPrompt))
