@@ -1,7 +1,6 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.content.Context
-import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -63,7 +62,7 @@ class SelectedCardStripAdapter(
             3 -> 0xFFE91E63.toInt() // 赤
             else -> 0xFF00F0FF.toInt()
         }
-        holder.card.strokeColor = ColorStateList.valueOf(color)
+        holder.card.strokeColor = color
 
         holder.card.setOnClickListener { onTap(card) }
     }
