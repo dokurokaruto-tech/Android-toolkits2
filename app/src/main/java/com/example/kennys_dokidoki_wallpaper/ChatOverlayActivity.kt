@@ -757,18 +757,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private fun applyStreamingItemChange(index: Int) {
         if (!::adapter.isInitialized) return
 
-        // ユーザーが指でドラッグしている間は、ストリーミングによる本文の再レイアウト
-        // （＝吹き出しが改行のたびに高くなる）を止める。
-        // ドラッグ中はビューポートのアンカー復元が効かないため、この再レイアウトが
-        // 「新しい改行が来るたびに表示中の文章が下へ1行ずつずれる」バグの原因になる。
-        // 指を離した瞬間（SCROLL_STATE_IDLE）のキャッチアップで最新文へ追いつくので、
-        // ドラッグ中は表示を完全に固定する。
-        if (::recyclerView.isInitialized &&
-            recyclerView.scrollState == RecyclerView.SCROLL_STATE_DRAGGING
-        ) {
-            return
-        }
-
         val follow = ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
             userInteracting = isUserInteractingWithChat(),
             distanceFromBottomPx = chatDistanceFromBottomPx(),
@@ -793,7 +781,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
             return
         }
-        val anchor = if (!follow) captureChatViewport() else null
+        // ストリーミングで吹き出しが成長する前の高さを記憶しておく。
+        // ドラッグ中もストリーミング本文は更新（テキストは伸びる）させたいが、
+        // 改行のたびに表示位置がずれるのは防ぐため、成長分だけ後で打ち消す。
+        val preHeight = holder?.itemView?.height ?: -1
         if (holder != null && index in displayMessages.indices) {
             adapter.bindStreamingPayload(holder, displayMessages[index].node)
         }
@@ -803,8 +794,43 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             scrollChatToBottom(force = true)
         } else {
             cancelPendingBottomScroll()
-            if (anchor != null) restoreChatViewportAfterLayout(anchor)
+            if (holder != null && preHeight >= 0) {
+                compensateStreamingGrowth(holder, preHeight)
+            }
         }
+    }
+
+    /**
+     * ストリーミングで吹き出しが成長した分だけビューポートを打ち消しスクロールし、
+     * ユーザーが見ている位置を保つ。ドラッグ中もストリーミングは更新させつつ、
+     * 「改行のたびに表示がずれる」のを防ぐための仕組み。
+     *
+     * 吹き出しの「高さの増加分(growth)」は、ユーザーの指スクロールの影響を一切受けない
+     * 純粋な値なので、これを基準にする。stackFromEnd では最後尾アイテムが成長すると
+     * 手前が上へずれるため、成長分だけ scrollBy(0, -growth) で戻せば見ている位置が安定する。
+     * 慣性スクロール(SETTLING)中だけは慣性と競合するので打ち消さない。
+     */
+    private fun compensateStreamingGrowth(holder: RecyclerView.ViewHolder, preHeight: Int) {
+        if (!::recyclerView.isInitialized) return
+        val view = holder.itemView
+        val seq = ++viewportRestoreSeq
+        val listener = object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                v: View?, left: Int, top: Int, right: Int, bottom: Int,
+                oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int
+            ) {
+                if (seq != viewportRestoreSeq) {
+                    view.removeOnLayoutChangeListener(this)
+                    return
+                }
+                view.removeOnLayoutChangeListener(this)
+                if (recyclerView.scrollState != RecyclerView.SCROLL_STATE_SETTLING) {
+                    val growth = view.height - preHeight
+                    if (growth != 0) recyclerView.scrollBy(0, -growth)
+                }
+            }
+        }
+        view.addOnLayoutChangeListener(listener)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
