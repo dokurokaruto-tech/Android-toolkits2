@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="480dp"
     android:layout_height="wrap_content"
-    android:background="#E61A1A1A">
+    android:background="#1C1B1F">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -18,7 +18,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="VISUAL CONFIG"
-            android:textColor="#FF00F0FF"
+            android:textColor="#D0BCFF"
             android:textSize="20sp"
             android:textStyle="bold"
             android:layout_marginBottom="24dp" />
@@ -33,14 +33,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="WALLPAPER OPACITY"
-                android:textColor="#FFFFFF"
+                android:textColor="#E6E1E5"
                 android:textSize="14sp" />
             <TextView
                 android:id="@+id/tv_wallpaper_opacity_val"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="100%"
-                android:textColor="#FFFFFF"
+                android:textColor="#E6E1E5"
                 android:textSize="14sp" />
         </LinearLayout>
         <SeekBar
@@ -51,8 +51,8 @@
             android:progress="100"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="12dp"
-            android:thumbTint="#FF00F0FF"
-            android:progressTint="#FF00F0FF" />
+            android:thumbTint="#D0BCFF"
+            android:progressTint="#D0BCFF" />
 
         <!-- Bubble Opacity -->
         <LinearLayout
@@ -64,14 +64,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="BUBBLE OPACITY"
-                android:textColor="#FFFFFF"
+                android:textColor="#E6E1E5"
                 android:textSize="14sp" />
             <TextView
                 android:id="@+id/tv_bubble_opacity_val"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="60%"
-                android:textColor="#FFFFFF"
+                android:textColor="#E6E1E5"
                 android:textSize="14sp" />
         </LinearLayout>
         <SeekBar
@@ -82,8 +82,8 @@
             android:progress="60"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="12dp"
-            android:thumbTint="#FF00F0FF"
-            android:progressTint="#FF00F0FF" />
+            android:thumbTint="#D0BCFF"
+            android:progressTint="#D0BCFF" />
 
         <!-- Bubble Width -->
         <LinearLayout
@@ -95,14 +95,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="BUBBLE WIDTH"
-                android:textColor="#FFFFFF"
+                android:textColor="#E6E1E5"
                 android:textSize="14sp" />
             <TextView
                 android:id="@+id/tv_bubble_width_val"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="670px"
-                android:textColor="#FFFFFF"
+                android:textColor="#E6E1E5"
                 android:textSize="14sp" />
         </LinearLayout>
         <SeekBar
@@ -113,8 +113,8 @@
             android:progress="670"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="12dp"
-            android:thumbTint="#FF00F0FF"
-            android:progressTint="#FF00F0FF" />
+            android:thumbTint="#D0BCFF"
+            android:progressTint="#D0BCFF" />
 
         <!-- Input Opacity -->
         <LinearLayout
@@ -126,14 +126,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="INPUT OPACITY"
-                android:textColor="#FFFFFF"
+                android:textColor="#E6E1E5"
                 android:textSize="14sp" />
             <TextView
                 android:id="@+id/tv_input_opacity_val"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="100%"
-                android:textColor="#FFFFFF"
+                android:textColor="#E6E1E5"
                 android:textSize="14sp" />
         </LinearLayout>
         <SeekBar
@@ -144,8 +144,8 @@
             android:progress="100"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="12dp"
-            android:thumbTint="#FF00F0FF"
-            android:progressTint="#FF00F0FF" />
+            android:thumbTint="#D0BCFF"
+            android:progressTint="#D0BCFF" />
 
         <View
             android:layout_width="match_parent"
@@ -164,13 +164,13 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="TOP FADE EFFECT"
-                android:textColor="#FFFFFF"
+                android:textColor="#E6E1E5"
                 android:textSize="14sp" />
             <androidx.appcompat.widget.SwitchCompat
                 android:id="@+id/sw_fade_effect"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                app:thumbTint="#FF00F0FF"
+                app:thumbTint="#D0BCFF"
                 app:trackTint="#6600F0FF" />
         </LinearLayout>
 

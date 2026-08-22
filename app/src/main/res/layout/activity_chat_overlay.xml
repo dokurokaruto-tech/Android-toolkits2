@@ -48,8 +48,7 @@
         android:layout_height="48dp"
         android:layout_margin="16dp"
         android:background="@drawable/circle_bg_dark"
-        android:src="@drawable/ic_more_vert"
-        android:rotation="45"
+        android:src="@drawable/ic_md3_close"
         app:tint="#FFFFFF"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
@@ -71,7 +70,7 @@
         android:layout_height="48dp"
         android:layout_margin="16dp"
         android:background="@drawable/circle_bg_dark"
-        android:src="@drawable/ic_more_vert"
+        android:src="@drawable/ic_md3_more_vert"
         app:tint="#FFFFFF"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -83,7 +82,7 @@
         android:layout_marginEnd="8dp"
         android:background="@drawable/circle_bg_dark"
         android:contentDescription="現在のセットの画像"
-        android:src="@drawable/ic_image_grid"
+            android:src="@drawable/ic_md3_photo_library"
         app:tint="#FFFFFF"
         app:layout_constraintBottom_toBottomOf="@id/btn_options"
         app:layout_constraintEnd_toStartOf="@id/btn_options"
@@ -100,7 +99,7 @@
         android:paddingTop="4dp"
         android:paddingBottom="4dp"
         android:text="OR: 0/50"
-        android:textColor="#00F0FF"
+        android:textColor="#D0BCFF"
         android:textSize="12sp"
         android:textStyle="bold"
         android:visibility="gone"
@@ -132,7 +131,7 @@
                 android:id="@+id/extra_menu_grid"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/bg_glass_panel"
+                android:background="@drawable/bg_md3_surface"
                 android:columnCount="4"
                 android:padding="12dp">
                 <!-- プログラムから追加されるわ -->
@@ -154,7 +153,7 @@
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_input_add"
+                android:src="@drawable/ic_md3_add"
                 app:tint="#FFFFFF" />
 
             <EditText
@@ -175,7 +174,7 @@
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_menu_send"
+                android:src="@drawable/ic_md3_send"
                 app:tint="#FFFFFF" />
         </LinearLayout>
 

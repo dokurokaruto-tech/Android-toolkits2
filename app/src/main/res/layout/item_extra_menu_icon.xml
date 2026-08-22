@@ -17,15 +17,14 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@drawable/bg_persona_item"
-            android:alpha="0.8" />
+            android:background="@drawable/bg_md3_surface_chip" />
         <ImageView
             android:id="@+id/menu_icon"
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:layout_gravity="center"
             android:src="@android:drawable/ic_menu_help"
-            app:tint="#FFFFFF" />
+            app:tint="#D0BCFF" />
     </FrameLayout>
 
     <TextView
@@ -34,7 +33,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="Label"
-        android:textColor="#E2E8F0"
+        android:textColor="#E6E1E5"
         android:textSize="10sp"
         android:textStyle="bold"
         android:gravity="center"
