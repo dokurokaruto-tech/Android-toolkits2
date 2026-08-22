@@ -164,6 +164,7 @@ class GenerationService:
                 "created_at": datetime.fromtimestamp(image.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
                 "url": self.file_url(date, image.name),
                 "thumbnail_url": self.mobile_thumbnail_url(date, image.name),
+                "tags": self._read_image_tags(date, image.name),
             }
             for image in self._folder_images(folder)
         ]
@@ -435,6 +436,7 @@ class GenerationService:
             try:
                 existing = self._existing_output(task["payload"])
                 if existing is not None:
+                    self._write_metadata(job_id, index, existing, task["payload"], None)
                     self.database.finish_task(job_id, index, existing)
                     continue
                 sd_payload = {key: value for key, value in task["payload"].items() if not key.startswith("_agent_")}
@@ -491,17 +493,7 @@ class GenerationService:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, destination)
-        metadata_dir = self.config.database_path.parent / "metadata" / date
-        metadata_dir.mkdir(parents=True, exist_ok=True)
-        metadata = {
-            "job_id": job_id,
-            "task_index": index,
-            "created_at": now.isoformat(timespec="milliseconds"),
-            "file": f"{collection}/{date}/{filename}",
-            "parameters": sd_payload,
-        }
-        metadata_path = metadata_dir / f"{filename}.json"
-        metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._write_metadata(job_id, index, f"{collection}/{date}/{filename}", stored_payload, sd_payload)
         if collection == "image":
             # Prepare lossless top-down strips while the PC is already processing the result,
             # so mobile viewing can start with the first real rows immediately.
@@ -555,4 +547,74 @@ class GenerationService:
         })
         result.pop("batch_size", None)
         result.pop("n_iter", None)
+        result.pop("tags", None)
+        result["_agent_tags"] = self._normalize_tags(task.get("tags"))
         return result
+
+    @staticmethod
+    def _normalize_tags(raw: Any) -> list[str]:
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            raise ValueError("tags must be an array")
+        tags: list[str] = []
+        for item in raw:
+            text = str(item).strip()
+            if text and text not in tags:
+                tags.append(text[:80])
+            if len(tags) > 64:
+                raise ValueError("a task may contain at most 64 tags")
+        return tags
+
+    def _metadata_path(self, date: str, name: str) -> Path:
+        return self.config.database_path.parent / "metadata" / date / f"{name}.json"
+
+    def _read_image_tags(self, date: str, name: str) -> list[str]:
+        path = self._metadata_path(date, name)
+        if not path.is_file():
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        tags = data.get("tags")
+        if not isinstance(tags, list):
+            return []
+        return [str(tag).strip() for tag in tags if str(tag).strip()]
+
+    def _write_metadata(
+        self,
+        job_id: str,
+        index: int,
+        relative_path: str,
+        stored_payload: dict[str, Any],
+        sd_payload: dict[str, Any] | None,
+    ) -> None:
+        parts = relative_path.replace("\\", "/").split("/")
+        if len(parts) == 2:
+            date, name = parts
+        elif len(parts) == 3:
+            _, date, name = parts
+        else:
+            return
+        metadata_dir = self.config.database_path.parent / "metadata" / date
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+        path = metadata_dir / f"{name}.json"
+        existing: dict[str, Any] = {}
+        if path.is_file():
+            try:
+                loaded = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    existing = loaded
+            except Exception:
+                existing = {}
+        tags = stored_payload.get("_agent_tags") or existing.get("tags") or []
+        metadata = {
+            "job_id": job_id,
+            "task_index": index,
+            "created_at": existing.get("created_at") or datetime.now().astimezone().isoformat(timespec="milliseconds"),
+            "file": relative_path if relative_path.count("/") == 2 else f"image/{relative_path}",
+            "parameters": sd_payload if sd_payload is not None else existing.get("parameters", {}),
+            "tags": tags if isinstance(tags, list) else [],
+        }
+        path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")

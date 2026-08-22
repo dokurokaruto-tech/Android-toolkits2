@@ -127,6 +127,13 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                     Toast.makeText(this@GeneratedFolderPickerActivity, "この日付の画像はありません。", Toast.LENGTH_SHORT).show()
                     return@launch
                 }
+                images.forEach { image ->
+                    GeneratedImageDraftStore.seedGeneratedTags(
+                        this@GeneratedFolderPickerActivity,
+                        Uri.parse(image.url),
+                        image.tags
+                    )
+                }
                 openAlbum(
                     albumName = "生成: $date",
                     uris = images.map { it.url },

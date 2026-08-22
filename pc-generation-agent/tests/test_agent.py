@@ -208,6 +208,32 @@ class AgentIntegrationTest(unittest.TestCase):
         _, dates = self.request("/api/v1/library/dates")
         self.assertEqual([], dates["dates"])
 
+    def test_library_images_return_tags_saved_with_generation(self) -> None:
+        _, job = self.request(
+            "/api/v1/jobs",
+            "POST",
+            {
+                "tasks": [{
+                    "prompt": "tagged character",
+                    "width": 512,
+                    "height": 512,
+                    "steps": 10,
+                    "tags": ["金髪", "幼女", "金髪"],
+                }]
+            },
+        )
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, state = self.request(f"/api/v1/jobs/{job['id']}")
+            if state["status"] == "completed":
+                break
+            time.sleep(0.05)
+        self.assertEqual("completed", state["status"])
+        _, dates = self.request("/api/v1/library/dates")
+        date = dates["dates"][0]["date"]
+        _, images = self.request(f"/api/v1/library/images?date={date}")
+        self.assertEqual(["金髪", "幼女"], images["images"][0]["tags"])
+
     def test_delete_library_image_removes_file(self) -> None:
         date = "2026-08-22"
         folder = self.config.output_dir / date

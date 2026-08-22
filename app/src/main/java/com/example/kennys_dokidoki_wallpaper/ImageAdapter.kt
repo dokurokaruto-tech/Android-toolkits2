@@ -149,7 +149,7 @@ class ImageAdapter(
                 holder.selectionCheck.visibility = View.GONE
             }
         } else {
-            holder.btnMore.visibility = if (isGeneratedViewerMode) View.GONE else View.VISIBLE
+            holder.btnMore.visibility = View.VISIBLE
             holder.selectionOverlay.visibility = View.GONE
             holder.selectionCheck.visibility = View.GONE
         }

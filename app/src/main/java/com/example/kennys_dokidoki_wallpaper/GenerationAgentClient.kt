@@ -24,7 +24,8 @@ data class AgentGenerationRequest(
     val height: Int,
     val steps: Int,
     val samplerName: String,
-    val purpose: String = "image"
+    val purpose: String = "image",
+    val tags: List<String> = emptyList()
 )
 
 data class AgentGeneratedFolder(val date: String, val count: Int, val thumbnailUrl: String?)
@@ -32,7 +33,8 @@ data class AgentGeneratedImage(
     val name: String,
     val url: String,
     val thumbnailUrl: String,
-    val createdAt: String
+    val createdAt: String,
+    val tags: List<String> = emptyList()
 )
 
 data class AgentJobState(
@@ -159,6 +161,13 @@ object GenerationAgentClient {
         buildList {
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
+                val tagsArray = item.optJSONArray("tags") ?: JSONArray()
+                val tags = buildList {
+                    for (tagIndex in 0 until tagsArray.length()) {
+                        val tag = tagsArray.optString(tagIndex).trim()
+                        if (tag.isNotEmpty()) add(tag)
+                    }
+                }
                 add(
                     AgentGeneratedImage(
                         name = item.getString("name"),
@@ -167,7 +176,8 @@ object GenerationAgentClient {
                             context,
                             item.optString("thumbnail_url", item.getString("url"))
                         ),
-                        createdAt = item.optString("created_at")
+                        createdAt = item.optString("created_at"),
+                        tags = tags
                     )
                 )
             }

@@ -17,7 +17,15 @@ object GeneratedImageDraftStore {
 
     fun keyFor(uri: Uri): String = GeneratedImageIdentity.canonicalKey(uri.toString())
 
-    fun entryFor(context: Context, uri: Uri, thumbnailUri: Uri? = null): ImageEntry {
+    fun entryFor(
+        context: Context,
+        uri: Uri,
+        thumbnailUri: Uri? = null,
+        generatedTags: Collection<String> = emptyList()
+    ): ImageEntry {
+        if (generatedTags.isNotEmpty()) {
+            seedGeneratedTags(context, uri, generatedTags)
+        }
         val draft = get(context, keyFor(uri))
         return ImageEntry(
             uri = uri,
@@ -25,6 +33,24 @@ object GeneratedImageDraftStore {
             description = draft?.description,
             linkedChatId = draft?.linkedChatId,
             thumbnailUri = thumbnailUri
+        )
+    }
+
+    fun seedGeneratedTags(context: Context, uri: Uri, generatedTags: Collection<String>) {
+        val incoming = GeneratedImageTagBinding.collect(listOf(generatedTags))
+        if (incoming.isEmpty()) return
+        val key = keyFor(uri)
+        val existing = get(context, key)
+        val merged = GeneratedImageTagBinding.mergeForBrowse(existing?.tags ?: emptySet(), incoming)
+        if (existing != null && existing.tags == merged) return
+        upsert(
+            context,
+            key,
+            GeneratedImageLifecycle.Draft(
+                tags = merged,
+                description = existing?.description,
+                linkedChatId = existing?.linkedChatId
+            )
         )
     }
 

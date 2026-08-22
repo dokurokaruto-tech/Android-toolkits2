@@ -14,6 +14,7 @@ Android Toolkits から生成依頼を受け取り、Stable Diffusion WebUI / Fo
 - ページを変えたり全画面を閉じても、開始済みの原寸ダウンロードはバックグラウンドで完了してからキャッシュへ入ります。
 - 閲覧・全画面表示・生成途中プレビューだけではAndroidへ画像を永続保存しません。
 - 「全画像に入れる」を実行した画像だけAndroid端末へダウンロードします。
+- 生成時に選んだプロンプトカードのタグは完成画像のメタデータへ保存され、閲覧と仮チャットで使えます。
 - 閲覧画面の削除はPC上の完成画像も消します。紐づいた仮チャットも一緒に消えます。
 - カード用サムネイルもPCの `thumbnails/YYYY-MM-DD/` に保存します。
 - エージェントを途中で終了しても、次回起動時に未完了キューを再開します。
@@ -117,7 +118,7 @@ pc-generation-agent/
 - `POST /api/v1/jobs/{id}/cancel` — 強制中断
 - `POST /api/v1/jobs/{id}/skip` — 現在の画像をスキップ
 - `GET /api/v1/library/dates` — 日付フォルダ一覧
-- `GET /api/v1/library/images?date=YYYY-MM-DD` — 画像一覧
+- `GET /api/v1/library/images?date=YYYY-MM-DD` — 画像一覧（各画像の tags を含む）
 - `GET /api/v1/files/{date}/{name}` — オリジナル完成画像
 - `GET /api/v1/mobile-thumbnails/{date}/{name}` — 閲覧一覧用の圧縮JPEG
 - `GET /api/v1/progressive/{date}/{name}/manifest` — 原寸画像の可逆ストリップ情報

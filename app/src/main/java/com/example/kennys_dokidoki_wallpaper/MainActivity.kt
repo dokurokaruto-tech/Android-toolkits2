@@ -1046,9 +1046,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }.trim()
                     val finalNegativePrompt = currentSelectedWithLevels.map { it.first.negativePrompt }
                         .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
+                    val imageTags = TagManager.minimizeTags(
+                        GeneratedImageTagBinding.collect(currentSelectedWithLevels.map { it.first.appliedTags })
+                    )
                     requests.add(
                         AgentGenerationRequest(
-                            finalMainPrompt, finalNegativePrompt, genWidth, genHeight, genSteps, genSampler
+                            prompt = finalMainPrompt,
+                            negativePrompt = finalNegativePrompt,
+                            width = genWidth,
+                            height = genHeight,
+                            steps = genSteps,
+                            samplerName = genSampler,
+                            tags = imageTags.toList()
                         )
                     )
                     Log.d("Generation", "Prepared image $i/$totalImages")
