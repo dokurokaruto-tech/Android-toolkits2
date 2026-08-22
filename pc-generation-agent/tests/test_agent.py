@@ -173,6 +173,16 @@ class AgentIntegrationTest(unittest.TestCase):
             self.assertEqual((1200, 128), tile.size)
             self.assertEqual((120, 30, 200), tile.getpixel((10, 10)))
 
+        delete_name = images["images"][0]["name"]
+        status, deleted = self.request(
+            f"/api/v1/library/images?date={date}&name={delete_name}", "DELETE"
+        )
+        self.assertEqual(200, status)
+        self.assertTrue(deleted["deleted"])
+        _, remaining = self.request(f"/api/v1/library/images?date={date}")
+        self.assertEqual(1, len(remaining["images"]))
+        self.assertNotEqual(delete_name, remaining["images"][0]["name"])
+
         # Existing Android features (thumbnail generation/progress) keep using SD routes.
         _, options = self.request("/sdapi/v1/options")
         self.assertEqual({}, options)
@@ -197,6 +207,17 @@ class AgentIntegrationTest(unittest.TestCase):
             self.assertEqual(PNG, response.read())
         _, dates = self.request("/api/v1/library/dates")
         self.assertEqual([], dates["dates"])
+
+    def test_delete_library_image_removes_file(self) -> None:
+        date = "2026-08-22"
+        folder = self.config.output_dir / date
+        folder.mkdir(parents=True)
+        image = folder / "GEN_manual.png"
+        image.write_bytes(PNG)
+        self.assertTrue(self.service.delete_library_image(date, "GEN_manual.png"))
+        self.assertFalse(image.exists())
+        self.assertFalse(folder.exists())
+        self.assertFalse(self.service.delete_library_image(date, "GEN_manual.png"))
 
     def test_rejects_invalid_task_and_path_traversal(self) -> None:
         with self.assertRaises(Exception):

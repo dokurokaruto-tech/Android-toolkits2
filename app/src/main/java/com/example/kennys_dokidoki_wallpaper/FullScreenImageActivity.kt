@@ -1,9 +1,13 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.MotionEvent
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
@@ -39,6 +43,12 @@ class FullScreenImageActivity : AppCompatActivity() {
     private var progressiveJob: Job? = null
     private var prefetchJob: Job? = null
     private var isClosing = false
+    private var isGeneratedViewer = false
+    private lateinit var btnStartTempChat: View
+    private val chromeHandler = Handler(Looper.getMainLooper())
+    private var chromeVisible = true
+    private var lastChromeInteractionMs = 0L
+    private val hideChromeRunnable = Runnable { hideViewerChrome() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,11 +64,15 @@ class FullScreenImageActivity : AppCompatActivity() {
         rootLayout = findViewById(R.id.full_screen_root)
         imageView = findViewById(R.id.full_screen_image)
         tvCounter = findViewById(R.id.tv_image_counter)
+        btnStartTempChat = findViewById(R.id.btn_start_temp_chat)
         albumName = intent.getStringExtra("ALBUM_NAME") ?: ""
         currentIndex = intent.getIntExtra("START_INDEX", 0)
+        isGeneratedViewer = intent.getBooleanExtra("FROM_GENERATED_VIEWER", false) ||
+            intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS") != null
 
         loadImages()
         showImage()
+        setupTempChatButton()
 
         val leftClick = View.OnClickListener {
             if (currentEntries.isNotEmpty()) {
@@ -79,6 +93,74 @@ class FullScreenImageActivity : AppCompatActivity() {
                 if (event.x < view.width / 2f) leftClick.onClick(view) else rightClick.onClick(view)
             }
             true
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN) {
+            revealViewerChrome()
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun setupTempChatButton() {
+        if (!isGeneratedViewer) {
+            btnStartTempChat.visibility = View.GONE
+            return
+        }
+        btnStartTempChat.visibility = View.VISIBLE
+        btnStartTempChat.alpha = 1f
+        btnStartTempChat.setOnClickListener {
+            if (!chromeVisible) {
+                revealViewerChrome()
+                return@setOnClickListener
+            }
+            val entry = currentEntries.getOrNull(currentIndex) ?: return@setOnClickListener
+            startActivity(Intent(this, ChatOverlayActivity::class.java).apply {
+                putExtra("IMAGE_URI", entry.uri.toString())
+                putExtra("GENERATED_TEMP_CHAT", true)
+            })
+        }
+        revealViewerChrome()
+    }
+
+    private fun revealViewerChrome() {
+        lastChromeInteractionMs = System.currentTimeMillis()
+        chromeHandler.removeCallbacks(hideChromeRunnable)
+        if (!chromeVisible) {
+            chromeVisible = true
+            listOf(tvCounter, btnStartTempChat).forEach { view ->
+                if (view === btnStartTempChat && !isGeneratedViewer) return@forEach
+                view.visibility = View.VISIBLE
+                view.animate().cancel()
+                view.animate().alpha(1f).setDuration(220).start()
+            }
+        } else if (isGeneratedViewer && btnStartTempChat.visibility != View.VISIBLE) {
+            btnStartTempChat.visibility = View.VISIBLE
+            btnStartTempChat.alpha = 1f
+        }
+        if (isGeneratedViewer) {
+            chromeHandler.postDelayed(hideChromeRunnable, ViewerChromePolicy.HIDE_AFTER_MS)
+        }
+    }
+
+    private fun hideViewerChrome() {
+        if (!isGeneratedViewer || isClosing) return
+        if (!ViewerChromePolicy.shouldHide(System.currentTimeMillis(), lastChromeInteractionMs)) {
+            val remaining = ViewerChromePolicy.HIDE_AFTER_MS - (System.currentTimeMillis() - lastChromeInteractionMs)
+            chromeHandler.postDelayed(hideChromeRunnable, remaining.coerceAtLeast(50L))
+            return
+        }
+        chromeVisible = false
+        listOf(tvCounter, btnStartTempChat).forEach { view ->
+            view.animate().cancel()
+            view.animate()
+                .alpha(0f)
+                .setDuration(280)
+                .withEndAction {
+                    if (!chromeVisible) view.visibility = View.INVISIBLE
+                }
+                .start()
         }
     }
 

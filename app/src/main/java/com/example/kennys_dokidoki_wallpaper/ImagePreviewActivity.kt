@@ -234,6 +234,7 @@ class ImagePreviewActivity : AppCompatActivity() {
         }
         currentEntries.removeAt(index)
         pagerAdapter.notifyItemRemoved(index)
+        GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
         DataManager.allImages.remove(entry)
         DataManager.saveData(this)
         if (currentEntries.isEmpty()) finish() else updateFileInfo()

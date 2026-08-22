@@ -43,7 +43,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         self.send_response(HTTPStatus.NO_CONTENT)
         self._common_headers()
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -200,6 +200,28 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/generate-prompt" and self.server.config.legacy_api_url:
             self._proxy_legacy(path)
+            return
+        self._error(HTTPStatus.NOT_FOUND, "route not found")
+
+    def do_DELETE(self) -> None:
+        parsed = urlsplit(self.path)
+        path, query = parsed.path, parse_qs(parsed.query)
+        if not self._authorized(query):
+            return
+        if path == "/api/v1/library/images":
+            date = query.get("date", [""])[0]
+            name = query.get("name", [""])[0]
+            try:
+                if not date or not name:
+                    raise ValueError("date and name are required")
+                deleted = self.server.service.delete_library_image(date, name)
+            except ValueError as error:
+                self._error(HTTPStatus.BAD_REQUEST, str(error))
+                return
+            if deleted:
+                self._json(HTTPStatus.OK, {"deleted": True, "date": date, "name": name})
+            else:
+                self._error(HTTPStatus.NOT_FOUND, "image not found")
             return
         self._error(HTTPStatus.NOT_FOUND, "route not found")
 

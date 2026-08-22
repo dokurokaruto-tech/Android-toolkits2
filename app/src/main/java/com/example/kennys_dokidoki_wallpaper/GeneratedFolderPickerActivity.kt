@@ -71,6 +71,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         if (awaitingAlbumReturn) {
             awaitingAlbumReturn = false
             setLoading(false)
+            loadFolders()
         }
     }
 

@@ -98,23 +98,19 @@ class ImageAdapter(
             .centerCrop()
             .into(holder.imageView)
             
-        // 生成画像閲覧モードなら不要なアイコンを隠すわよ！
+        // 生成画像閲覧でもケバブは出す。壁紙用のチェックだけ隠す。
         if (isGeneratedViewerMode) {
             holder.checkActive.visibility = View.GONE
-            holder.btnMore.visibility = View.GONE
-            holder.tagsView.visibility = View.GONE
-            holder.tagGradient.visibility = View.GONE
             holder.iconCropped.visibility = View.GONE
         } else {
             holder.checkActive.visibility = View.VISIBLE
-            // btnMore, tagsView 等は下のロジックで制御されるわ
         }
 
         // タグの表示設定
         val settingsPrefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val showTags = settingsPrefs.getBoolean("show_tags_on_thumbnail", true)
         
-        if (showTags && !isGeneratedViewerMode) {
+        if (showTags) {
             // 自動付与されるタグも含めて表示するわよ！
             val effectiveTags = TagManager.getEffectiveTags(entry.tags)
             if (effectiveTags.isNotEmpty()) {
@@ -174,24 +170,28 @@ class ImageAdapter(
         holder.btnMore.setOnClickListener { view ->
             if (isSelectionMode) return@setOnClickListener
             val popup = PopupMenu(view.context, view)
-            popup.menu.add("壁紙をスタート")
-            popup.menu.add("画像属性（タグ）の編集") // ←ここに追加したわよ！
-            if (entry.cropRect != null || entry.croppedUri != null) {
-                popup.menu.add("クロップデータを削除")
+            popup.menu.add("画像属性（タグ）の編集")
+            if (isGeneratedViewerMode) {
+                popup.menu.add("削除")
+            } else {
+                popup.menu.add("壁紙をスタート")
+                if (entry.cropRect != null || entry.croppedUri != null) {
+                    popup.menu.add("クロップデータを削除")
+                }
+                popup.menu.add("ソフトウェアから削除")
             }
-            popup.menu.add("ソフトウェアから削除")
-            
+
             popup.setOnMenuItemClickListener { item ->
                 when (item.title) {
                     "壁紙をスタート" -> onStartWallpaperClick(entry)
-                    "画像属性（タグ）の編集" -> onEditTagsClick(entry) // ←ここも呼び出すようにしたわ
+                    "画像属性（タグ）の編集" -> onEditTagsClick(entry)
                     "クロップデータを削除" -> {
                         entry.cropRect = null
                         entry.croppedUri = null
                         DataManager.saveData(view.context)
                         notifyItemChanged(position)
                     }
-                    "ソフトウェアから削除" -> onDeleteClick(entry, position)
+                    "削除", "ソフトウェアから削除" -> onDeleteClick(entry, position)
                 }
                 true
             }

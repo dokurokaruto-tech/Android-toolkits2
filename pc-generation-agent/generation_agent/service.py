@@ -168,6 +168,18 @@ class GenerationService:
             for image in self._folder_images(folder)
         ]
 
+    def delete_library_image(self, date: str, name: str) -> bool:
+        source = self.resolve_file(date, name)
+        if source is None:
+            return False
+        source.unlink(missing_ok=True)
+        metadata = self.config.database_path.parent / "metadata" / date / f"{name}.json"
+        metadata.unlink(missing_ok=True)
+        folder = self.config.output_dir / date
+        if folder.is_dir() and not any(folder.iterdir()):
+            folder.rmdir()
+        return True
+
     def resolve_file(self, date: str, name: str) -> Path | None:
         return self._resolve_collection_file(self.config.output_dir, date, name)
 

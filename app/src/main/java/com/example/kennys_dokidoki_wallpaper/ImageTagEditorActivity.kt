@@ -54,6 +54,7 @@ class ImageTagEditorActivity : AppCompatActivity() {
     private var isImageMode = true
     private var isNewSetMode = false
     private var isBatchMode = false
+    private var isGeneratedDraft = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,11 +89,11 @@ class ImageTagEditorActivity : AppCompatActivity() {
         } else if (uriString != null) {
             isImageMode = true
             val uri = Uri.parse(uriString)
+            val thumbnail = intent.getStringExtra("THUMBNAIL_URI")?.let(Uri::parse)
             imageEntry = DataManager.allImages.find { it.uri.toString() == uri.toString() }
             if (imageEntry == null) {
-                Toast.makeText(this, "画像データが見つかりません。", Toast.LENGTH_SHORT).show()
-                finish()
-                return
+                isGeneratedDraft = true
+                imageEntry = GeneratedImageDraftStore.entryFor(this, uri, thumbnail)
             }
             val effective = TagManager.getEffectiveTags(imageEntry!!.tags)
             selectedTags.addAll(effective)
@@ -142,9 +143,10 @@ class ImageTagEditorActivity : AppCompatActivity() {
             }
             
             if (imageEntry != null) {
+                val previewUri = imageEntry!!.thumbnailUri ?: imageEntry!!.uri
                 Glide.with(this)
-                    .load(imageEntry!!.uri)
-                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .load(previewUri)
+                    .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(previewUri, DiskCacheStrategy.ALL))
                     .centerCrop()
                     .into(ivPreview)
             }
@@ -605,7 +607,9 @@ class ImageTagEditorActivity : AppCompatActivity() {
                 }
             }
             imageEntry = liveEntry
-            if (!DataManager.saveData(this)) {
+            if (isGeneratedDraft || DataManager.findImageByUri(liveEntry.uri.toString()) == null) {
+                GeneratedImageDraftStore.save(this, liveEntry.uri, liveEntry)
+            } else if (!DataManager.saveData(this)) {
                 Toast.makeText(this, "保存できなかったわ。もう一度試してみて。", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }

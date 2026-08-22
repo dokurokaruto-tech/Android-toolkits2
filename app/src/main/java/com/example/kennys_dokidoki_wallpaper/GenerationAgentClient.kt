@@ -137,6 +137,22 @@ object GenerationAgentClient {
         }
     }
 
+    suspend fun deleteLibraryImage(context: Context, uri: android.net.Uri): Boolean {
+        val ref = GeneratedImageIdentity.remoteRef(uri.toString()) ?: return false
+        return deleteLibraryImage(context, ref.date, ref.name)
+    }
+
+    suspend fun deleteLibraryImage(context: Context, date: String, name: String): Boolean = withContext(Dispatchers.IO) {
+        val encodedDate = URLEncoder.encode(date, "UTF-8")
+        val encodedName = URLEncoder.encode(name, "UTF-8")
+        try {
+            requestJson(context, "/api/v1/library/images?date=$encodedDate&name=$encodedName", "DELETE")
+            true
+        } catch (error: IOException) {
+            if (error.message?.contains("HTTP 404") == true) true else throw error
+        }
+    }
+
     suspend fun fetchImages(context: Context, date: String): List<AgentGeneratedImage> = withContext(Dispatchers.IO) {
         val encodedDate = URLEncoder.encode(date, "UTF-8")
         val array = requestJson(context, "/api/v1/library/images?date=$encodedDate").optJSONArray("images") ?: JSONArray()

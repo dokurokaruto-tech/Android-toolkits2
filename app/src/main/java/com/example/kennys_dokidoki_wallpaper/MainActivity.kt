@@ -605,6 +605,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     .setTitle("画像の削除")
                     .setMessage("選択した画像をどうしますか？")
                     .setPositiveButton("リストから外す") { _, _ ->
+                        GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
                         DataManager.allImages.remove(entry)
                         DataManager.saveData(this)
                         applyQuickFilter()
@@ -613,6 +614,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     .setNeutralButton("ファイルごと削除") { _, _ ->
                         val success = DataManager.deleteImageFile(this, entry.uri)
                         if (success) {
+                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
                             DataManager.allImages.remove(entry)
                             DataManager.saveData(this)
                             applyQuickFilter()
@@ -2891,6 +2893,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val pinned = ImageListOrdering.pinToFront(finalOrderedList, listOf(home, chat)) { it.uri.toString() }
         allImagesAdapter.updateList(pinned)
         tvFilterCount.text = "${pinned.size} 枚"
+        updateActiveImageHighlight()
+    }
+
+
+}
+xt = "${pinned.size} 枚"
         updateActiveImageHighlight()
     }
 

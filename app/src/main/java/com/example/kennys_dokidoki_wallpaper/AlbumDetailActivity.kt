@@ -93,9 +93,10 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                     val intent = Intent(this, FullScreenImageActivity::class.java).apply {
                         putExtra("ALBUM_NAME", albumName)
                         putExtra("START_INDEX", position)
-                        if (isGeneratedViewer) {
-                            putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(images.map { it.uri.toString() }))
-                        }
+                        putExtra("FROM_GENERATED_VIEWER", true)
+                        putExtra("REMOTE_GENERATED", isRemoteGenerated)
+                        putExtra("REMOTE_DATE", remoteDate)
+                        putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(images.map { it.uri.toString() }))
                     }
                     startActivity(intent)
                 } else {
@@ -108,31 +109,16 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                 }
             },
             onDeleteClick = { entry, _ ->
-                // 削除処理（生成画像モードでも、登録済みの場合はDataManagerから、未登録ならファイル削除のみ）
-                AlertDialog.Builder(this)
-                    .setTitle("画像の削除")
-                    .setMessage("このファイルを完全に削除しますか？")
-                    .setNeutralButton("削除する") { _, _ ->
-                        val success = DataManager.deleteImageFile(this, entry.uri)
-                        if (success) {
-                            // DataManagerからも確実に抹消する
-                            DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
-                            DataManager.saveData(this)
-                            
-                            loadImages()
-                            imageAdapter.notifyDataSetChanged()
-                            Toast.makeText(this, "ファイルを削除しました。", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(this, "削除に失敗しました。", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    .setNegativeButton("キャンセル", null)
-                    .show()
+                confirmDeleteGeneratedOrLibrary(listOf(entry))
             },
             onStartWallpaperClick = { entry -> startWallpaper(entry) },
             onEditTagsClick = { entry ->
                 val intent = Intent(this, ImageTagEditorActivity::class.java)
                 intent.putExtra("IMAGE_URI", entry.uri.toString())
+                if (isGeneratedViewer) {
+                    intent.putExtra("GENERATED_DRAFT", true)
+                    entry.thumbnailUri?.let { intent.putExtra("THUMBNAIL_URI", it.toString()) }
+                }
                 startActivity(intent)
             },
             onSelectionModeChanged = { isSelectionMode ->
@@ -246,10 +232,15 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             val selectedEntries = imageAdapter.getSelectedEntries()
             if (selectedEntries.isEmpty()) return@setOnClickListener
 
+            if (isGeneratedViewer) {
+                confirmDeleteGeneratedOrLibrary(selectedEntries)
+                return@setOnClickListener
+            }
             AlertDialog.Builder(this)
                 .setTitle("一括削除")
                 .setMessage("${selectedEntries.size}件の画像をどうする？")
                 .setPositiveButton("リストから外す") { _, _ ->
+                    selectedEntries.forEach { GeneratedImageDraftStore.deleteImageAndMaybeChat(this, it.uri) }
                     DataManager.allImages.removeAll(selectedEntries)
                     DataManager.saveData(this)
                     imageAdapter.stopSelectionMode()
@@ -259,8 +250,11 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                 }
                 .setNeutralButton("ファイルごと全て削除") { _, _ ->
                     var count = 0
-                    selectedEntries.forEach { 
-                        if (DataManager.deleteImageFile(this, it.uri)) count++
+                    selectedEntries.forEach {
+                        if (DataManager.deleteImageFile(this, it.uri)) {
+                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, it.uri)
+                            count++
+                        }
                     }
                     DataManager.allImages.removeAll(selectedEntries)
                     DataManager.saveData(this)
@@ -274,7 +268,83 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         }
         if (isRemoteGenerated) {
             btnInspect.visibility = View.GONE
-            btnDelete.visibility = View.GONE
+        }
+        if (isGeneratedViewer) {
+            btnDelete.visibility = View.VISIBLE
+        }
+    }
+
+    private fun confirmDeleteGeneratedOrLibrary(targets: List<ImageEntry>) {
+        if (targets.isEmpty()) return
+        val message = when {
+            isGeneratedViewer && isRemoteGenerated ->
+                "${targets.size}件をPCからも削除します。紐づいた仮チャットも消えます。"
+            isGeneratedViewer ->
+                "${targets.size}件の生成画像を削除します。紐づいた仮チャットも消えます。"
+            else -> "このファイルを完全に削除しますか？"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("画像の削除")
+            .setMessage(message)
+            .setNeutralButton("削除する") { _, _ ->
+                if (isGeneratedViewer) {
+                    deleteGeneratedImages(targets)
+                } else {
+                    var successCount = 0
+                    targets.forEach { entry ->
+                        if (DataManager.deleteImageFile(this, entry.uri)) {
+                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
+                            DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
+                            successCount++
+                        }
+                    }
+                    DataManager.saveData(this)
+                    loadImages()
+                    imageAdapter.notifyDataSetChanged()
+                    if (successCount > 0) {
+                        Toast.makeText(this, "${successCount}件のファイルを削除しました。", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "削除に失敗しました。", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun deleteGeneratedImages(targets: List<ImageEntry>) {
+        lifecycleScope.launch {
+            var success = 0
+            var failed = 0
+            targets.forEach { entry ->
+                val deleted = try {
+                    if (isRemoteGenerated || ImageStoragePolicy.isRemote(entry.uri)) {
+                        GenerationAgentClient.deleteLibraryImage(this@AlbumDetailActivity, entry.uri)
+                    } else {
+                        DataManager.deleteImageFile(this@AlbumDetailActivity, entry.uri)
+                    }
+                } catch (_: Exception) {
+                    false
+                }
+                if (deleted) {
+                    GeneratedImageDraftStore.deleteImageAndMaybeChat(this@AlbumDetailActivity, entry.uri)
+                    DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
+                    forgetVirtualUri(entry.uri.toString())
+                    success++
+                } else {
+                    failed++
+                }
+            }
+            if (success > 0) DataManager.saveData(this@AlbumDetailActivity)
+            if (imageAdapter.isSelectionMode) imageAdapter.stopSelectionMode()
+            loadImages()
+            imageAdapter.notifyDataSetChanged()
+            val text = when {
+                failed == 0 -> "${success}件を削除しました。"
+                success == 0 -> "削除に失敗しました。"
+                else -> "${success}件を削除、${failed}件は失敗しました。"
+            }
+            Toast.makeText(this@AlbumDetailActivity, text, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -300,9 +370,17 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                             val localUri = GeneratedImageImporter.download(this@AlbumDetailActivity, entry.uri, remoteDate)
                             if (localUri != null) {
                                 downloaded++
-                                if (DataManager.allImages.none { it.uri.toString() == localUri.toString() }) {
-                                    DataManager.allImages.add(0, ImageEntry(localUri))
+                                val existing = DataManager.allImages.find { it.uri.toString() == localUri.toString() }
+                                val imported = GeneratedImageDraftStore.migrateOnImport(
+                                    this@AlbumDetailActivity, entry.uri, localUri
+                                )
+                                if (existing == null) {
+                                    DataManager.allImages.add(0, imported)
                                     added++
+                                } else {
+                                    if (existing.tags.isEmpty()) existing.tags.addAll(imported.tags)
+                                    if (existing.description.isNullOrBlank()) existing.description = imported.description
+                                    if (existing.linkedChatId.isNullOrBlank()) existing.linkedChatId = imported.linkedChatId
                                 }
                             }
                         }
@@ -315,9 +393,15 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                 } else {
                     var added = 0
                     targets.forEach { entry ->
-                        if (DataManager.allImages.none { it.uri.toString() == entry.uri.toString() }) {
-                            DataManager.allImages.add(0, entry)
+                        val imported = GeneratedImageDraftStore.migrateOnImport(this, entry.uri, entry.uri)
+                        if (DataManager.allImages.none { it.uri.toString() == imported.uri.toString() }) {
+                            DataManager.allImages.add(0, imported)
                             added++
+                        } else {
+                            val existing = DataManager.allImages.first { it.uri.toString() == imported.uri.toString() }
+                            if (existing.tags.isEmpty()) existing.tags.addAll(imported.tags)
+                            if (existing.description.isNullOrBlank()) existing.description = imported.description
+                            if (existing.linkedChatId.isNullOrBlank()) existing.linkedChatId = imported.linkedChatId
                         }
                     }
                     if (added > 0) DataManager.saveData(this)
