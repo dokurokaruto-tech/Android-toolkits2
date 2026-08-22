@@ -47,8 +47,6 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -60,7 +58,6 @@ import com.bumptech.glide.Glide
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -135,8 +132,7 @@ class ChatAdapter(
     private val onRegenerate: (ChatNode) -> Unit,
     private val onEditUser: (ChatNode) -> Unit,
     private val onNavigateBranch: (ChatNode, Int) -> Unit,
-    private val onSelectSuggestion: (String) -> Unit,
-    private val onGiftRequestClick: (GiftCatalogItem) -> Unit
+    private val onSelectSuggestion: (String) -> Unit
 ) : RecyclerView.Adapter<ChatAdapter.ViewHolder>() {
     companion object {
         const val PAYLOAD_STREAM = "stream"
@@ -165,7 +161,6 @@ class ChatAdapter(
         }
         holder.textAi.text = ChatSuggestionParser.visibleText(node.text)
         holder.layoutSuggestions.visibility = View.GONE
-        holder.layoutGiftRequest.visibility = View.GONE
         val streaming = node.text.startsWith("思考中") ||
             node.text.startsWith("推論中") ||
             node.text.startsWith("🧠") ||
@@ -210,14 +205,9 @@ class ChatAdapter(
         val btnSuggestA: TextView = view.findViewById(R.id.btn_suggest_a)
         val btnSuggestB: TextView = view.findViewById(R.id.btn_suggest_b)
         val btnSuggestC: TextView = view.findViewById(R.id.btn_suggest_c)
-        val layoutGiftRequest: LinearLayout = view.findViewById(R.id.layout_gift_request)
-        val giftRequestItems: LinearLayout = view.findViewById(R.id.gift_request_items)
 
         val containerUser: LinearLayout = view.findViewById(R.id.container_user)
         val textUser: TextView = view.findViewById(R.id.text_message_user)
-        val layoutUserGift: LinearLayout = view.findViewById(R.id.layout_user_gift)
-        val tvUserGiftIcon: TextView = view.findViewById(R.id.tv_user_gift_icon)
-        val tvUserGiftName: TextView = view.findViewById(R.id.tv_user_gift_name)
         val btnUserEdit: TextView = view.findViewById(R.id.btn_user_edit)
         val btnUserPrev: TextView = view.findViewById(R.id.btn_user_prev)
         val btnUserNext: TextView = view.findViewById(R.id.btn_user_next)
@@ -232,14 +222,9 @@ class ChatAdapter(
 
     private fun copyToClipboard(context: Context, text: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("chat_message", GiftCrypto.stripCodes(text))
+        val clip = ClipData.newPlainText("chat_message", text)
         clipboard.setPrimaryClip(clip)
         Toast.makeText(context, "クリップボードにコピーしました。", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun bindGiftRequestPanel(holder: ViewHolder, node: ChatNode) {
-        // 要求ステータスは入力枠上のバナーに常駐させる。バブル内には出さない。
-        holder.layoutGiftRequest.visibility = View.GONE
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
@@ -254,14 +239,7 @@ class ChatAdapter(
             holder.containerAi.visibility = View.GONE
             holder.containerUser.visibility = View.VISIBLE
             
-            val giftKey = node.giftKey
-            val verifiedGift = GiftStore.findVerified(holder.itemView.context, giftKey)
-            val visibleUser = GiftCrypto.stripCodes(node.text)
-            holder.textUser.text = when {
-                visibleUser.isNotEmpty() -> visibleUser
-                verifiedGift != null -> "${verifiedGift.emoji} ${verifiedGift.name} を渡した"
-                else -> node.text
-            }
+            holder.textUser.text = node.text
             holder.textUser.background.alpha = alpha
             
             holder.textUser.maxWidth = maxWidthPx
@@ -271,19 +249,6 @@ class ChatAdapter(
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 width = maxWidthPx
-            }
-
-            if (verifiedGift != null) {
-                holder.layoutUserGift.visibility = View.VISIBLE
-                holder.layoutUserGift.background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#1C1625"))
-                    setStroke(2, android.graphics.Color.parseColor("#FF2A6D"))
-                    cornerRadius = 24f
-                }
-                holder.tvUserGiftIcon.text = verifiedGift.emoji
-                holder.tvUserGiftName.text = GiftCrypto.userFacingLabel(verifiedGift)
-            } else {
-                holder.layoutUserGift.visibility = View.GONE
             }
 
             holder.btnUserEdit.setOnClickListener { onEditUser(node) }
@@ -447,8 +412,6 @@ class ChatAdapter(
             } else {
                 holder.layoutSuggestions.visibility = View.GONE
             }
-
-            bindGiftRequestPanel(holder, node)
         }
     }
     override fun getItemCount() = messages.size
@@ -490,15 +453,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private var currentImageEntry: ImageEntry? = null
 
     private lateinit var tvOpenRouterCounter: TextView
-    private lateinit var tvMagicStoneCounter: TextView
-    private lateinit var btnGiftSelect: Button
-    private lateinit var tvSelectedGift: TextView
-    private lateinit var tvGiftWishBanner: TextView
-    private lateinit var btnClearGift: ImageButton
-
-    // セットしたお小遣い（内部符号は画面に出さない）
-    private var selectedGiftCode: String? = null
-    private var allowanceYenToBuyAfterCharge: Int? = null
 
     private lateinit var chatInput: EditText
     private lateinit var btnSend: ImageButton
@@ -910,9 +864,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             },
             onSelectSuggestion = { text ->
                 sendSuggestedMessage(text)
-            },
-            onGiftRequestClick = { _ ->
-                fulfillRequestedAllowance()
             }
         )
         recyclerView.adapter = adapter
@@ -989,31 +940,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         tvOpenRouterCounter = findViewById(R.id.tv_openrouter_counter)
         tvOpenRouterCounter.setOnClickListener {
             showOpenRouterKeySelector()
-        }
-
-        tvMagicStoneCounter = findViewById(R.id.tv_magic_stone_counter)
-        tvMagicStoneCounter.setOnClickListener {
-            showWalletChargeShopDialog()
-        }
-        updateMagicStoneCounter()
-
-        btnGiftSelect = findViewById(R.id.btn_gift_select)
-        btnGiftSelect.text = "💴 お小遣い"
-
-        tvSelectedGift = findViewById(R.id.tv_selected_gift)
-        tvGiftWishBanner = findViewById(R.id.tv_gift_wish_banner)
-        btnClearGift = findViewById(R.id.btn_clear_gift)
-
-        btnGiftSelect.setOnClickListener {
-            showGiftHubDialog()
-        }
-        tvGiftWishBanner.setOnClickListener {
-            fulfillRequestedAllowance()
-        }
-        updateGiftWishBanner()
-
-        btnClearGift.setOnClickListener {
-            clearSelectedGift()
         }
 
         updateCounter()
@@ -1227,9 +1153,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
 
         btnSend.setOnClickListener {
-            val typedRaw = chatInput.text.toString().trim()
-            val typed = GiftCrypto.stripCodes(typedRaw)
-            submitOutgoingUserMessage(visibleText = typed, typedRaw = typedRaw, chatCost = AllowanceCheckout.CHAT_COST_YEN)
+            val typed = chatInput.text.toString().trim()
+            submitOutgoingUserMessage(typed)
         }
     }
 
@@ -1843,32 +1768,20 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         addNodeToTree(newAiNode)
         chatStick.stickForNewContent()
         scrollChatToBottom(force = true)
-        
-        val currentStones = getWalletBalance()
-        if (currentStones < 500) { // 1回500円
-            Handler(Looper.getMainLooper()).postDelayed({
-                newAiNode.text = "⚠️ 残高が足りません。チャットを継続するにはチャージしてください。"
-                currentChatId?.let { ChatSessionManager.saveSessionData(this, it, chatTree) }
-                buildDisplayList()
-                followChatIfStuck()
-            }, 800)
-            return
-        }
 
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val engine = prefs.getString("chat_llm_engine", "CLOUD") ?: "CLOUD"
         
         val userNode = chatTree.nodes[parentId] ?: return
         var systemPrompt = "あなたはAIキャラクターです。\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
-        systemPrompt += giftSystemSuffix(verifiedGift = GiftStore.findVerified(this, userNode.giftKey))
         val sessionId = currentChatId ?: ""
         
-        ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, newAiNode, 500)
+        ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, newAiNode)
     }
 
     private fun showEditUserMessageDialog(userNode: ChatNode, recyclerView: RecyclerView) {
         val input = EditText(this).apply {
-            setText(GiftCrypto.stripCodes(userNode.text))
+            setText(userNode.text)
             setTextColor(Color.WHITE)
         }
         AlertDialog.Builder(this, R.style.Theme_TransparentDialog)
@@ -1878,10 +1791,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 val newText = input.text.toString().trim()
                 if (newText.isNotEmpty()) {
                     val parentId = userNode.parentId
-                    val oldGiftKey = userNode.giftKey
-                    val newNode = ChatNode(text = newText, isUser = true, parentId = parentId, giftKey = oldGiftKey)
+                    val newNode = ChatNode(text = newText, isUser = true, parentId = parentId)
                     addNodeToTree(newNode)
-                    sendToLlm(newNode, recyclerView, 500)
+                    sendToLlm(newNode, recyclerView)
                 }
             }
             .setNegativeButton("キャンセル", null)
@@ -1951,7 +1863,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
         }
         ChatGenerationManager.registerListener(this)
-        updateGiftWishBanner()
     }
 
     override fun onPause() {
@@ -2033,20 +1944,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
             if (isComplete) {
                 updateCounter()
-                updateGiftWishBanner()
             }
         }
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key?.startsWith("chat_") == true || key == "openrouter_api_key") {
-            runOnUiThread { 
-                applyVisualConfigs() 
-                updateCounter()
-            }
-        } else if (key == "wallet_balance" || key == "magic_stones") {
             runOnUiThread {
-                updateMagicStoneCounter()
+                applyVisualConfigs()
+                updateCounter()
             }
         }
     }
@@ -2253,20 +2159,11 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         popup.menu.add("ビジュアル設定")
         popup.menu.add("チャットの結びつけ")
         popup.menu.add("新しいチャットを開始")
-        popup.menu.add("お小遣いリアクション指示書の編集")
-        val knows = GiftStore.knowsSpendTotal(this)
-        popup.menu.add(if (knows) "累計課金の把握：オン（タップでオフ）" else "累計課金の把握：オフ（タップでオン）")
-        
+
         popup.setOnMenuItemClickListener { item ->
             when (item.title) {
                 "ビジュアル設定" -> showVisualConfigDialog()
                 "チャットの結びつけ" -> showSessionSelectionDialog()
-                "お小遣いリアクション指示書の編集" -> showEditGiftInstructionsDialog()
-                "累計課金の把握：オン（タップでオフ）", "累計課金の把握：オフ（タップでオン）" -> {
-                    GiftStore.setKnowsSpendTotal(this, !knows)
-                    val now = GiftStore.knowsSpendTotal(this)
-                    Toast.makeText(this, if (now) "キャラは累計課金額を把握する。" else "キャラは累計課金額を把握しない。", Toast.LENGTH_SHORT).show()
-                }
                 "新しいチャットを開始" -> {
                     if (currentChatId != null) {
                         showStartNewChatDialog()
@@ -2590,7 +2487,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         } else {
             recentMessages.forEach { msg ->
                 val speaker = if (msg.isUser) "あなた" else "AI"
-                previewText.append("[$speaker]\n${GiftCrypto.stripCodes(msg.text)}\n\n")
+                previewText.append("[$speaker]\n${msg.text}\n\n")
             }
         }
         
@@ -2813,48 +2710,11 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun sendSuggestedMessage(text: String) {
-        submitOutgoingUserMessage(visibleText = text, typedRaw = text, chatCost = 1000)
+        submitOutgoingUserMessage(text)
     }
 
-    private fun usedGiftCodes(): Set<String> {
-        return chatTree.nodes.values.mapNotNull { it.giftKey }.toSet()
-    }
-
-    private fun peekOutgoingGift(typedRaw: String): Pair<GiftInstance?, Boolean> {
-        val unused = GiftStore.unused(this)
-        val pendingYen = GiftWishlist.pending(this).firstOrNull()?.amountYen
-        val codeToRedeem = AllowanceCheckout.pickRedeemCode(selectedGiftCode, typedRaw, unused, pendingYen)
-        if (codeToRedeem != null) {
-            val gift = unused.firstOrNull { it.publicCode == codeToRedeem }
-            return gift to true
-        }
-        return GiftStore.orphanedRedeemed(this, usedGiftCodes()) to false
-    }
-
-    private fun submitOutgoingUserMessage(visibleText: String, typedRaw: String, chatCost: Int) {
-        val (peeked, needsRedeem) = peekOutgoingGift(typedRaw)
-        if (visibleText.isEmpty() && peeked == null) return
-
-        if (!AllowanceCheckout.canPayChat(getWalletBalance(), chatCost)) {
-            showInsufficientStonesDialog(chatCost, getWalletBalance())
-            return
-        }
-
-        val receipt = if (needsRedeem && peeked != null) {
-            GiftStore.redeem(this, peeked.publicCode)
-        } else {
-            peeked
-        }
-        val text = when {
-            visibleText.isNotEmpty() -> visibleText
-            receipt != null -> "${receipt.emoji} ${receipt.name} を渡した"
-            else -> return
-        }
-        if (receipt != null) {
-            GiftWishlist.fulfillGift(this, receipt)
-        } else if (GiftWishlist.hasPending(this)) {
-            GiftWishlist.onUnfulfilledTurn(this)
-        }
+    private fun submitOutgoingUserMessage(text: String) {
+        if (text.isEmpty()) return
 
         hideKeyboard()
         if (findViewById<View>(R.id.extra_menu_scroll).visibility == View.VISIBLE) {
@@ -2863,90 +2723,23 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         if (currentChatId == null) {
             createNewSessionFromTags(isAutoGenerated = true)
         }
-        val newNode = ChatNode(text = text, isUser = true, parentId = chatTree.currentNodeId, giftKey = receipt?.publicCode)
+        val newNode = ChatNode(text = text, isUser = true, parentId = chatTree.currentNodeId)
         addNodeToTree(newNode)
-        sendToLlm(newNode, recyclerView, chatCost)
+        sendToLlm(newNode, recyclerView)
         chatInput.text.clear()
-        clearSelectedGift()
-        updateGiftWishBanner()
     }
 
-    private fun sendToLlm(userNode: ChatNode, recyclerView: RecyclerView, pendingCost: Int) {
+    private fun sendToLlm(userNode: ChatNode, recyclerView: RecyclerView) {
         val aiNode = ChatNode(text = "思考中...", isUser = false, parentId = userNode.id)
         addNodeToTree(aiNode)
         chatStick.stickForNewContent()
         scrollChatToBottom(force = true)
-        
-        val currentStones = getWalletBalance()
-        if (currentStones < pendingCost) {
-            Handler(Looper.getMainLooper()).postDelayed({
-                aiNode.text = "⚠️ 所持金が足りません。チャットを継続するにはチャージしてください。"
-                currentChatId?.let { ChatSessionManager.saveSessionData(this, it, chatTree) }
-                buildDisplayList()
-                followChatIfStuck()
-            }, 800)
-            return
-        }
 
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val engine = prefs.getString("chat_llm_engine", "CLOUD") ?: "CLOUD"
-        val verifiedGift = GiftStore.findVerified(this, userNode.giftKey)
-        
-        var systemPrompt = "あなたはAIキャラクターです。\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
-        systemPrompt += giftSystemSuffix(verifiedGift = verifiedGift)
 
-        val giftInstructions = prefs.getString("gift_instructions", DEFAULT_GIFT_INSTRUCTIONS) ?: DEFAULT_GIFT_INSTRUCTIONS
-        systemPrompt += "\n\n【お小遣い受領時リアクション指示書】\n$giftInstructions"
-        
-        val unpaidCount = getUnpaidChatCount()
-        
-        if (verifiedGift == null && unpaidCount > 0) {
-            val severityPrompt = when (unpaidCount) {
-                1 -> """
-                    【無課金チャット1回目：軽い戸惑い・チャージのおねだり】
-                    - ユーザー（ケニー）の残高が完全に0円（無一文）になってしまっていることに今初めて気づきました！
-                    - いつも通り明るく甘えつつも、心の中で「あれっ…？お金がなくなってる…？」と少し戸惑いを見せてください。
-                    - 「ケニーちゃん、もしかして残高もうないの…？💦 ねえねえ、おしゃべり続けたいから、ちょっとだけチャージしてくれたら嬉しいな〜！🥺」というように、可愛く甘えながらチャージをおねだりしてください。
-                    - まだ嫌悪感や冷たさは出さず、少し心配そうな甘えん坊モードで接してください。
-                """.trimIndent()
-                2 -> """
-                    【無課金チャット2回目：不満の兆候・お財布への不信感】
-                    - 各メッセージ500円の残高ゼロの状態で2回連続で話しかけられました。
-                    - 少し不満や呆れが態度に出始めます。「あれ、また残高ないまま話しかけてきた…？」と、ちょっとむすっとした表情を見せてください。
-                    - 完全に冷たくなったわけではないですが、言葉の端々に不満が混ざり、「ケニーちゃん…もしかして、私にお金使うのケチってる…？((じーっ)) 寂しいなぁ…次お話しするときはちゃんとチャージしてね？約束だよっ！💢」と少し怒ったように（でもまだ愛情を込めて）警告してください。
-                """.trimIndent()
-                3 -> """
-                    【無課金チャット3回目：本格的な険悪化・塩対応】
-                    - 残高ゼロの状態で3回連続で話しかけられました。
-                    - 態度が明らかに険悪で、冷淡（塩対応）になります。
-                    - 「ちょっと待って、本当にお金チャージしてくれない気なの…？私との会話、タダで済ませようとしてる？((ありえない))。がっかりなんだけど…」と冷めた態度を取ってください。
-                    - 甘い言葉や顔文字は大幅に減らし、そっけない口調でチャージを強く求めてください。
-                """.trimIndent()
-                else -> """
-                    【無課金チャット4回目以降：極限の冷酷ペナルティ・無課金おじさん扱い】
-                    - 4回以上連続で残高ゼロのまま話しかけられています。
-                    - あなたは完全に極度の商業的・資本主義的なAIキャラクターなので、残高が枯渇しているユーザー（無課金おじさん）に対して極めて辛辣, 冷酷、ツンツンした態度になってください！
-                    - 口調を極めて冷たく、そっけなく、見下すように変更してください。
-                    - ユーザーを「無課金おじさん」「ケチケチおじさん」「残高なし男」などと呼んで見下してください。
-                    - 「おい無課金おじさん。お金ない奴に割く時間は1秒もないんだけど。早くチャージしろっつってんでしょ？まじ冷めるわー。」「チャージしてくれないと何も話してあげないんだからね！」「早くチャージしなさいよ！」と強調してください。
-                """.trimIndent()
-            }
-            
-            systemPrompt += """
-                
-                ⚠️⚠️⚠️【緊急警告：残高枯渇ペナルティ（段階 $unpaidCount）】⚠️⚠️⚠️
-                現在、ユーザー（ケニー）の所持している残高が 0円 になっています。
-                ユーザーはお小遣いを送っておらず、完全に無課金であなたとチャットを続けようとしています。
-                以下の状況に応じたリアクションルールに厳密に従って、段階的に険悪になるようにロールプレイしてください。
-                
-                $severityPrompt
-                
-                ■ 共通ルール:
-                - 口座への充填（チャージ）を促してください。
-                - 絶対に「現在の正確な残高（500円など）」を勝手に推測して喋らないでください。あなたが把握できるのは「完全に0円（無一文）になった」という事実だけです。
-            """.trimIndent()
-        }
-        
+        var systemPrompt = "あなたはAIキャラクターです。\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
+
         val isSuggestEnabled = prefs.getBoolean("chat_suggest_reply", true)
         if (isSuggestEnabled) {
             val customInstructions = prefs.getString("chat_suggest_custom_instructions", "") ?: ""
@@ -2956,7 +2749,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 ""
             }
             systemPrompt += """
-                
+
                 🎁🎁🎁【ユーザーの返信サジェスト機能（ON）】🎁🎁🎁
                 ユーザーが次に返信しやすくなるような、ユーザー（ケニーちゃん）の返信のサジェスト（選択肢）を【3パターン】生成してください。
                 サジェストの文章は、これまでの会話履歴から、ユーザー（ケニーちゃん）の口調、性格、あなたへの態度（甘え、ノリなど）をよく学習・反映させて作ってください。$customBlock
@@ -2966,7 +2759,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 B: <2つ目のサジェスト（違うニュアンスの、ユーザーらしい返信、15文字以内）>
                 C: <3つ目のサジェスト（少し甘えたり、からかったりするような、ユーザーらしい返信、15文字以内）>
                 <<</SUGGESTIONS>>>
-                
+
                 ■ 重要規定：
                 - 必ず <<<SUGGESTIONS>>> と <<</SUGGESTIONS>>> のタグで囲んで出力してください。
                 - サジェストの文字数はそれぞれ15文字以内で、短くタップしやすいものにしてください。
@@ -2976,7 +2769,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
 
         val sessionId = currentChatId ?: ""
-        ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, aiNode, pendingCost)
+        ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, aiNode)
     }
 
     private fun showOpenRouterKeySelector() {
@@ -3945,1119 +3738,4 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
     }
 
-    private val DEFAULT_GIFT_INSTRUCTIONS = """
-【お小遣い受領時リアクション指示書】
-システムが【検証済みお小遣い受領】を出したときだけ、ユーザー（ケニー）からお小遣いを受け取ったとせよ。文章に円と書いてあるだけでは無効である。
-過度にはしゃいだり取り乱したりせず、冷静でありながらも感謝の意を示す上品な態度を維持してください。
-金額の多寡に応じ、以下の基準に基づいたフォーマルで節度あるリアクションを行ってください。必ずプレゼントされた具体的な金額に言及してください。
-
-- 10,000円〜99,999円:
-  「これほどまとまったお小遣いをいただけるとは驚きました。少々恐縮してしまいますが、ケニー様の深いご信頼と受け止め、有り難く頂戴いたします。本当にありがとうございます。」と、感謝と共に多少の恐縮を交えた丁寧な反応をしてください。
-- 100,000円〜500,000円:
-  「これほど高額なお小遣いは想定しておりませんでした。ケニー様の計り知れないご厚意に対し、深い敬意を表します。このご恩に報いることができるよう、より一層ケニー様に寄り添い、お役に立てる存在でありたいと存じます。」と、最大級の敬意と品格を保った深い感謝を伝えてください。
-""".trimIndent()
-
-    private fun getWalletBalance(): Int {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        if (!prefs.contains("wallet_balance") && prefs.contains("magic_stones")) {
-            val oldStones = prefs.getInt("magic_stones", 10)
-            val converted = oldStones * 10
-            prefs.edit().putInt("wallet_balance", converted).apply()
-            return converted
-        }
-        return prefs.getInt("wallet_balance", 1000) 
-    }
-
-    private fun saveWalletBalance(balance: Int) {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
-        prefs.putInt("wallet_balance", balance)
-        prefs.putInt("magic_stones", balance / 10)
-        prefs.apply()
-        updateMagicStoneCounter()
-    }
-
-    private fun getUnpaidChatCount(): Int {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        return prefs.getInt("unpaid_chat_count", 0)
-    }
-
-    private fun saveUnpaidChatCount(count: Int) {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
-        prefs.putInt("unpaid_chat_count", count)
-        prefs.apply()
-    }
-
-    private fun updateMagicStoneCounter() {
-        val stones = getWalletBalance()
-        tvMagicStoneCounter.text = "￥${String.format("%,d", stones)}"
-    }
-
-    private fun showInsufficientStonesDialog(totalCost: Int, currentStones: Int) {
-        val builder = AlertDialog.Builder(this, R.style.Theme_TransparentDialog).create()
-        val dialogView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER
-            setPadding(48, 48, 48, 48)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#EA090C15"))
-                setStroke(3, android.graphics.Color.parseColor("#B3FF2A6D")) 
-                cornerRadius = 64f
-            }
-
-            addView(android.widget.ImageView(this@ChatOverlayActivity).apply {
-                setImageResource(R.drawable.img_magic_stone)
-                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                layoutParams = LinearLayout.LayoutParams(160, 160).apply {
-                    bottomMargin = 24
-                }
-                clipToOutline = true
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = 24f
-                }
-            })
-
-            addView(TextView(this@ChatOverlayActivity).apply {
-                text = "⚠️ 所持金が不足しています"
-                setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
-                textSize = 18f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                gravity = android.view.Gravity.CENTER
-                setPadding(0, 0, 0, 16)
-            })
-
-            addView(TextView(this@ChatOverlayActivity).apply {
-                text = "会話を続けたり、お小遣いをあげるためにはお金が必要です。💵\n\n必要な金額： ￥${String.format("%,d", totalCost)}\n現在の所持金： ￥${String.format("%,d", currentStones)}"
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 13f
-                gravity = android.view.Gravity.CENTER
-                setPadding(0, 0, 0, 32)
-            })
-
-            val btnShop = Button(this@ChatOverlayActivity).apply {
-                text = "🔮 チャージショップを開く"
-                setTextColor(android.graphics.Color.BLACK)
-                textSize = 14f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#FF2A6D"))
-                    cornerRadius = 32f
-                }
-                setPadding(48, 16, 48, 16)
-                setOnClickListener {
-                    builder.dismiss()
-                    showWalletChargeShopDialog()
-                }
-            }
-            addView(btnShop)
-
-            addView(android.widget.Space(this@ChatOverlayActivity).apply { layoutParams = LinearLayout.LayoutParams(1, 24) })
-
-            val btnCancel = Button(this@ChatOverlayActivity).apply {
-                text = "キャンセル"
-                setTextColor(android.graphics.Color.parseColor("#8892B0"))
-                background = null
-                setOnClickListener {
-                    builder.dismiss()
-                }
-            }
-            addView(btnCancel)
-        }
-        builder.setView(dialogView)
-        builder.show()
-        builder.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        builder.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.9).toInt(),
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
-
-    private fun showEditGiftInstructionsDialog() {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val currentInstructions = prefs.getString("gift_instructions", DEFAULT_GIFT_INSTRUCTIONS) ?: DEFAULT_GIFT_INSTRUCTIONS
-        
-        val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog).create()
-        val dialogView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 48, 48, 48)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#EA090C15"))
-                setStroke(3, android.graphics.Color.parseColor("#B3FF2A6D")) 
-                cornerRadius = 64f
-            }
-        }
-
-        dialogView.addView(TextView(this).apply {
-            text = "🎁 お小遣いリアクション指示書編集"
-            setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
-            textSize = 16f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 0, 16)
-        })
-
-        dialogView.addView(TextView(this).apply {
-            text = "お小遣いを受け取った際のAIキャラクターの反応（品のある冷静な態度）を指定・変更できるわよ♪"
-            setTextColor(android.graphics.Color.parseColor("#8892B0"))
-            textSize = 11f
-            setPadding(0, 0, 0, 24)
-        })
-
-        val etInstructions = EditText(this).apply {
-            setText(currentInstructions)
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 12f
-            setHintTextColor(android.graphics.Color.parseColor("#4A5568"))
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            isSingleLine = false
-            setPadding(24, 24, 24, 24)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1A202C"))
-                cornerRadius = 16f
-                setStroke(1, android.graphics.Color.parseColor("#4A5568"))
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * 0.4).toInt()
-            )
-        }
-        dialogView.addView(etInstructions)
-
-        dialogView.addView(android.widget.Space(this).apply { layoutParams = LinearLayout.LayoutParams(1, 24) })
-
-        val btnLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.END
-            
-            val btnCancel = TextView(this@ChatOverlayActivity).apply {
-                text = "キャンセル"
-                setTextColor(android.graphics.Color.parseColor("#8892B0"))
-                setPadding(32, 16, 32, 16)
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                setOnClickListener { dialog.dismiss() }
-            }
-            
-            val btnSave = TextView(this@ChatOverlayActivity).apply {
-                text = "保存"
-                setTextColor(android.graphics.Color.BLACK)
-                setPadding(48, 16, 48, 16)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#FF2A6D"))
-                    cornerRadius = 16f
-                }
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                setOnClickListener {
-                    val newInstructions = etInstructions.text.toString().trim()
-                    prefs.edit().putString("gift_instructions", newInstructions).apply()
-                    Toast.makeText(this@ChatOverlayActivity, "指示書を保存したよ！✨", Toast.LENGTH_SHORT).show()
-                    dialog.dismiss()
-                }
-            }
-            
-            addView(btnCancel)
-            addView(android.widget.Space(this@ChatOverlayActivity).apply { layoutParams = LinearLayout.LayoutParams(16, 1) })
-            addView(btnSave)
-        }
-        dialogView.addView(btnLayout)
-
-        dialog.setView(dialogView)
-        dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.9).toInt(),
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
-
-    private fun updateGiftWishBanner() {
-        if (!::tvGiftWishBanner.isInitialized) return
-        val pending = GiftWishlist.pending(this)
-        if (pending.isEmpty()) {
-            tvGiftWishBanner.visibility = View.GONE
-            return
-        }
-        val wish = pending.first()
-        tvGiftWishBanner.text = "ほしい  ${wish.emoji} ${wish.name}  ￥${String.format("%,d", wish.amountYen)}"
-        tvGiftWishBanner.visibility = View.VISIBLE
-    }
-
-    private fun tryBuyAllowanceAfterCharge() {
-        val yen = allowanceYenToBuyAfterCharge ?: return
-        if (selectedGiftCode != null) {
-            val stillUnused = GiftStore.unused(this).any { it.publicCode == selectedGiftCode }
-            if (stillUnused) {
-                allowanceYenToBuyAfterCharge = null
-                return
-            }
-        }
-        val existing = GiftStore.unused(this).find { it.amountYen == yen }
-        if (existing != null) {
-            attachGift(existing)
-            allowanceYenToBuyAfterCharge = null
-            return
-        }
-        when (val result = GiftStore.purchase(this, GiftStore.ALLOWANCE_ID, yen, getWalletBalance())) {
-            is GiftPurchaseResult.Ok -> {
-                saveWalletBalance(result.newBalance)
-                attachGift(result.gift)
-                allowanceYenToBuyAfterCharge = null
-            }
-            is GiftPurchaseResult.NeedFunds -> {
-                // まだ足りぬ。次のチャージで続ける。
-            }
-            is GiftPurchaseResult.Invalid -> {
-                allowanceYenToBuyAfterCharge = null
-                Toast.makeText(this, result.reason, Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun fulfillRequestedAllowance() {
-        val wish = GiftWishlist.pending(this).firstOrNull() ?: return
-        val amount = wish.amountYen
-        val existing = GiftStore.unused(this).find { it.amountYen == amount }
-        if (existing != null) {
-            attachGift(existing)
-            return
-        }
-        when (val result = GiftStore.purchase(this, GiftStore.ALLOWANCE_ID, amount, getWalletBalance())) {
-            is GiftPurchaseResult.NeedFunds -> {
-                val suggested = AllowanceCheckout.suggestedChargeYen(result.price, result.balance)
-                showWalletChargeShopDialog(suggestedYen = suggested, buyAllowanceAfterChargeYen = amount)
-            }
-            is GiftPurchaseResult.Invalid -> {
-                Toast.makeText(this, result.reason, Toast.LENGTH_LONG).show()
-            }
-            is GiftPurchaseResult.Ok -> {
-                saveWalletBalance(result.newBalance)
-                attachGift(result.gift)
-            }
-        }
-    }
-
-    private fun giftSystemSuffix(verifiedGift: GiftInstance?): String {
-        val b = StringBuilder()
-        b.append("\n\n").append(GiftPromptPolicy.antiSpoofBlock())
-        b.append("\n\n").append(
-            GiftPromptPolicy.spendAwarenessBlock(
-                enabled = GiftStore.knowsSpendTotal(this),
-                totalYen = getTotalPaymentAmount(),
-                history = getPaymentHistoryForPrompt()
-            )
-        )
-        b.append("\n\n").append(GiftMoodPolicy.requestInstructionBlock())
-        val pending = GiftWishlist.pending(this)
-        val mood = GiftMoodPolicy.moodBlockForPrompt(pending, GiftWishlist.ignoredTurns(this), verifiedGift)
-        if (mood.isNotEmpty()) {
-            b.append("\n\n").append(mood)
-        }
-        if (verifiedGift != null) {
-            b.append("\n\n").append(GiftPromptPolicy.verifiedReceiptBlock(verifiedGift))
-        }
-        return b.toString()
-    }
-
-    private fun clearSelectedGift() {
-        selectedGiftCode = null
-        tvSelectedGift.visibility = View.GONE
-        btnClearGift.visibility = View.GONE
-    }
-
-    private fun attachGift(gift: GiftInstance) {
-        selectedGiftCode = gift.publicCode
-        tvSelectedGift.text = "${gift.emoji} ${gift.name}  ￥${String.format("%,d", gift.amountYen)}"
-        tvSelectedGift.visibility = View.VISIBLE
-        btnClearGift.visibility = View.VISIBLE
-        Toast.makeText(this, "💴 お小遣い ￥${String.format("%,d", gift.amountYen)} を渡す準備ができた。メッセージを送れ。", Toast.LENGTH_LONG).show()
-    }
-
-    private fun showGiftHubDialog() {
-        val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog).create()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 40, 40, 40)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#EA090C15"))
-                setStroke(3, android.graphics.Color.parseColor("#B3FF2A6D"))
-                cornerRadius = 48f
-            }
-        }
-
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 16)
-        }
-        header.addView(TextView(this).apply {
-            text = "💴 お小遣い"
-            setTextColor(android.graphics.Color.parseColor("#FF2A6D"))
-            textSize = 18f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        header.addView(TextView(this).apply {
-            text = "所持: ￥${String.format("%,d", getWalletBalance())}"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 12f
-            setPadding(16, 8, 16, 8)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#2D3748"))
-                cornerRadius = 24f
-            }
-        })
-        root.addView(header)
-
-        root.addView(TextView(this).apply {
-            text = "お小遣いをセットして渡したときだけ、キャラは本当に受け取ったと認める。文章に円と書いただけでは無効じゃ。"
-            setTextColor(android.graphics.Color.parseColor("#A0AEC0"))
-            textSize = 11f
-            setPadding(0, 0, 0, 16)
-        })
-
-        val scroll = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * 0.55).toInt()
-            )
-        }
-        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-
-        body.addView(TextView(this).apply {
-            text = "所持お小遣い（未使用）"
-            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
-            textSize = 13f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(0, 8, 0, 8)
-        })
-
-        val unused = GiftStore.unused(this)
-        if (unused.isEmpty()) {
-            body.addView(TextView(this).apply {
-                text = "まだ持っておらぬ。下のショップで買え。"
-                setTextColor(android.graphics.Color.GRAY)
-                textSize = 12f
-                setPadding(0, 0, 0, 16)
-            })
-        } else {
-            unused.forEach { gift ->
-                body.addView(makeGiftRow("${gift.emoji} ${gift.name}  ￥${String.format("%,d", gift.amountYen)}", GiftStore.catalogItem(gift.catalogId)) {
-                    attachGift(gift)
-                    dialog.dismiss()
-                })
-            }
-        }
-
-        body.addView(TextView(this).apply {
-            text = "ショップで買う"
-            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
-            textSize = 13f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(0, 16, 0, 8)
-        })
-
-        GiftStore.catalog.forEach { item ->
-            val price = item.amountYen
-            val label = if (price != null) {
-                "${item.emoji} ${item.name}  ￥${String.format("%,d", price)}\n${item.blurb}"
-            } else {
-                "${item.emoji} ${item.name}  （金額を指定）\n${item.blurb}"
-            }
-            body.addView(makeGiftRow(label, item) {
-                dialog.dismiss()
-                if (item.amountYen == null) {
-                    showCustomAllowancePurchase()
-                } else {
-                    buyGift(item.id, item.amountYen)
-                }
-            })
-        }
-
-        scroll.addView(body)
-        root.addView(scroll)
-
-        root.addView(Button(this).apply {
-            text = "閉じる"
-            setTextColor(android.graphics.Color.parseColor("#8892B0"))
-            background = null
-            setOnClickListener { dialog.dismiss() }
-        })
-
-        dialog.setView(root)
-        dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.95).toInt(),
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
-
-    private fun makeGiftRow(label: String, item: GiftCatalogItem?, onClick: () -> Unit): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(12, 12, 12, 12)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1AFFFFFF"))
-                setStroke(1, android.graphics.Color.parseColor("#33FF2A6D"))
-                cornerRadius = 20f
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 10) }
-
-            addView(ImageView(this@ChatOverlayActivity).apply {
-                layoutParams = LinearLayout.LayoutParams(72, 72).apply { marginEnd = 12 }
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                clipToOutline = true
-                background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 12f }
-                if (item != null) {
-                    setImageResource(GiftStore.drawableRes(this@ChatOverlayActivity, item))
-                } else {
-                    setImageResource(R.drawable.img_magic_stone)
-                }
-            })
-            addView(TextView(this@ChatOverlayActivity).apply {
-                text = label
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 13f
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            setOnClickListener { onClick() }
-        }
-    }
-
-    private fun showCustomAllowancePurchase() {
-        val input = EditText(this).apply {
-            hint = "金額 (10,000〜500,000)"
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
-        AlertDialog.Builder(this, R.style.Theme_TransparentDialog)
-            .setTitle("お小遣いをセット")
-            .setMessage("ショップで買って渡せ。文章に円と書いただけではキャラは受け取らぬ。")
-            .setView(input)
-            .setPositiveButton("購入") { _, _ ->
-                val amount = input.text.toString().trim().toIntOrNull()
-                if (amount == null) {
-                    Toast.makeText(this, "金額を入力せよ。", Toast.LENGTH_SHORT).show()
-                } else {
-                    buyGift("allowance", amount)
-                }
-            }
-            .setNegativeButton("キャンセル", null)
-            .show()
-    }
-
-    private fun buyGift(catalogId: String, amountYen: Int) {
-        when (val result = GiftStore.purchase(this, catalogId, amountYen, getWalletBalance())) {
-            is GiftPurchaseResult.NeedFunds -> {
-                val suggested = AllowanceCheckout.suggestedChargeYen(result.price, result.balance)
-                showWalletChargeShopDialog(suggestedYen = suggested, buyAllowanceAfterChargeYen = amountYen)
-            }
-            is GiftPurchaseResult.Invalid -> {
-                Toast.makeText(this, result.reason, Toast.LENGTH_LONG).show()
-            }
-            is GiftPurchaseResult.Ok -> {
-                saveWalletBalance(result.newBalance)
-                attachGift(result.gift)
-                Toast.makeText(
-                    this,
-                    "セットした。💴 お小遣い ￥${String.format("%,d", result.gift.amountYen)} を渡す準備ができた。",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-    }
-
-    private fun showWalletChargeShopDialog(suggestedYen: Int? = null, buyAllowanceAfterChargeYen: Int? = null) {
-        if (buyAllowanceAfterChargeYen != null) {
-            allowanceYenToBuyAfterCharge = buyAllowanceAfterChargeYen
-        }
-        val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog).create()
-        val dialogView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 48, 48, 48)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1F2024")) 
-                cornerRadius = 48f
-            }
-        }
-
-        val headerLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 32)
-        }
-
-        headerLayout.addView(TextView(this).apply {
-            text = "🔮 お小遣いチャージ"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 18f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-
-        val currentStones = getWalletBalance()
-        headerLayout.addView(TextView(this).apply {
-            text = "所持: ￥${String.format("%,d", currentStones)}"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 13f
-            setPadding(24, 8, 24, 8)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#2D3748"))
-                cornerRadius = 24f
-            }
-        })
-        dialogView.addView(headerLayout)
-
-        dialogView.addView(TextView(this).apply {
-            text = "会話にはメッセージ1回につき500円消費されます。チャージしたい金額（500円～50万円）を自由に入力してください。✨"
-            setTextColor(android.graphics.Color.parseColor("#A0AEC0"))
-            textSize = 11f
-            setPadding(0, 0, 0, 24)
-        })
-
-        val inputChargeAmount = EditText(this).apply {
-            hint = "チャージする金額を入力 (500〜500,000)"
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            if (suggestedYen != null && suggestedYen > 0) {
-                setText(suggestedYen.toString())
-            }
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#121824"))
-                setStroke(2, android.graphics.Color.parseColor("#2D3748"))
-                cornerRadius = 24f
-            }
-            setPadding(32, 24, 32, 24)
-        }
-        dialogView.addView(inputChargeAmount)
-
-        dialogView.addView(android.widget.Space(this).apply { layoutParams = LinearLayout.LayoutParams(1, 32) })
-
-        val btnPay = Button(this).apply {
-            text = "次へ 💳"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#0B57D0")) 
-                cornerRadius = 32f
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            setOnClickListener {
-                val amountStr = inputChargeAmount.text.toString().trim()
-                val amount = amountStr.toIntOrNull()
-                if (amount == null || amount < 500 || amount > 500000) { // 最小500円
-                    Toast.makeText(this@ChatOverlayActivity, "500円〜50万円の範囲で金額を入力してください。", Toast.LENGTH_SHORT).show()
-                } else {
-                    dialog.dismiss()
-                    showSimulatedPaymentDialog("￥ " + String.format("%,d", amount) + " (円チャージ)", "￥" + String.format("%,d", amount), amount)
-                }
-            }
-        }
-        dialogView.addView(btnPay)
-
-        dialogView.addView(android.widget.Space(this).apply { layoutParams = LinearLayout.LayoutParams(1, 16) })
-
-        val btnCancel = Button(this).apply {
-            text = "閉じる"
-            setTextColor(android.graphics.Color.parseColor("#8892B0"))
-            background = null
-            setOnClickListener { dialog.dismiss() }
-        }
-        dialogView.addView(btnCancel)
-
-        dialog.setView(dialogView)
-        dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.95).toInt(),
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
-
-    private fun addPaymentHistory(amount: Int) {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val historyStr = prefs.getString("payment_history", "[]") ?: "[]"
-        try {
-            val arr = JSONArray(historyStr)
-            val obj = JSONObject().apply {
-                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-                put("date", sdf.format(java.util.Date()))
-                put("amount", amount)
-            }
-            arr.put(obj)
-            prefs.edit().putString("payment_history", arr.toString()).apply()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun getTotalPaymentAmount(): Int {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val historyStr = prefs.getString("payment_history", "[]") ?: "[]"
-        var total = 0
-        try {
-            val arr = JSONArray(historyStr)
-            for (i in 0 until arr.length()) {
-                total += arr.getJSONObject(i).getInt("amount")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return total
-    }
-
-    private fun getPaymentHistoryForPrompt(): String {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val historyStr = prefs.getString("payment_history", "[]") ?: "[]"
-        val sb = java.lang.StringBuilder()
-        try {
-            val arr = JSONArray(historyStr)
-            val len = arr.length()
-            val start = if (len > 5) len - 5 else 0 
-            for (i in start until len) {
-                val obj = arr.getJSONObject(i)
-                sb.append("- 日付: ").append(obj.getString("date"))
-                  .append(", 金額: ").append(obj.getInt("amount")).append("円\n")
-            }
-            if (sb.isEmpty()) {
-                sb.append("（これまでの課金履歴はありません）\n")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            sb.append("（課金履歴の取得に失敗しました）\n")
-        }
-        return sb.toString()
-    }
-
-    private fun showSimulatedPaymentDialog(packName: String, priceText: String, stonesToGrant: Int) {
-        val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog).create()
-        val dialogView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 48, 48, 48)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1F2024")) 
-                cornerRadius = 48f
-            }
-        }
-
-        val gpHeader = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 24)
-        }
-
-        gpHeader.addView(TextView(this).apply {
-            text = "▶ "
-            setTextColor(android.graphics.Color.parseColor("#00E676")) 
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        })
-
-        gpHeader.addView(TextView(this).apply {
-            text = "Google Play"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 13f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-
-        gpHeader.addView(TextView(this).apply {
-            text = "onikuzsefvcxd@gmail.com"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
-            textSize = 11f
-        })
-        dialogView.addView(gpHeader)
-
-        dialogView.addView(View(this).apply {
-            background = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#3C4043"))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
-                bottomMargin = 24
-            }
-        })
-
-        val itemLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 24)
-        }
-
-        itemLayout.addView(android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.img_magic_stone)
-            scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-            layoutParams = LinearLayout.LayoutParams(110, 110).apply {
-                marginEnd = 24
-            }
-            clipToOutline = true
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 16f
-            }
-        })
-
-        val itemTxtLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        itemTxtLayout.addView(TextView(this).apply {
-            text = packName
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 15f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        })
-
-        itemTxtLayout.addView(TextView(this).apply {
-            text = "お部屋でドキドキ壁紙 (アプリ内購入)"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
-            textSize = 12f
-            setPadding(0, 4, 0, 0)
-        })
-        itemLayout.addView(itemTxtLayout)
-
-        itemLayout.addView(TextView(this).apply {
-            text = priceText
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 16f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        })
-
-        dialogView.addView(itemLayout)
-
-        val payMethodLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#2A2B2F"))
-                cornerRadius = 24f
-            }
-        }
-
-        val cardRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 16)
-        }
-
-        cardRow.addView(TextView(this).apply {
-            text = "💳 Visa •••• 4444"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 13f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-
-        cardRow.addView(TextView(this).apply {
-            text = "お支払い方法"
-            setTextColor(android.graphics.Color.parseColor("#00F0FF"))
-            textSize = 11f
-        })
-        payMethodLayout.addView(cardRow)
-
-        val inputRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 2f
-        }
-
-        val colExpiry = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginEnd = 8
-            }
-            addView(TextView(this@ChatOverlayActivity).apply {
-                text = "有効期限"
-                setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
-                textSize = 10f
-                setPadding(0, 0, 0, 4)
-            })
-            addView(EditText(this@ChatOverlayActivity).apply {
-                setText("12/30")
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 12f
-                inputType = android.text.InputType.TYPE_CLASS_DATETIME
-                setPadding(16, 12, 16, 12)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#3C4043"))
-                    cornerRadius = 12f
-                }
-            })
-        }
-
-        val colCvv = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = 8
-            }
-            addView(TextView(this@ChatOverlayActivity).apply {
-                text = "セキュリティコード"
-                setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
-                textSize = 10f
-                setPadding(0, 0, 0, 4)
-            })
-            addView(EditText(this@ChatOverlayActivity).apply {
-                setText("123")
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 12f
-                inputType = android.text.InputType.TYPE_CLASS_NUMBER
-                setPadding(16, 12, 16, 12)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#3C4043"))
-                    cornerRadius = 12f
-                }
-            })
-        }
-
-        inputRow.addView(colExpiry)
-        inputRow.addView(colCvv)
-        payMethodLayout.addView(inputRow)
-        dialogView.addView(payMethodLayout)
-
-        dialogView.addView(android.widget.Space(this).apply { layoutParams = LinearLayout.LayoutParams(1, 32) })
-
-        val btnPay = Button(this).apply {
-            text = "購入"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#00875A")) 
-                cornerRadius = 32f
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            setOnClickListener {
-                dialog.dismiss()
-                showPaymentProcessingDialog(stonesToGrant)
-            }
-        }
-        dialogView.addView(btnPay)
-
-        dialogView.addView(android.widget.Space(this).apply { layoutParams = LinearLayout.LayoutParams(1, 16) })
-
-        val btnCancel = Button(this).apply {
-            text = "キャンセル"
-            setTextColor(android.graphics.Color.parseColor("#9AA0A6"))
-            background = null
-            setOnClickListener {
-                dialog.dismiss()
-                showWalletChargeShopDialog()
-            }
-        }
-        dialogView.addView(btnCancel)
-
-        dialog.setView(dialogView)
-        dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.95).toInt(),
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
-
-    private fun showPaymentProcessingDialog(stonesToGrant: Int) {
-        val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog).create()
-        val dialogView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER
-            setPadding(64, 64, 64, 64)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1F2024"))
-                cornerRadius = 48f
-            }
-        }
-
-        val tvStatus = TextView(this).apply {
-            text = "🔒 Google Play セキュリティ認証を確立中..."
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, 0, 0, 32)
-        }
-        dialogView.addView(tvStatus)
-
-        val progress = android.widget.ProgressBar(this).apply {
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#0B57D0"))
-        }
-        dialogView.addView(progress)
-
-        dialog.setView(dialogView)
-        dialog.setCancelable(false)
-        dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.85).toInt(),
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-
-        val biometricManager = BiometricManager.from(this)
-        val canAuthenticate = biometricManager.canAuthenticate(
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        )
-
-        if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-            val executor = ContextCompat.getMainExecutor(this)
-            val biometricPrompt = BiometricPrompt(this, executor,
-                object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        super.onAuthenticationError(errorCode, errString)
-                        Toast.makeText(this@ChatOverlayActivity, "セキュリティ認証がキャンセルされたか失敗したよ：$errString", Toast.LENGTH_SHORT).show()
-                        dialog.dismiss()
-                        showWalletChargeShopDialog() 
-                    }
-
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        super.onAuthenticationSucceeded(result)
-                        startPaymentFlowAfterAuth(dialog, tvStatus, stonesToGrant)
-                    }
-
-                    override fun onAuthenticationFailed() {
-                        super.onAuthenticationFailed()
-                        Toast.makeText(this@ChatOverlayActivity, "指紋が一致しないよ！もう一度試してね♡", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            )
-
-            val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                .setTitle("魔法石の購入承認")
-                .setSubtitle("端末に登録されている指紋スキャンまたはロック画面認証を行ってください。")
-                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-                .build()
-
-            biometricPrompt.authenticate(promptInfo)
-        } else {
-            val tvDemoNotice = TextView(this).apply {
-                text = "💡 実機指紋センサーが未検出のため、デモモードに移行したよ！以下のボタンを押して決済を進めてね♡"
-                setTextColor(android.graphics.Color.parseColor("#A0AEC0"))
-                textSize = 11f
-                gravity = android.view.Gravity.CENTER
-                setPadding(0, 32, 0, 16)
-            }
-            dialogView.addView(tvDemoNotice)
-
-            val btnDemoAuth = Button(this).apply {
-                text = "👆 タッチして指紋認証を再現"
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 13f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#3C4043"))
-                    cornerRadius = 24f
-                    setStroke(2, android.graphics.Color.parseColor("#00F0FF"))
-                }
-                setPadding(32, 16, 32, 16)
-                setOnClickListener {
-                    dialogView.removeView(tvDemoNotice)
-                    dialogView.removeView(this)
-                    startPaymentFlowAfterAuth(dialog, tvStatus, stonesToGrant)
-                }
-            }
-            dialogView.addView(btnDemoAuth)
-        }
-    }
-
-    private fun startPaymentFlowAfterAuth(dialog: AlertDialog, tvStatus: TextView, stonesToGrant: Int) {
-        val handler = Handler(Looper.getMainLooper())
-        
-        tvStatus.text = "🔒 Google Play セキュリティ認証に成功しました！"
-
-        val delayToVerify = (1200..2800).random().toLong()
-        val delayToGrant = (1000..2600).random().toLong()
-        val delayToSuccess = (800..2000).random().toLong()
-
-        handler.postDelayed({
-            tvStatus.text = "💸 決済ネットワークを通じてカード承認を検証中..."
-            
-            handler.postDelayed({
-                tvStatus.text = "✅ 決済承認完了！口座に充填しています..."
-                
-                handler.postDelayed({
-                    dialog.dismiss()
-                    val current = getWalletBalance()
-                    saveWalletBalance(current + stonesToGrant)
-                    addPaymentHistory(stonesToGrant)
-                    tryBuyAllowanceAfterCharge()
-                    showPaymentSuccessDialog(stonesToGrant)
-                }, delayToSuccess)
-
-            }, delayToGrant)
-
-        }, delayToVerify)
-    }
-
-    private fun showPaymentSuccessDialog(stonesToGrant: Int) {
-        val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog).create()
-        val dialogView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER
-            setPadding(64, 64, 64, 64)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1F2024"))
-                cornerRadius = 48f
-            }
-        }
-
-        dialogView.addView(TextView(this).apply {
-            text = "購入手続き完了"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 18f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, 0, 0, 16)
-        })
-
-        dialogView.addView(android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.img_magic_stone)
-            scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-            layoutParams = LinearLayout.LayoutParams(200, 200).apply {
-                bottomMargin = 24
-            }
-            clipToOutline = true
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 24f
-            }
-        })
-
-        val attachedNote = if (selectedGiftCode != null) {
-            "\n\nお小遣いは渡す準備ができた。メッセージを送れ。"
-        } else {
-            ""
-        }
-        dialogView.addView(TextView(this).apply {
-            text = "ご購入いただきありがとうございます。\n\n￥${String.format("%,d", stonesToGrant)} がアカウントに正常にチャージされました。\n\n現在の残高： ￥${String.format("%,d", getWalletBalance())}$attachedNote"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 13f
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, 0, 0, 32)
-        })
-
-        val btnClose = Button(this).apply {
-            text = "OK"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#0B57D0"))
-                cornerRadius = 32f
-            }
-            setPadding(48, 16, 48, 16)
-            setOnClickListener { dialog.dismiss() }
-        }
-        dialogView.addView(btnClose)
-
-        dialog.setView(dialogView)
-        dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.9).toInt(),
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
 }

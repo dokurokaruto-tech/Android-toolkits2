@@ -15,11 +15,9 @@ data class ChatNode(
     val childrenIds: MutableList<String> = mutableListOf(),
     var lastActiveChildId: String? = null,
     var modelName: String? = null,
-    var giftKey: String? = null,
     var suggestionA: String? = null,
     var suggestionB: String? = null,
-    var suggestionC: String? = null,
-    var giftRequestYen: Int? = null
+    var suggestionC: String? = null
 )
 
 data class ChatTree(
@@ -173,11 +171,9 @@ object ChatSessionManager {
             nObj.put("parentId", node.parentId)
             nObj.put("lastActiveChildId", node.lastActiveChildId)
             nObj.put("modelName", node.modelName)
-            nObj.put("giftKey", node.giftKey)
             nObj.put("suggestionA", node.suggestionA)
             nObj.put("suggestionB", node.suggestionB)
             nObj.put("suggestionC", node.suggestionC)
-            if (node.giftRequestYen != null) nObj.put("giftRequestYen", node.giftRequestYen) else nObj.put("giftRequestYen", JSONObject.NULL)
             val childrenArray = JSONArray()
             node.childrenIds.forEach { childrenArray.put(it) }
             nObj.put("childrenIds", childrenArray)
@@ -207,11 +203,9 @@ object ChatSessionManager {
                         childrenIds = childrenIds,
                         lastActiveChildId = if (nObj.isNull("lastActiveChildId")) null else nObj.optString("lastActiveChildId", null),
                         modelName = if (nObj.isNull("modelName")) null else nObj.optString("modelName", null),
-                        giftKey = if (nObj.isNull("giftKey")) null else nObj.optString("giftKey", null),
                         suggestionA = if (nObj.isNull("suggestionA")) null else nObj.optString("suggestionA", null),
                         suggestionB = if (nObj.isNull("suggestionB")) null else nObj.optString("suggestionB", null),
-                        suggestionC = if (nObj.isNull("suggestionC")) null else nObj.optString("suggestionC", null),
-                        giftRequestYen = if (nObj.isNull("giftRequestYen")) null else nObj.optInt("giftRequestYen").takeIf { it > 0 }
+                        suggestionC = if (nObj.isNull("suggestionC")) null else nObj.optString("suggestionC", null)
                     )
                 }
                 val currentNodeId = if (obj.isNull("currentNodeId")) null else obj.optString("currentNodeId", null)

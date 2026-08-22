@@ -46,9 +46,8 @@ object ChatSuggestionParser {
 
     /** 生成中の吹き出し用。タグ以降（未完了ブロック含む）は出さない。 */
     fun visibleText(raw: String): String {
-        val cuts = listOf(markerIndex(raw), GiftRequestParser.markerIndex(raw)).filter { it >= 0 }
-        val cut = cuts.minOrNull() ?: return raw
-        return raw.substring(0, cut).trimEnd()
+        val cut = markerIndex(raw)
+        return if (cut >= 0) raw.substring(0, cut).trimEnd() else raw
     }
 
     fun parse(raw: String): Result {

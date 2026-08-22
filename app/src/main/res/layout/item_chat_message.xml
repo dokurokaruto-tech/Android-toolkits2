@@ -124,35 +124,6 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- ギフト要求（フラグを読めたときだけ。本文には出さない） -->
-        <LinearLayout
-            android:id="@+id/layout_gift_request"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="10dp"
-            android:padding="10dp"
-            android:visibility="gone"
-            android:background="@drawable/bg_glass_panel">
-
-            <TextView
-                android:id="@+id/tv_gift_request_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="🎁 ほしいもの"
-                android:textColor="#FF2A6D"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.08" />
-
-            <LinearLayout
-                android:id="@+id/gift_request_items"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginTop="6dp" />
-        </LinearLayout>
-
         <!-- サジェスト返信用のコンテナ -->
         <LinearLayout
             android:id="@+id/layout_suggestions"
@@ -209,31 +180,6 @@
                     android:textStyle="bold"
                     android:gravity="center_vertical" />
             </LinearLayout>
-
-            <!-- 右側の追加魔法石コスト表示 -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:layout_marginStart="12dp"
-                android:padding="6dp"
-                android:background="@drawable/bg_glass_panel">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="💎"
-                    android:textSize="16sp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="+10"
-                    android:textColor="#FFFF00"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
@@ -256,33 +202,6 @@
             android:textColor="@android:color/white"
             android:textSize="15sp"
             android:lineSpacingExtra="4dp" />
-
-        <LinearLayout
-            android:id="@+id/layout_user_gift"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_gravity="end"
-            android:layout_marginTop="4dp"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="6dp"
-            android:visibility="gone">
-            <TextView
-                android:id="@+id/tv_user_gift_icon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="🎁"
-                android:textSize="16sp"/>
-            <TextView
-                android:id="@+id/tv_user_gift_name"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#00F0FF"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginStart="6dp"/>
-        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"

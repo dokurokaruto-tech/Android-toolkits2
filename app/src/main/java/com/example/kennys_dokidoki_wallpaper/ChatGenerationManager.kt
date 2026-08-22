@@ -3,7 +3,6 @@ package com.example.kennys_dokidoki_wallpaper
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,7 +24,6 @@ object ChatGenerationManager {
         private set
     var activeAiNodeId: String? = null
         private set
-    private var pendingYenCost = 0 // 円単位に変更
 
     // 受信を監視するためのリスナー
     interface Listener {
@@ -49,7 +47,6 @@ object ChatGenerationManager {
         isGenerating = false
         activeSessionId = null
         activeAiNodeId = null
-        pendingYenCost = 0
         LlmForegroundService.stop(context)
         notifyError("返信の生成がキャンセルされました。")
     }
@@ -62,8 +59,7 @@ object ChatGenerationManager {
         systemPrompt: String,
         chatTree: ChatTree,
         userNode: ChatNode,
-        aiNode: ChatNode,
-        pendingYenCost: Int = 0
+        aiNode: ChatNode
     ) {
         // すでに動いていたら一度安全にキャンセル
         cancelActiveGeneration(context)
@@ -71,7 +67,6 @@ object ChatGenerationManager {
         isGenerating = true
         activeSessionId = sessionId
         activeAiNodeId = aiNode.id
-        this.pendingYenCost = pendingYenCost
 
         // サービスを開始して、OSによるプロセスkillを防ぐのよ！
         LlmForegroundService.start(context)
@@ -424,11 +419,7 @@ object ChatGenerationManager {
         error: String? = null
     ) {
         if (isComplete && error == null) {
-            GiftRequestParser.applyTo(aiNode)
             ChatSuggestionParser.applyTo(aiNode)
-            aiNode.giftRequestYen?.let { yen ->
-                GiftWishlist.recordRequest(context, yen)
-            }
         }
 
         // ディスクに即時保存
@@ -441,46 +432,12 @@ object ChatGenerationManager {
             }
 
             if (isComplete) {
-                if (error == null && pendingYenCost > 0) {
-                    val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-                    
-                    // wallet_balance を優先して使用するわよ
-                    val currentBalance = if (prefs.contains("wallet_balance")) {
-                        prefs.getInt("wallet_balance", 0)
-                    } else {
-                        prefs.getInt("magic_stones", 0) * 10
-                    }
-                    
-                    val newBalance = if (currentBalance >= pendingYenCost) {
-                        saveUnpaidChatCount(context, 0) // 支払えたら無課金カウントリセット
-                        currentBalance - pendingYenCost
-                    } else {
-                        // 払えなかったら無課金カウントを増やすわよ！
-                        val count = prefs.getInt("unpaid_chat_count", 0)
-                        saveUnpaidChatCount(context, count + 1)
-                        0
-                    }
-                    
-                    prefs.edit().apply {
-                        putInt("wallet_balance", newBalance)
-                        putInt("magic_stones", newBalance / 10) // 互換性のための同期
-                        apply()
-                    }
-                    Log.d("ChatGenerationManager", "Successfully deducted $pendingYenCost Yen. New balance: $newBalance")
-                }
-                pendingYenCost = 0
                 isGenerating = false
                 activeSessionId = null
                 activeAiNodeId = null
                 LlmForegroundService.stop(context)
             }
         }
-    }
-
-    private fun saveUnpaidChatCount(context: Context, count: Int) {
-        val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
-        prefs.putInt("unpaid_chat_count", count)
-        prefs.apply()
     }
 
     private fun notifyProgress(text: String, isComplete: Boolean) {
