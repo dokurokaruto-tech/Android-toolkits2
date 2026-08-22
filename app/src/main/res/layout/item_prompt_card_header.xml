@@ -8,20 +8,13 @@
     android:padding="8dp"
     android:background="#1C1B1F">
 
-    <ImageView
-        android:id="@+id/iv_drag_handle"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:padding="4dp"
-        android:src="@drawable/ic_md3_drag_handle"
-        app:tint="#CAC4D0" />
-
     <TextView
         android:id="@+id/tv_header_title"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:padding="8dp"
+        android:paddingStart="4dp"
+        android:paddingEnd="8dp"
         android:textColor="#D0BCFF"
         android:textSize="14sp"
         android:textStyle="bold"
@@ -49,7 +42,16 @@
         android:id="@+id/btn_category_settings"
         android:layout_width="32dp"
         android:layout_height="32dp"
+        android:layout_marginEnd="8dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@android:drawable/ic_menu_preferences"
+        app:tint="#CAC4D0" />
+
+    <ImageView
+        android:id="@+id/iv_drag_handle"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:padding="4dp"
+        android:src="@drawable/ic_md3_drag_handle"
         app:tint="#CAC4D0" />
 </LinearLayout>

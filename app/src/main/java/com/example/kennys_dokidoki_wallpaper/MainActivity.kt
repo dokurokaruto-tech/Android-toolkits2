@@ -243,10 +243,25 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (uri != null) {
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 tempCardThumbnailUri = uri
-                ivDialogThumbnailPreview?.let {
-                    Glide.with(this).load(uri).into(it)
-                }
+                loadThumbnailPreview(uri)
             }
+        }
+    }
+
+    /**
+     * 編集ダイアログのサムネイルプレビューを更新する。
+     * 画像本来の比率を保ったまま表示するため、リアル画像を読み込むときは
+     * ImageView に設定された tint を解除する（かけたままだと単色化されてしまう）。
+     * 画像がないときはギャラリーアイコンを淡色で表示する。
+     */
+    private fun loadThumbnailPreview(uri: Uri?) {
+        val iv = ivDialogThumbnailPreview ?: return
+        if (uri != null) {
+            iv.imageTintList = null
+            Glide.with(this).load(uri).into(iv)
+        } else {
+            iv.setImageResource(android.R.drawable.ic_menu_gallery)
+            iv.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#CAC4D0"))
         }
     }
 
@@ -1052,9 +1067,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         btnEditAppliedTags.visibility = View.GONE
 
         tempCardThumbnailUri = preset.thumbnailUri
-        if (preset.thumbnailUri != null) {
-            Glide.with(this).load(preset.thumbnailUri).into(ivDialogThumbnailPreview!!)
-        }
+        loadThumbnailPreview(preset.thumbnailUri)
         btnDelete.visibility = View.VISIBLE
 
         btnGenerateThumbnail.setOnClickListener {
@@ -1093,7 +1106,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     oldThumbnailUri = preset.thumbnailUri,
                     onGenerated = { uri ->
                         tempCardThumbnailUri = uri
-                        Glide.with(this@MainActivity).load(uri).into(ivDialogThumbnailPreview!!)
+                        loadThumbnailPreview(uri)
                     }
                 )
                 if (success) {
@@ -1545,9 +1558,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             etNegativePrompt.setText(card.negativePrompt)
             tempAppliedTags.addAll(card.appliedTags)
             tempCardThumbnailUri = card.thumbnailUri
-            if (card.thumbnailUri != null) {
-                Glide.with(this).load(card.thumbnailUri).into(ivDialogThumbnailPreview!!)
-            }
+            loadThumbnailPreview(card.thumbnailUri)
             cbUseRandomizer.isChecked = card.useIndividualRandomizer
             etRandomProbability.setText(card.randomizerProbability.toString())
             sbRandomProbability.value = card.randomizerProbability.toFloat()
@@ -1555,6 +1566,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } else {
             etCategory.setText(initialCategory)
             tempCardThumbnailUri = null
+            loadThumbnailPreview(null)
             cbUseRandomizer.isChecked = false
             etRandomProbability.setText("50")
             sbRandomProbability.value = 50f
@@ -1620,7 +1632,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     oldThumbnailUri = card?.thumbnailUri,
                     onGenerated = { uri ->
                         tempCardThumbnailUri = uri
-                        Glide.with(this@MainActivity).load(uri).into(ivDialogThumbnailPreview!!)
+                        loadThumbnailPreview(uri)
                     }
                 )
                 if (success) {

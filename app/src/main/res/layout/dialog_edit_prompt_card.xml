@@ -46,41 +46,55 @@
             android:layout_marginBottom="20dp">
 
             <com.google.android.material.card.MaterialCardView
-                android:layout_width="80dp"
-                android:layout_height="80dp"
-                app:cardCornerRadius="40dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="140dp"
+                android:minHeight="96dp"
+                app:cardCornerRadius="10dp"
                 app:cardElevation="0dp"
-                app:strokeWidth="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="?attr/colorOutlineVariant"
                 app:cardBackgroundColor="?attr/colorSurfaceContainerHigh">
 
                 <ImageView
                     android:id="@+id/iv_card_thumbnail_preview"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:scaleType="centerCrop"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:adjustViewBounds="true"
+                    android:maxWidth="160dp"
+                    android:maxHeight="200dp"
+                    android:scaleType="fitCenter"
                     android:src="@android:drawable/ic_menu_gallery"
-                    app:tint="?attr/colorOnSurfaceVariant" />
+                    tools:ignore="ContentDescription" />
             </com.google.android.material.card.MaterialCardView>
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_pick_card_thumbnail"
-                style="@style/Widget.Material3.Button.TextButton.Icon"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="選択"
-                app:icon="@drawable/ic_md3_photo_library"
-                tools:ignore="HardcodedText" />
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="12dp">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_generate_card_thumbnail"
-                style="@style/Widget.Material3.Button.TonalButton.Icon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="生成"
-                app:icon="@drawable/ic_md3_auto_awesome"
-                tools:ignore="HardcodedText" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_pick_card_thumbnail"
+                    style="@style/Widget.Material3.Button.TextButton.Icon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="選択"
+                    app:icon="@drawable/ic_md3_photo_library"
+                    tools:ignore="HardcodedText" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_generate_card_thumbnail"
+                    style="@style/Widget.Material3.Button.TonalButton.Icon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="生成"
+                    app:icon="@drawable/ic_md3_auto_awesome"
+                    tools:ignore="HardcodedText" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- カテゴリー -->
