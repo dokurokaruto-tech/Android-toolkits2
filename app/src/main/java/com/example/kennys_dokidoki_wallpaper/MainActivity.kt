@@ -1115,9 +1115,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun updateSelectedCardStrip() {
         val selected = promptCardAdapter.getSelectedCardsWithLevels()
-        selectedStripAdapter.update(selected)
+        // カテゴリーの並び順(categoryOrder)に準じてソート。
+        // カテゴリーを移動させたら、その中のカードも一緒に移動する。
+        val catIdx = PromptCardManager.categoryOrder.withIndex().associate { it.value to it.index }
+        val cardIdx = PromptCardManager.promptCards.withIndex().associate { it.value.id to it.index }
+        val sorted = selected.sortedWith(
+            compareBy(
+                { catIdx[it.first.category] ?: Int.MAX_VALUE },
+                { cardIdx[it.first.id] ?: Int.MAX_VALUE }
+            )
+        )
+        selectedStripAdapter.update(sorted)
         if (::btnGenerateConcatenatedTop.isInitialized) {
-            val hasSelection = selected.isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
+            val hasSelection = sorted.isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
             btnGenerateConcatenatedTop.isEnabled = hasSelection
             btnGenerateConcatenatedTop.alpha = if (hasSelection) 1.0f else 0.5f
         }

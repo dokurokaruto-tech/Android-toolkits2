@@ -1,32 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/strip_card_root"
     android:layout_width="80dp"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:gravity="center_horizontal"
-    android:padding="4dp"
+    android:layout_marginEnd="6dp"
     android:clickable="true"
     android:focusable="true"
-    android:background="@drawable/bg_card_selected"
-    android:layout_marginEnd="6dp">
+    app:cardBackgroundColor="#1C1B1F"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="0dp"
+    app:strokeColor="#49454F"
+    app:strokeWidth="1dp"
+    app:rippleColor="?attr/colorOnSurface">
 
-    <ImageView
-        android:id="@+id/strip_card_thumbnail"
-        android:layout_width="70dp"
-        android:layout_height="100dp"
-        android:scaleType="centerCrop"
-        android:contentDescription="card thumbnail" />
-
-    <TextView
-        android:id="@+id/strip_card_label"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:text="label"
-        android:textColor="#E6E1E5"
-        android:textSize="9sp"
-        android:singleLine="true"
-        android:ellipsize="end"
-        android:gravity="center" />
-</LinearLayout>
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="4dp">
+
+        <ImageView
+            android:id="@+id/strip_card_thumbnail"
+            android:layout_width="70dp"
+            android:layout_height="100dp"
+            android:scaleType="centerCrop"
+            android:contentDescription="card thumbnail" />
+
+        <TextView
+            android:id="@+id/strip_card_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="label"
+            android:textColor="#E6E1E5"
+            android:textSize="9sp"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:gravity="center" />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

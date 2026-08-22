@@ -1,19 +1,22 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.google.android.material.card.MaterialCardView
 
 /**
  * ビルダー画面下部の「選択中カード」横スクロールストリップ。
- * 選択レベル(1=青/2=オレンジ/3=赤)に応じて枠色を分ける。
+ * Material Design 3 の MaterialCardView を使用し、選択レベル
+ * (1=青/2=オレンジ/3=赤) に応じてストローク色を分ける。
  * タップで選択を解除する。
  */
 class SelectedCardStripAdapter(
@@ -29,7 +32,7 @@ class SelectedCardStripAdapter(
     }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
-        val root: LinearLayout = view.findViewById(R.id.strip_card_root)
+        val card: MaterialCardView = view.findViewById(R.id.strip_card_root)
         val thumb: ImageView = view.findViewById(R.id.strip_card_thumbnail)
         val label: TextView = view.findViewById(R.id.strip_card_label)
     }
@@ -41,13 +44,13 @@ class SelectedCardStripAdapter(
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val (card, level) = items[position]
-        holder.label.text = card.label
+        val (cardData, level) = items[position]
+        holder.label.text = cardData.label
 
         // サムネイル
-        if (card.thumbnailUri != null) {
+        if (cardData.thumbnailUri != null) {
             Glide.with(holder.thumb)
-                .load(card.thumbnailUri)
+                .load(cardData.thumbnailUri)
                 .override(140, 200)
                 .diskCacheStrategy(DiskCacheStrategy.ALL)
                 .centerCrop()
@@ -56,16 +59,18 @@ class SelectedCardStripAdapter(
             holder.thumb.setImageResource(android.R.drawable.ic_menu_gallery)
         }
 
-        // 選択レベルに応じた枠色
-        val bgRes = when (level) {
-            1 -> R.drawable.bg_card_selected            // 青
-            2 -> R.drawable.bg_card_selected_emphasis1  // オレンジ
-            3 -> R.drawable.bg_card_selected_emphasis2  // 赤
-            else -> R.drawable.bg_card_selected
+        // 選択レベルに応じたストローク色（保護された3色）
+        val density = holder.itemView.context.resources.displayMetrics.density
+        val (color, width) = when (level) {
+            1 -> Color.parseColor("#00F0FF") to (3 * density).toInt()  // 青
+            2 -> Color.parseColor("#FF9800") to (3 * density).toInt()  // オレンジ
+            3 -> Color.parseColor("#E91E63") to (3 * density).toInt()  // 赤
+            else -> Color.parseColor("#49454F") to (1 * density).toInt()
         }
-        holder.root.setBackgroundResource(bgRes)
+        holder.card.strokeColor = ColorStateList.valueOf(color)
+        holder.card.strokeWidth = width
 
-        holder.root.setOnClickListener { onTap(card) }
+        holder.card.setOnClickListener { onTap(cardData) }
     }
 
     override fun getItemCount() = items.size

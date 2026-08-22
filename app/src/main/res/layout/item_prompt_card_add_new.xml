@@ -8,7 +8,7 @@
     <androidx.cardview.widget.CardView
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:cardBackgroundColor="#0D1117"
+        app:cardBackgroundColor="#1C1B1F"
         app:cardCornerRadius="12dp"
         app:cardElevation="0dp"
         app:layout_constraintTop_toTopOf="parent"
@@ -26,7 +26,7 @@
                 android:layout_height="48dp"
                 android:layout_gravity="center"
                 android:src="@android:drawable/ic_input_add"
-                app:tint="#00F0FF" />
+                app:tint="#D0BCFF" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -34,7 +34,7 @@
                 android:layout_gravity="bottom|center_horizontal"
                 android:layout_marginBottom="16dp"
                 android:text="新規カード"
-                android:textColor="#00F0FF"
+                android:textColor="#D0BCFF"
                 android:textSize="12sp"
                 android:textStyle="bold" />
         </FrameLayout>
