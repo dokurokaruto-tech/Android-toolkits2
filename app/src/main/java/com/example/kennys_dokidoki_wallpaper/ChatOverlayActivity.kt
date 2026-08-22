@@ -56,6 +56,11 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.textview.MaterialTextView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -463,6 +468,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private var userScrollingChat = false
     private var bottomScrollSeq = 0
     private var viewportRestoreSeq = 0
+
+    /** チャット画面のダイアログ類だけ本物の Material Design 3（Google公式アプリ風）を当てるためのコンテキスト */
+    private val md3Context: Context by lazy {
+        ContextThemeWrapper(this, com.google.android.material.R.style.Theme_Material3_Dark_NoActionBar)
+    }
+
+    private fun md3Color(attr: Int): Int = MaterialColors.getColor(md3Context, attr, 0)
+
+    private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
     private fun updateCounter() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -1707,21 +1721,21 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             return
         }
 
-        AlertDialog.Builder(this, R.style.Theme_TransparentDialog)
+        MaterialAlertDialogBuilder(md3Context)
             .setTitle("チャットのリセット")
             .setMessage("現在の会話履歴をすべて消去し、最初からやり直しますか？\n保存されていないデータは失われます。")
             .setPositiveButton("リセット") { _, _ ->
                 val chatIdToDelete = currentChatId
                 bindChatToImage(currentImageEntry, null)
                 currentChatId = null
-                
+
                 if (chatIdToDelete != null) {
                     val name = ChatSessionManager.getSessionName(this, chatIdToDelete)
                     if (name?.startsWith("⏳ ") == true) {
                         ChatSessionManager.deleteSession(this, chatIdToDelete)
                     }
                 }
-                
+
                 chatTree = ChatTree(mutableMapOf(), null)
                 DataManager.saveData(this, createBackup = false)
                 buildDisplayList()
@@ -2192,31 +2206,27 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun showOptionsMenu(view: View) {
-        val popup = PopupMenu(this, view)
-        popup.menu.add("ビジュアル設定")
-        popup.menu.add("チャットの結びつけ")
-        popup.menu.add("新しいチャットを開始")
-
-        popup.setOnMenuItemClickListener { item ->
-            when (item.title) {
-                "ビジュアル設定" -> showVisualConfigDialog()
-                "チャットの結びつけ" -> showSessionSelectionDialog()
-                "新しいチャットを開始" -> {
-                    if (currentChatId != null) {
-                        showStartNewChatDialog()
-                    } else {
-                        if (chatTree.nodes.isNotEmpty()) {
-                            handleResetChat()
+        val items = arrayOf("ビジュアル設定", "チャットの結びつけ", "新しいチャットを開始")
+        MaterialAlertDialogBuilder(md3Context)
+            .setTitle("チャットオプション")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> showVisualConfigDialog()
+                    1 -> showSessionSelectionDialog()
+                    2 -> {
+                        if (currentChatId != null) {
+                            showStartNewChatDialog()
                         } else {
-                            Toast.makeText(this, "現在、新しいチャットセッションが開始されています。", Toast.LENGTH_SHORT).show()
+                            if (chatTree.nodes.isNotEmpty()) {
+                                handleResetChat()
+                            } else {
+                                Toast.makeText(this, "現在、新しいチャットセッションが開始されています。", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
-                else -> {}
             }
-            true
-        }
-        popup.show()
+            .show()
     }
 
     private fun showStartNewChatDialog() {
@@ -2476,12 +2486,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             return
         }
 
-        val rv = RecyclerView(this).apply {
+        val rv = RecyclerView(md3Context).apply {
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 800)
             layoutManager = LinearLayoutManager(this@ChatOverlayActivity)
         }
 
-        val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog)
+        val dialog = MaterialAlertDialogBuilder(md3Context)
             .setTitle("どのチャットを呼び出す？")
             .setView(rv)
             .setNegativeButton("キャンセル", null)
@@ -2501,7 +2511,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         )
         rv.adapter = sessionAdapter
         dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
     }
 
     private fun showSessionPreviewDialog(sessionId: String, sessionName: String, parentDialog: AlertDialog) {
@@ -2698,15 +2707,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun showSessionContextMenu(sessionId: String, currentName: String, anchor: View, parentDialog: AlertDialog, onUpdate: () -> Unit) {
-        val popup = PopupMenu(this, anchor)
-        popup.menu.add("名前を変更")
-        popup.menu.add("このチャットを削除")
-        
-        popup.setOnMenuItemClickListener { item ->
-            when (item.title) {
-                "名前を変更" -> showRenameInputDialog(sessionId, currentName, onUpdate)
-                "このチャットを削除" -> {
-                    AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(md3Context)
+            .setTitle(currentName)
+            .setItems(arrayOf("名前を変更", "このチャットを削除")) { _, which ->
+                when (which) {
+                    0 -> showRenameInputDialog(sessionId, currentName, onUpdate)
+                    1 -> MaterialAlertDialogBuilder(md3Context)
                         .setTitle("削除の確認")
                         .setMessage("『$currentName』を削除しますか？この操作は取り消せません。")
                         .setPositiveButton("削除") { _, _ ->
@@ -2717,19 +2723,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                         .setNegativeButton("キャンセル", null)
                         .show()
                 }
-                else -> {}
             }
-            true
-        }
-        popup.show()
+            .show()
     }
 
     private fun showRenameInputDialog(sessionId: String, currentName: String, onUpdate: () -> Unit) {
-        val input = EditText(this).apply {
+        val input = EditText(md3Context).apply {
             setText(currentName)
-            setTextColor(Color.WHITE)
         }
-        val dialog = AlertDialog.Builder(this, R.style.Theme_TransparentDialog)
+        MaterialAlertDialogBuilder(md3Context)
             .setTitle("セッション名の変更")
             .setView(input)
             .setPositiveButton("保存") { _, _ ->
@@ -2741,9 +2743,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 }
             }
             .setNegativeButton("キャンセル", null)
-            .create()
-        dialog.show()
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            .show()
     }
 
     private fun sendSuggestedMessage(text: String) {
