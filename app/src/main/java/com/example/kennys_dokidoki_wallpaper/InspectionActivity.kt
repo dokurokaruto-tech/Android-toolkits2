@@ -198,7 +198,7 @@ class InspectionActivity : AppCompatActivity() {
                     tv.setTextColor(Color.BLACK)
                 } else {
                     tv.setBackgroundResource(R.drawable.bg_persona_item)
-                    tv.setTextColor(Color.parseColor("#00F0FF"))
+                    tv.setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
                 }
 
                 holder.itemView.setOnClickListener {

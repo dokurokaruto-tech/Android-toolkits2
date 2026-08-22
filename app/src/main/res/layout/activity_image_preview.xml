@@ -26,7 +26,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="/Storage/Download/example.png\n1296x2096 - 5106 KB"
-        android:textColor="#E2E8F0"
+        android:textColor="#E6E1E5"
         android:textSize="12sp"
         android:maxLines="2"
         android:ellipsize="end"

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121212"
+    android:background="#1C1B1F"
     android:orientation="vertical"
     android:padding="20dp">
 
@@ -19,7 +19,7 @@
             android:layout_height="wrap_content"
             android:layout_centerVertical="true"
             android:text="タグを編集"
-            android:textColor="#FFFFFF"
+            android:textColor="#E6E1E5"
             android:textSize="20sp"
             android:textStyle="bold" />
 
@@ -29,7 +29,7 @@
             android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
-            android:backgroundTint="#00F0FF"
+            android:backgroundTint="#D0BCFF"
             android:src="@android:drawable/ic_input_add"
             app:fabSize="mini"
             app:tint="#000000" />
@@ -63,7 +63,7 @@
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:layout_marginTop="8dp"
-        android:backgroundTint="#00F0FF"
+        android:backgroundTint="#D0BCFF"
         android:text="決定して閉じる"
         android:textColor="#000000"
         android:textStyle="bold" />

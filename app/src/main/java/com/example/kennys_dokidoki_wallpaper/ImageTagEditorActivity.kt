@@ -195,7 +195,7 @@ class ImageTagEditorActivity : AppCompatActivity() {
 
             val tvUsageLabel = TextView(this).apply {
                 text = "適用対象の属性"
-                setTextColor(Color.parseColor("#00F0FF"))
+                setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
                 textSize = 14f
                 setPadding(0, 16, 0, 8)
             }
@@ -517,7 +517,7 @@ class ImageTagEditorActivity : AppCompatActivity() {
         val btnProfile = Button(this).apply {
             background = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
             text = "プロファイル: ${profiles.first().getString("name")}"
-            setTextColor(Color.parseColor("#00F0FF"))
+            setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
             textSize = 12f
             setOnClickListener {
                 val names = profiles.map { it.getString("name") }.toTypedArray()
@@ -537,7 +537,7 @@ class ImageTagEditorActivity : AppCompatActivity() {
             background = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
             val current = prefs.getString("chat_cloud_provider", "GROK") ?: "GROK"
             text = "プロバイダー: $current"
-            setTextColor(Color.parseColor("#00F0FF"))
+            setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
             textSize = 12f
             setOnClickListener {
                 val providers = arrayOf("GROK", "OPENROUTER")
@@ -624,7 +624,7 @@ class ImageTagEditorActivity : AppCompatActivity() {
         val provider = prefs.getString("chat_cloud_provider", "GROK") ?: "GROK"
         
         statusTextView.text = "AIが思考中...（プロンプト構築中）"
-        statusTextView.setTextColor(Color.parseColor("#FFCC00"))
+        statusTextView.setTextColor(android.graphics.Color.parseColor("#FFCC00"))
 
         coroutineScope.launch(Dispatchers.IO) {
             try {
@@ -740,14 +740,14 @@ class ImageTagEditorActivity : AppCompatActivity() {
                     withContext(Dispatchers.Main) { 
                         targetEditText.setText(reply)
                         statusTextView.text = "生成成功！✨"
-                        statusTextView.setTextColor(Color.parseColor("#00FF00"))
+                        statusTextView.setTextColor(android.graphics.Color.parseColor("#00FF00"))
                         Toast.makeText(this@ImageTagEditorActivity, "AIが素晴らしい説明を考えてくれたわ！", Toast.LENGTH_SHORT).show() 
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { 
                     statusTextView.text = "エラー: ${e.message}"
-                    statusTextView.setTextColor(Color.parseColor("#FF4444"))
+                    statusTextView.setTextColor(android.graphics.Color.parseColor("#F2B8B5"))
                     Toast.makeText(this@ImageTagEditorActivity, "AIがちょっと迷子になっちゃったみたい...", Toast.LENGTH_SHORT).show() 
                 }
             }

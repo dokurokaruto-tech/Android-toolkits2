@@ -12,7 +12,7 @@
         android:layout_height="24dp"
         android:src="@android:drawable/ic_menu_my_calendar"
         android:layout_marginEnd="16dp"
-        app:tint="#00F0FF"
+        app:tint="#D0BCFF"
         xmlns:app="http://schemas.android.com/apk/res-auto"/>
 
     <TextView

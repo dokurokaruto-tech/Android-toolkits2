@@ -20,7 +20,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Model Name"
-            android:textColor="#FFFFFF"
+            android:textColor="#E6E1E5"
             android:textSize="16sp"
             android:textStyle="bold" />
 
@@ -29,7 +29,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Ready to use"
-            android:textColor="#8892B0"
+            android:textColor="#CAC4D0"
             android:textSize="12sp" />
     </LinearLayout>
 

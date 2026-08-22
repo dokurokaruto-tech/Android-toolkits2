@@ -15,7 +15,7 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:text="#タグ"
-        android:textColor="#FFFFFF"
+        android:textColor="#E6E1E5"
         android:textSize="16sp"
         android:textStyle="bold" />
 
@@ -26,5 +26,5 @@
         android:layout_height="32dp"
         android:padding="4dp"
         android:src="@android:drawable/ic_menu_sort_by_size"
-        app:tint="#8892B0" />
+        app:tint="#CAC4D0" />
 </LinearLayout>

@@ -64,7 +64,7 @@
         android:paddingHorizontal="16dp"
         android:paddingVertical="4dp"
         android:text="1 / 1"
-        android:textColor="#FFFFFF"
+        android:textColor="#E6E1E5"
         android:textSize="14sp"
         android:fontFamily="sans-serif-medium"
         app:layout_constraintBottom_toBottomOf="parent"

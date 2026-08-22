@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="#151A28"
-        app:titleTextColor="#00F0FF"
+        app:titleTextColor="#D0BCFF"
         app:layout_constraintTop_toTopOf="parent" />
 
     <ScrollView

@@ -14,7 +14,7 @@
         android:layout_width="24dp"
         android:layout_height="24dp"
         android:src="@drawable/ic_more_vert"
-        app:tint="#8892B0"
+        app:tint="#CAC4D0"
         android:layout_marginEnd="12dp" />
 
     <TextView
@@ -23,7 +23,7 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:text="1. sk-or-v1-... (0/50)"
-        android:textColor="#FFFFFF"
+        android:textColor="#E6E1E5"
         android:textSize="14sp" />
 
     <ImageButton
@@ -32,6 +32,6 @@
         android:layout_height="32dp"
         android:src="@android:drawable/ic_menu_delete"
         android:background="?attr/selectableItemBackgroundBorderless"
-        app:tint="#FF2A6D" />
+        app:tint="#D0BCFF" />
 
 </LinearLayout>

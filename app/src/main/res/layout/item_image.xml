@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:layout_margin="4dp"
     app:cardCornerRadius="8dp"
-    app:cardBackgroundColor="#1A2235"
+    app:cardBackgroundColor="#1C1B1F"
     app:cardElevation="2dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -78,7 +78,7 @@
             android:padding="5dp"
             android:background="@drawable/rounded_rect_bg_dark"
             android:src="@android:drawable/ic_menu_crop"
-            app:tint="#00F0FF"
+            app:tint="#D0BCFF"
             android:visibility="gone"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
@@ -99,7 +99,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="再生中"
-            android:textColor="#00F0FF"
+            android:textColor="#D0BCFF"
             android:textSize="10sp"
             android:textStyle="bold"
             android:visibility="gone"

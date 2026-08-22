@@ -43,7 +43,7 @@ object CharacterImportEditor {
         // 説明文
         val descText = TextView(context).apply {
             text = "インポートするキャラクターの情報を確認・編集できるわよ♪\nChubのキャラは英語だから、下のAI翻訳ボタンを押すと、自動的に魅力的な日本語に翻訳・リライトしてくれるわよ！"
-            setTextColor(Color.parseColor("#E2E8F0"))
+            setTextColor(android.graphics.Color.parseColor("#E6E1E5"))
             textSize = 14f
             setPadding(0, 0, 0, 24)
         }
@@ -177,7 +177,7 @@ object CharacterImportEditor {
 
         val label = TextView(context).apply {
             text = labelText
-            setTextColor(Color.parseColor("#94A3B8"))
+            setTextColor(android.graphics.Color.parseColor("#94A3B8"))
             textSize = 13f
             setPadding(0, 0, 0, 8)
         }
@@ -191,7 +191,7 @@ object CharacterImportEditor {
             
             // 背景
             val gd = GradientDrawable().apply {
-                setColor(Color.parseColor("#1E293B"))
+                setColor(android.graphics.Color.parseColor("#1E293B"))
                 cornerRadius = 12f
                 setStroke(2, Color.parseColor("#334155"))
             }

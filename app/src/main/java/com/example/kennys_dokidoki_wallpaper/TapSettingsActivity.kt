@@ -70,7 +70,7 @@ class TapSettingsActivity : AppCompatActivity() {
             val currentAction = prefs.getString(prefKey, defaultAction) ?: defaultAction
             text = getActionDisplayName(currentAction)
             textSize = 14f
-            setTextColor(Color.parseColor("#00F0FF"))
+            setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
             setPadding(0, 8, 0, 0)
         }
 

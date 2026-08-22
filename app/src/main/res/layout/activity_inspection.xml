@@ -35,7 +35,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="この画像のキャラクターは？"
-            android:textColor="#FFFFFF"
+            android:textColor="#E6E1E5"
             android:textSize="24sp"
             android:textStyle="bold"
             android:shadowColor="#000000"
@@ -56,7 +56,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="1 / 10 枚目"
-                android:textColor="#00F0FF"
+                android:textColor="#D0BCFF"
                 android:textSize="16sp" />
 
             <ImageButton
@@ -66,7 +66,7 @@
                 android:layout_marginStart="16dp"
                 android:background="@drawable/bg_persona_item"
                 android:src="@android:drawable/ic_menu_sort_alphabetically"
-                app:tint="#00F0FF"
+                app:tint="#D0BCFF"
                 tools:ignore="ContentDescription" />
 
             <ImageButton
@@ -76,7 +76,7 @@
                 android:layout_marginStart="16dp"
                 android:background="@drawable/bg_persona_item"
                 android:src="@android:drawable/ic_menu_view"
-                app:tint="#00F0FF"
+                app:tint="#D0BCFF"
                 tools:ignore="ContentDescription" />
         </LinearLayout>
 
@@ -112,7 +112,7 @@
             android:layout_weight="1"
             android:layout_margin="4dp"
             android:text="終了"
-            android:textColor="#FFFFFF"
+            android:textColor="#E6E1E5"
             android:textStyle="bold"
             android:textSize="18sp"
             android:backgroundTint="#FF3366" />
@@ -124,10 +124,10 @@
             android:layout_weight="1"
             android:layout_margin="4dp"
             android:text="戻る"
-            android:textColor="#FFFFFF"
+            android:textColor="#E6E1E5"
             android:textStyle="bold"
             android:textSize="18sp"
-            android:backgroundTint="#1A2235" />
+            android:backgroundTint="#1C1B1F" />
 
         <Button
             android:id="@+id/btn_inspection_skip"
@@ -139,7 +139,7 @@
             android:textColor="#000000"
             android:textStyle="bold"
             android:textSize="18sp"
-            android:backgroundTint="#00F0FF" />
+            android:backgroundTint="#D0BCFF" />
 
     </LinearLayout>
 

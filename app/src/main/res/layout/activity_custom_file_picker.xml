@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="#151A28"
-        app:titleTextColor="#00F0FF"
+        app:titleTextColor="#D0BCFF"
         app:layout_constraintTop_toTopOf="parent">
 
         <!-- ツールバー内にお気に入り追加ボタンを配置 -->
@@ -41,7 +41,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="名前 ▲"
-            android:textColor="#00F0FF"
+            android:textColor="#D0BCFF"
             android:gravity="center"
             android:padding="12dp"
             android:textSize="14sp"
@@ -54,7 +54,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="更新日 -"
-            android:textColor="#8892B0"
+            android:textColor="#CAC4D0"
             android:gravity="center"
             android:padding="12dp"
             android:textSize="14sp"
@@ -86,7 +86,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="選択中: 0"
-            android:textColor="#00F0FF"
+            android:textColor="#D0BCFF"
             android:textSize="16sp"
             android:textStyle="bold"
             android:layout_gravity="center_vertical"/>
@@ -99,7 +99,7 @@
             android:textStyle="bold"
             app:cornerRadius="8dp"
             app:backgroundTint="#FF003C"
-            android:textColor="#FFFFFF" />
+            android:textColor="#E6E1E5" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

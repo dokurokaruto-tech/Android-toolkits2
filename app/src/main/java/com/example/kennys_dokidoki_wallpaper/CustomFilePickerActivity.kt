@@ -156,7 +156,7 @@ class CustomFilePickerActivity : AppCompatActivity() {
     }
 
     private fun updateSortUI() {
-        val activeColor = android.graphics.Color.parseColor("#00F0FF")
+        val activeColor = android.graphics.Color.parseColor("#D0BCFF")
         val inactiveColor = android.graphics.Color.parseColor("#8892B0")
 
         when (currentSortMode) {
