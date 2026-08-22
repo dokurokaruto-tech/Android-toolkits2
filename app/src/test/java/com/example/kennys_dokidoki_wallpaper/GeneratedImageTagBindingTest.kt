@@ -99,6 +99,23 @@ class GeneratedImageTagBindingTest {
         assertEquals(listOf("C"), matched[1].second)
     }
 
+    @Test
+    fun `job tag lists survive encode and decode`() {
+        val encoded = GeneratedImageTagBinding.encodeTagLists(
+            listOf(listOf("金髪", "幼女"), emptyList(), listOf(" tail ", ""))
+        )
+        assertEquals(
+            listOf(listOf("金髪", "幼女"), emptyList(), listOf("tail")),
+            GeneratedImageTagBinding.decodeTagLists(encoded)
+        )
+        assertTrue(GeneratedImageTagBinding.decodeTagLists(null).isEmpty())
+        assertEquals(listOf("金髪", "幼女"), GeneratedImageTagBinding.parseTagList(GeneratedImageTagBinding.encodeTagList(listOf("金髪", " 幼女 "))))
+        assertEquals(
+            listOf("a\"b", "c\\d"),
+            GeneratedImageTagBinding.parseTagList(GeneratedImageTagBinding.encodeTagList(listOf("a\"b", "c\\d")))
+        )
+    }
+
     private fun frozen(
         id: String,
         category: String,

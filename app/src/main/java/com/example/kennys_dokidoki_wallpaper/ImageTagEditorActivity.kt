@@ -338,7 +338,13 @@ class ImageTagEditorActivity : AppCompatActivity() {
                 liveEntry.tags.clear()
                 liveEntry.tags.addAll(minimized)
                 imageEntry = liveEntry
-                if (!DataManager.saveData(this)) {
+                val saved = if (isGeneratedDraft || DataManager.findImageByUri(liveEntry.uri.toString()) == null) {
+                    GeneratedImageDraftStore.save(this, liveEntry.uri, liveEntry)
+                    true
+                } else {
+                    DataManager.saveData(this)
+                }
+                if (!saved) {
                     Toast.makeText(this, "保存できなかったわ。もう一度試してみて。", Toast.LENGTH_LONG).show()
                     return@setOnClickListener
                 }

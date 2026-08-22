@@ -149,5 +149,52 @@ object GeneratedImageTagBinding {
         }
     }
 
+    fun preparedFromTagLists(tagLists: List<List<String>>): List<PreparedImage> =
+        tagLists.map { PreparedImage("", "", it) }
+
+    fun encodeTagLists(lists: List<Collection<String>>): String {
+        val array = JSONArray()
+        lists.forEach { tags ->
+            array.put(JSONArray().also { item ->
+                collect(listOf(tags)).forEach { item.put(it) }
+            })
+        }
+        return array.toString()
+    }
+
+    fun decodeTagLists(raw: String?): List<List<String>> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONArray(index) ?: JSONArray()
+                    add(buildList {
+                        for (tagIndex in 0 until item.length()) {
+                            val tag = item.optString(tagIndex).trim()
+                            if (tag.isNotEmpty()) add(tag)
+                        }
+                    })
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun encodeTagList(tags: Collection<String>): String =
+        JSONArray().also { array -> collect(listOf(tags)).forEach { array.put(it) } }.toString()
+
+    fun parseTagList(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val tag = array.optString(index).trim()
+                    if (tag.isNotEmpty()) add(tag)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
     private val TASK_INDEX = Regex("""_(\d{4})\.(?:png|jpg|jpeg|webp)$""", RegexOption.IGNORE_CASE)
 }

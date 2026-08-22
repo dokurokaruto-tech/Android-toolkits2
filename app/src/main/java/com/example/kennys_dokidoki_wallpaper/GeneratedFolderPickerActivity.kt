@@ -138,6 +138,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                     albumName = "生成: $date",
                     uris = images.map { it.url },
                     thumbnailUris = images.map { it.thumbnailUrl },
+                    tagLists = images.map { GeneratedImageTagBinding.encodeTagList(it.tags) },
                     remoteDate = date
                 )
             } catch (error: Exception) {
@@ -164,6 +165,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         albumName: String,
         uris: List<String>,
         thumbnailUris: List<String>? = null,
+        tagLists: List<String>? = null,
         remoteDate: String? = null,
         folderUri: String? = null
     ) {
@@ -177,6 +179,9 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
             putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(uris))
             thumbnailUris?.let {
                 putStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS", ArrayList(it))
+            }
+            tagLists?.let {
+                putStringArrayListExtra("VIRTUAL_ALBUM_TAGS", ArrayList(it))
             }
         })
         // Do not animate through the prompt builder between the two generated-image screens.

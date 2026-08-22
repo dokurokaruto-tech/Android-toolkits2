@@ -58,6 +58,7 @@ data class AgentJobState(
  */
 object GenerationAgentClient {
     private const val ACTIVE_JOB_KEY = "generation_agent_active_job_id"
+    private const val ACTIVE_JOB_TAGS_KEY = "generation_agent_active_job_tags"
     private const val TAG = "GenerationAgent"
 
     private fun settings(context: Context) = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -124,8 +125,13 @@ object GenerationAgentClient {
         val state = parseJob(context, requestJson(context, "/api/v1/jobs", "POST", body))
         if (persistForReconnect) {
             // Synchronous commit closes the tiny crash window between PC acceptance and local reconnect state.
-            settings(context).edit().putString(ACTIVE_JOB_KEY, state.id).commit()
+            // Tags are stored with the job so a later reconnect can still bind them after the app died.
+            settings(context).edit()
+                .putString(ACTIVE_JOB_KEY, state.id)
+                .putString(ACTIVE_JOB_TAGS_KEY, GeneratedImageTagBinding.encodeTagLists(requests.map { it.tags }))
+                .commit()
         }
+        seedCompletedUrls(context, state.imageUrls)
         state
     }
 
@@ -211,6 +217,7 @@ object GenerationAgentClient {
         val jobId = initial?.id ?: settings(context).getString(ACTIVE_JOB_KEY, null)
             ?: throw IllegalStateException("再接続する生成ジョブがありません")
         var state = initial ?: getJob(context, jobId)
+        seedCompletedUrls(context, state.imageUrls)
         GenerationProgressManager.startGeneration(
             batchMode = !silent,
             total = state.total,
@@ -250,6 +257,7 @@ object GenerationAgentClient {
                     }
                     delay(1500)
                     state = getJob(context, jobId)
+                    seedCompletedUrls(context, state.imageUrls)
                     connectionFailures = 0
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
@@ -263,8 +271,9 @@ object GenerationAgentClient {
                     delay(2000)
                 }
             }
+            seedCompletedUrls(context, state.imageUrls)
             if (clearReconnectState) {
-                settings(context).edit().remove(ACTIVE_JOB_KEY).apply()
+                clearReconnectState(context)
             }
             return state
         } finally {
@@ -304,7 +313,8 @@ object GenerationAgentClient {
         return try {
             val state = getJob(context, id)
             if (state.isTerminal) {
-                settings(context).edit().remove(ACTIVE_JOB_KEY).apply()
+                seedCompletedUrls(context, state.imageUrls)
+                clearReconnectState(context)
                 GenerationProgressManager.endGeneration(force = true)
                 null
             } else {
@@ -316,6 +326,24 @@ object GenerationAgentClient {
             GenerationProgressManager.endGeneration(force = true)
             null
         }
+    }
+
+    private fun seedCompletedUrls(context: Context, urls: List<String>) {
+        if (urls.isEmpty()) return
+        val prepared = GeneratedImageTagBinding.preparedFromTagLists(
+            GeneratedImageTagBinding.decodeTagLists(settings(context).getString(ACTIVE_JOB_TAGS_KEY, null))
+        )
+        if (prepared.isEmpty()) return
+        GeneratedImageTagBinding.tagsForCompletedUrls(urls, prepared).forEach { (url, tags) ->
+            GeneratedImageDraftStore.seedGeneratedTags(context, android.net.Uri.parse(url), tags)
+        }
+    }
+
+    private fun clearReconnectState(context: Context) {
+        settings(context).edit()
+            .remove(ACTIVE_JOB_KEY)
+            .remove(ACTIVE_JOB_TAGS_KEY)
+            .apply()
     }
 
     private fun parseJob(context: Context, json: JSONObject): AgentJobState {

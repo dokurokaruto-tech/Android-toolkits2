@@ -528,12 +528,14 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             if (isRemoteGenerated) {
                 val originals = intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS").orEmpty()
                 val thumbnails = intent.getStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS").orEmpty()
+                val tagLists = intent.getStringArrayListExtra("VIRTUAL_ALBUM_TAGS").orEmpty()
                 originals.forEachIndexed { index, original ->
                     images.add(
                         GeneratedImageDraftStore.entryFor(
                             this,
                             Uri.parse(original),
-                            thumbnails.getOrNull(index)?.let(Uri::parse)
+                            thumbnails.getOrNull(index)?.let(Uri::parse),
+                            GeneratedImageTagBinding.parseTagList(tagLists.getOrNull(index))
                         )
                     )
                 }
@@ -578,14 +580,19 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     private fun forgetVirtualUri(uriStr: String) {
         val uris = intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS") ?: return
         val thumbnails = intent.getStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS")
+        val tagLists = intent.getStringArrayListExtra("VIRTUAL_ALBUM_TAGS")
         val index = uris.indexOf(uriStr)
         if (index != -1) {
             uris.removeAt(index)
             thumbnails?.let {
                 if (index < it.size) it.removeAt(index)
             }
+            tagLists?.let {
+                if (index < it.size) it.removeAt(index)
+            }
             intent.putStringArrayListExtra("VIRTUAL_ALBUM_URIS", uris)
             thumbnails?.let { intent.putStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS", it) }
+            tagLists?.let { intent.putStringArrayListExtra("VIRTUAL_ALBUM_TAGS", it) }
         }
     }
 
