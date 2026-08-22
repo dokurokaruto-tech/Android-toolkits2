@@ -666,7 +666,13 @@ class TagPromptEditorActivity : AppCompatActivity() {
                     
                     if (baseUrl.isNotEmpty()) {
                         val url = URL("$baseUrl/api/generate-prompt")
-                        val conn = (url.openConnection() as HttpURLConnection).apply { requestMethod = "POST"; setRequestProperty("Content-Type", "application/json"); doOutput = true }
+                        val conn = (url.openConnection() as HttpURLConnection).apply {
+                            requestMethod = "POST"
+                            setRequestProperty("Content-Type", "application/json")
+                            val agentKey = prefs.getString("generation_agent_api_key", "")?.trim().orEmpty()
+                            if (agentKey.isNotEmpty()) setRequestProperty("Authorization", "Bearer $agentKey")
+                            doOutput = true
+                        }
                         val requestBody = JSONObject().apply {
                             put("tagName", if (useTagName) etTagName.text.toString().trim() else "")
                             put("instruction", instruction)

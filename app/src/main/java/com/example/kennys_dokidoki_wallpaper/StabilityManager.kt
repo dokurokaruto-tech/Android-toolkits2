@@ -62,6 +62,12 @@ object StabilityManager {
         GenerationProgressManager.reportError(code, detail)
     }
 
+    private fun applyAgentAuthorization(context: Context, connection: HttpURLConnection) {
+        val key = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getString("generation_agent_api_key", "")?.trim().orEmpty()
+        if (key.isNotEmpty()) connection.setRequestProperty("Authorization", "Bearer $key")
+    }
+
     suspend fun generateImage(
         context: Context, 
         prompt: String, 
@@ -99,11 +105,11 @@ object StabilityManager {
                     delay(1500) // 1.5秒おきにチェック
                     
                     if (GenerationProgressManager.shouldInterrupt) {
-                        interruptGeneration(baseUrl)
+                        interruptGeneration(context, baseUrl)
                         // ここでfalseに戻しちゃうと、後続の保存処理で「中止された」ことが分からなくなっちゃうから消すわね！
                     }
                     if (GenerationProgressManager.shouldSkip) {
-                        skipGeneration(baseUrl)
+                        skipGeneration(context, baseUrl)
                         GenerationProgressManager.shouldSkip = false
                     }
                 }
@@ -119,6 +125,7 @@ object StabilityManager {
                     connectTimeout = 10000
                     readTimeout = 300000 
                 }
+                applyAgentAuthorization(context, conn)
 
                 val body = JSONObject().apply {
                     put("prompt", prompt)
@@ -188,6 +195,7 @@ object StabilityManager {
                 connectTimeout = 3000
                 readTimeout = 3000
             }
+            applyAgentAuthorization(context, conn)
 
             if (conn.responseCode == 200) {
                 val responseText = conn.inputStream.bufferedReader().use { it.readText() }
@@ -214,20 +222,22 @@ object StabilityManager {
         }
     }
 
-    private suspend fun interruptGeneration(baseUrl: String) {
+    private suspend fun interruptGeneration(context: Context, baseUrl: String) {
         try {
             val url = URL("${baseUrl.removeSuffix("/")}/sdapi/v1/interrupt")
             val conn = (url.openConnection() as HttpURLConnection).apply { requestMethod = "POST" }
+            applyAgentAuthorization(context, conn)
             conn.responseCode
         } catch (e: Exception) {
             Log.e("StabilityManager", "Interrupt failed", e)
         }
     }
 
-    private suspend fun skipGeneration(baseUrl: String) {
+    private suspend fun skipGeneration(context: Context, baseUrl: String) {
         try {
             val url = URL("${baseUrl.removeSuffix("/")}/sdapi/v1/skip")
             val conn = (url.openConnection() as HttpURLConnection).apply { requestMethod = "POST" }
+            applyAgentAuthorization(context, conn)
             conn.responseCode
         } catch (e: Exception) {
             Log.e("StabilityManager", "Skip failed", e)

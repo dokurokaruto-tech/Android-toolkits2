@@ -32,6 +32,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -403,6 +404,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         setupUI()
         setupBottomNavigation()
         observeGenerationProgress()
+        // アプリを閉じている間もPC側で続いたジョブへ再接続する。
+        // 問い合わせが終わるまで生成ボタンを新規受付に使わせず、二重送信を防ぐ。
+        if (GenerationAgentClient.hasPendingJob(this)) {
+            GenerationProgressManager.startGeneration(batchMode = true, total = 1)
+        }
+        lifecycleScope.launch { GenerationAgentClient.resumePendingJob(this@MainActivity) }
 
         getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(this)
         getSharedPreferences("settings", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(this)
@@ -977,54 +984,36 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 return@setOnClickListener
             }
 
-            // 錬成実況画面（PiP）を先に起動しておくわ！
-            startActivity(Intent(this, GenerationProgressActivity::class.java))
-
             val baseSelectedWithLevels = promptCardAdapter.getSelectedCardsWithLevels()
             val totalImages = genBatchCount
-            
-            Toast.makeText(this, "計 ${totalImages}枚の生成を順次開始します。", Toast.LENGTH_SHORT).show()
-            
-            lifecycleScope.launch {
-                var successCount = 0
-                val totalImages = genBatchCount
-                GenerationProgressManager.startGeneration(batchMode = true, total = totalImages)
-                
-                for (i in 1..totalImages) {
-                    // 途中で止められてないかチェックするわ
-                    if (GenerationProgressManager.shouldInterrupt) {
-                        Log.d("Generation", "Interrupted by user")
-                        break
-                    }
-                    if (GenerationProgressManager.shouldStopGracefully && i > 1) {
-                        Log.d("Generation", "Graceful stop requested")
-                        break
-                    }
 
-                    GenerationProgressManager.updateBatchProgress(i, totalImages)
+            // 先に全枚数分のプロンプトを確定し、一括でPCへ渡す。これによりアプリを
+            // 閉じても、指定枚数がPCの永続キューに残って最後まで生成される。
+            GenerationProgressManager.startGeneration(batchMode = true, total = totalImages)
+            startActivity(Intent(this, GenerationProgressActivity::class.java))
+            Toast.makeText(this, "計 ${totalImages}枚をPCへ送信します。", Toast.LENGTH_SHORT).show()
+
+            lifecycleScope.launch {
+                val requests = mutableListOf<AgentGenerationRequest>()
+                for (i in 1..totalImages) {
                     val currentSelectedWithLevels = baseSelectedWithLevels.toMutableList()
-                    
-                    // 個別ランダマイザーが設定されているカードを確率で混ぜるわよ！っ！
+
                     PromptCardManager.promptCards.forEach { card ->
                         if (card.useIndividualRandomizer && !PromptCardManager.selectionLevels.containsKey(card.id)) {
-                            val roll = Random.nextInt(100)
-                            if (roll < card.randomizerProbability) {
-                                if (currentSelectedWithLevels.none { it.first.id == card.id }) {
-                                    currentSelectedWithLevels.add(card to 1)
-                                }
+                            if (Random.nextInt(100) < card.randomizerProbability &&
+                                currentSelectedWithLevels.none { it.first.id == card.id }) {
+                                currentSelectedWithLevels.add(card to 1)
                             }
                         }
                     }
 
                     PromptCardManager.randomEnabledCategories.forEach { category ->
-                        var cardsInCategory = PromptCardManager.promptCards.filter { 
-                            it.category.trim() == category.trim() && PromptCardManager.randomizerIncludedIds.contains(it.id) 
+                        var cardsInCategory = PromptCardManager.promptCards.filter {
+                            it.category.trim() == category.trim() && PromptCardManager.randomizerIncludedIds.contains(it.id)
                         }
-                        // 個別指定がなければカテゴリー全件から
                         if (cardsInCategory.isEmpty()) {
                             cardsInCategory = PromptCardManager.promptCards.filter { it.category.trim() == category.trim() }
                         }
-                        
                         if (cardsInCategory.isNotEmpty()) {
                             val randomCard = cardsInCategory[Random.nextInt(cardsInCategory.size)]
                             if (currentSelectedWithLevels.none { it.first.id == randomCard.id }) {
@@ -1034,13 +1023,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }
 
                     if (currentSelectedWithLevels.isEmpty()) continue
-
-                    // 適用する自動タグを集めるわ
-                    val allAppliedTags = mutableSetOf<String>()
-                    currentSelectedWithLevels.forEach { (card, _) ->
-                        allAppliedTags.addAll(card.appliedTags)
-                    }
-
                     val finalMainPrompt = currentSelectedWithLevels.joinToString(", ") { (card, level) ->
                         when (level) {
                             2 -> "(${card.mainPrompt}:1.2)"
@@ -1050,37 +1032,70 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }.trim()
                     val finalNegativePrompt = currentSelectedWithLevels.map { it.first.negativePrompt }
                         .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
-
-                    Log.d("Generation", "Image $i/$totalImages Prompt: $finalMainPrompt")
-                    
-                    val success = StabilityManager.generateImage(
-                        this@MainActivity, 
-                        finalMainPrompt, 
-                        finalNegativePrompt,
-                        width = genWidth,
-                        height = genHeight,
-                        steps = genSteps,
-                        batchCount = 1,
-                        samplerName = genSampler,
-                        appliedTags = allAppliedTags
+                    requests.add(
+                        AgentGenerationRequest(
+                            finalMainPrompt, finalNegativePrompt, genWidth, genHeight, genSteps, genSampler
+                        )
                     )
-                    
-                    if (success) successCount++
-                    else {
-                        // 中止されたなら失敗メッセージは出さないわ
-                        if (!GenerationProgressManager.shouldInterrupt && !GenerationProgressManager.shouldStopGracefully) {
-                            val _et = "${i}枚目: " + StabilityManager.lastErrorText(); val _cb = getSystemService(android.content.ClipboardManager::class.java); _cb?.setPrimaryClip(android.content.ClipData.newPlainText("gen_error", _et))
-                        }
-                    }
+                    Log.d("Generation", "Prepared image $i/$totalImages")
+                }
 
-                    // 画像一つ終わるごとに通常停止のチェックをするわよ
-                    if (GenerationProgressManager.shouldStopGracefully) break
+                if (requests.isEmpty()) {
+                    GenerationProgressManager.endGeneration(force = true)
+                    Toast.makeText(this@MainActivity, "生成できるプロンプトがありません。", Toast.LENGTH_LONG).show()
+                    return@launch
                 }
-                
-                if (successCount > 0) {
-                    Toast.makeText(this@MainActivity, "${successCount}枚の生成に成功しました。保存先を確認してください。", Toast.LENGTH_LONG).show()
+
+                if (GenerationAgentClient.isAvailable(this@MainActivity)) {
+                    try {
+                        val accepted = GenerationAgentClient.submit(this@MainActivity, requests)
+                        Toast.makeText(
+                            this@MainActivity,
+                            "PCが${accepted.total}枚を受け付けました。アプリを閉じても継続します。",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        val completed = GenerationAgentClient.monitor(this@MainActivity, accepted)
+                        Toast.makeText(
+                            this@MainActivity,
+                            "PC生成完了: ${completed.completed}/${completed.total}枚（閲覧から確認できます）",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        GenerationProgressManager.endGeneration(force = true)
+                        Log.e("Generation", "PC agent job failed", error)
+                        Toast.makeText(
+                            this@MainActivity,
+                            "PC生成エージェントとの通信に失敗しました: ${error.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } else {
+                    // 旧SD WebUI直結も壊さず残す。こちらは従来通り端末へ保存される。
+                    var successCount = 0
+                    for ((index, request) in requests.withIndex()) {
+                        if (GenerationProgressManager.shouldInterrupt) break
+                        if (GenerationProgressManager.shouldStopGracefully && index > 0) break
+                        GenerationProgressManager.updateBatchProgress(index + 1, requests.size)
+                        val success = StabilityManager.generateImage(
+                            this@MainActivity, request.prompt, request.negativePrompt,
+                            width = request.width, height = request.height, steps = request.steps,
+                            batchCount = 1, samplerName = request.samplerName
+                        )
+                        if (success) successCount++
+                        if (GenerationProgressManager.shouldStopGracefully) break
+                    }
+                    if (successCount > 0) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "旧SD直結で${successCount}枚生成しました。PC保存を使うには生成エージェントを起動してください。",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else if (!GenerationProgressManager.shouldInterrupt) {
+                        showGenerationErrorDialog()
+                    }
+                    GenerationProgressManager.endGeneration(force = true)
                 }
-                GenerationProgressManager.endGeneration(force = true)
             }
         }
 
@@ -2285,7 +2300,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         settingsLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(32, 32, 32, 32)
             addView(createSettingsRow("タップ操作のカスタム設定") { startActivity(Intent(this@MainActivity, TapSettingsActivity::class.java)) })
-            addView(createSettingsRow("PCサーバーのURL (Tailscale IP)") { showServerUrlDialog() })
+            addView(createSettingsRow("PC生成エージェントの接続設定", "URL / APIキー") { showServerUrlDialog() })
             
             val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             
@@ -2579,18 +2594,40 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun showServerUrlDialog() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val input = EditText(this).apply { 
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 16, 48, 0)
+        }
+        val urlInput = EditText(this).apply {
             setText(prefs.getString("remote_server_url", "http://100.x.y.z:3001") ?: "http://100.x.y.z:3001")
-            hint = "http://[Tailscale IP]:3001"
+            hint = "http://PCのIP:3001"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
         }
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper).setTitle("PCサーバーのURL設定").setView(input).setPositiveButton("保存") { _, _ ->
-            var url = input.text.toString().trim()
-            if (url.isNotEmpty() && !url.startsWith("http")) url = "http://$url"
-            prefs.edit().putString("remote_server_url", url).apply()
-            Toast.makeText(this, "サーバーURLを保存しました。", Toast.LENGTH_SHORT).show()
-        }.setNegativeButton("キャンセル", null).show()
+        val keyInput = EditText(this).apply {
+            setText(prefs.getString("generation_agent_api_key", "") ?: "")
+            hint = "APIキー（config.jsonで設定した場合のみ）"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+        }
+        container.addView(TextView(this).apply { text = "PC生成エージェントURL"; setTextColor(Color.LTGRAY) })
+        container.addView(urlInput)
+        container.addView(TextView(this).apply { text = "APIキー（任意）"; setTextColor(Color.LTGRAY) })
+        container.addView(keyInput)
+        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
+            .setTitle("PC生成エージェント接続設定")
+            .setView(container)
+            .setPositiveButton("保存") { _, _ ->
+                var url = urlInput.text.toString().trim()
+                if (url.isNotEmpty() && !url.startsWith("http")) url = "http://$url"
+                prefs.edit()
+                    .putString("remote_server_url", url.removeSuffix("/"))
+                    .putString("generation_agent_api_key", keyInput.text.toString().trim())
+                    .apply()
+                Toast.makeText(this, "PC生成エージェントの接続設定を保存しました。", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
     }
 
     private fun showApiKeyDialog() {
@@ -2799,61 +2836,83 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         updateActiveImageHighlight()
     }
 
+    private data class GeneratedFolderItem(
+        val name: String,
+        val count: Int,
+        val thumbnail: Any?,
+        val localFolder: DocumentFile? = null,
+        val remoteDate: String? = null
+    )
+
     private fun showGeneratedImagesFolderPicker() {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val folderUriStr = prefs.getString("gen_save_folder_uri", null)
-        if (folderUriStr == null) {
-            Toast.makeText(this, "保存先フォルダが設定されてないわ！", Toast.LENGTH_SHORT).show()
-            return
-        }
+        lifecycleScope.launch {
+            val items = try {
+                if (GenerationAgentClient.isAvailable(this@MainActivity)) {
+                    val remote = GenerationAgentClient.fetchFolders(this@MainActivity).map {
+                        GeneratedFolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date)
+                    }
+                    val remoteNames = remote.map { it.name }.toSet()
+                    val local = loadLocalGeneratedFolders().map {
+                        if (it.name in remoteNames) it.copy(name = "${it.name} (端末)") else it
+                    }
+                    remote + local
+                } else {
+                    loadLocalGeneratedFolders()
+                }
+            } catch (error: Exception) {
+                Log.w("GeneratedViewer", "Remote library unavailable; using local folder", error)
+                loadLocalGeneratedFolders()
+            }
 
-        val folderUri = Uri.parse(folderUriStr)
-        val rootDir = DocumentFile.fromTreeUri(this, folderUri)
-        if (rootDir == null || !rootDir.exists()) {
-            Toast.makeText(this, "フォルダにアクセスできないわ。設定を確認してね！", Toast.LENGTH_SHORT).show()
-            return
-        }
+            if (items.isEmpty()) {
+                Toast.makeText(this@MainActivity, "まだ画像が生成されていません。PCエージェントの接続も確認してください。", Toast.LENGTH_LONG).show()
+                return@launch
+            }
 
-        val dateFolders = rootDir.listFiles()
-            .filter { it.isDirectory }
-            .sortedByDescending { it.name }
+            // 既存の閲覧ダイアログとフォルダカードをそのまま流用する。
+            val dialogView = LayoutInflater.from(this@MainActivity).inflate(R.layout.dialog_tag_picker, null)
+            val rvFolders = dialogView.findViewById<RecyclerView>(R.id.recycler_view_tags)
+            dialogView.findViewById<Button>(R.id.btn_dialog_done).visibility = View.GONE
+            dialogView.findViewById<View>(R.id.dialog_title).visibility = View.GONE
+            dialogView.findViewById<View>(R.id.btn_add_tag).visibility = View.GONE
+            (dialogView.findViewById<View>(R.id.dialog_title).parent as? View)?.visibility = View.GONE
+            if (dialogView is LinearLayout && dialogView.childCount > 1) dialogView.getChildAt(1).visibility = View.GONE
 
-        if (dateFolders.isEmpty()) {
-            Toast.makeText(this, "まだ画像が生成されてないみたいよ？", Toast.LENGTH_SHORT).show()
-            return
+            val dialog = AlertDialog.Builder(this@MainActivity, R.style.Theme_Kennys_dokidoki_wallpaper)
+                .setView(dialogView)
+                .create()
+            rvFolders.layoutManager = GridLayoutManager(this@MainActivity, 2)
+            rvFolders.adapter = GeneratedFolderAdapter(items) { folder ->
+                if (folder.remoteDate != null) openRemoteFolderAsAlbum(folder.remoteDate)
+                else folder.localFolder?.let(::openFolderAsAlbum)
+                dialog.dismiss()
+            }
+            dialog.show()
         }
-
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_tag_picker, null)
-        val rvFolders = dialogView.findViewById<RecyclerView>(R.id.recycler_view_tags)
-        val btnDone = dialogView.findViewById<Button>(R.id.btn_dialog_done)
-        btnDone.visibility = View.GONE
-        
-        dialogView.findViewById<View>(R.id.dialog_title).visibility = View.GONE
-        dialogView.findViewById<View>(R.id.btn_add_tag).visibility = View.GONE
-        
-        (dialogView.findViewById<View>(R.id.dialog_title).parent as? View)?.visibility = View.GONE
-        
-        if (dialogView is LinearLayout && dialogView.childCount > 1) {
-            dialogView.getChildAt(1).visibility = View.GONE
-        }
-        
-        val dialog = AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setView(dialogView)
-            .create()
-
-        val adapter = GeneratedFolderAdapter(dateFolders) { folder ->
-            openFolderAsAlbum(folder)
-            dialog.dismiss()
-        }
-        rvFolders.layoutManager = GridLayoutManager(this, 2)
-        rvFolders.adapter = adapter
-        
-        dialog.show()
     }
 
+    private fun loadLocalGeneratedFolders(): List<GeneratedFolderItem> {
+        val folderUriStr = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getString("gen_save_folder_uri", null) ?: return emptyList()
+        val rootDir = DocumentFile.fromTreeUri(this, Uri.parse(folderUriStr))
+            ?.takeIf { it.exists() } ?: return emptyList()
+        return rootDir.listFiles()
+            .filter { it.isDirectory }
+            .sortedByDescending { it.name }
+            .map { folder ->
+                val images = folder.listFiles().filter(::isGeneratedImageFile)
+                GeneratedFolderItem(folder.name ?: "Unknown", images.size, images.firstOrNull()?.uri, localFolder = folder)
+            }
+            .filter { it.count > 0 }
+    }
+
+    private fun isGeneratedImageFile(file: DocumentFile): Boolean =
+        file.isFile && (file.type?.startsWith("image/") == true ||
+            file.name?.lowercase()?.let { it.endsWith(".png") || it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".webp") } == true)
+
     private inner class GeneratedFolderAdapter(
-        private val folders: List<DocumentFile>,
-        private val onFolderClick: (DocumentFile) -> Unit
+        private val folders: List<GeneratedFolderItem>,
+        private val onFolderClick: (GeneratedFolderItem) -> Unit
     ) : RecyclerView.Adapter<GeneratedFolderAdapter.ViewHolder>() {
 
         inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -2864,27 +2923,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_generated_folder, parent, false)
-            return ViewHolder(view)
+            return ViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_generated_folder, parent, false))
         }
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val folder = folders[position]
             holder.tvName.text = folder.name
-            
-            val images = folder.listFiles().filter { it.isFile && (it.type?.startsWith("image/") == true || it.name?.endsWith(".png") == true || it.name?.endsWith(".jpg") == true) }
-            holder.tvCount.text = "${images.size} 枚"
-            
-            if (images.isNotEmpty()) {
-                Glide.with(holder.ivThumbnail.context)
-                    .load(images.first().uri)
-                    .centerCrop()
-                    .into(holder.ivThumbnail)
+            holder.tvCount.text = "${folder.count} 枚"
+            if (folder.thumbnail != null) {
+                Glide.with(holder.ivThumbnail.context).load(folder.thumbnail).centerCrop().into(holder.ivThumbnail)
             } else {
                 holder.ivThumbnail.setImageResource(R.drawable.ic_folder)
                 holder.ivThumbnail.scaleType = ImageView.ScaleType.CENTER_INSIDE
             }
-            
             holder.card.setOnClickListener { onFolderClick(folder) }
         }
 
@@ -2899,17 +2950,36 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun openRemoteFolderAsAlbum(date: String) {
+        lifecycleScope.launch {
+            try {
+                val images = GenerationAgentClient.fetchImages(this@MainActivity, date)
+                if (images.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "この日付の画像はありません。", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                val intent = Intent(this@MainActivity, AlbumDetailActivity::class.java).apply {
+                    putExtra("ALBUM_NAME", "生成: $date")
+                    putExtra("REMOTE_GENERATED", true)
+                    putExtra("REMOTE_DATE", date)
+                    putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(images.map { it.url }))
+                }
+                albumDetailLauncher.launch(intent)
+            } catch (error: Exception) {
+                Toast.makeText(this@MainActivity, "PC画像一覧を取得できません: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     private fun openFolderAsAlbum(folder: DocumentFile) {
-        val folderUri = folder.uri.toString()
         val folderName = folder.name ?: "Unknown"
-        val albumName = "生成: $folderName"
-        
+        val files = folder.listFiles().filter(::isGeneratedImageFile)
         val intent = Intent(this, AlbumDetailActivity::class.java).apply {
-            putExtra("ALBUM_NAME", albumName)
-            putExtra("FOLDER_URI", folderUri)
-            val files = folder.listFiles().filter { it.isFile && (it.type?.startsWith("image/") == true || it.name?.endsWith(".png") == true || it.name?.endsWith(".jpg") == true) }
+            putExtra("ALBUM_NAME", "生成: $folderName")
+            putExtra("FOLDER_URI", folder.uri.toString())
             putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(files.map { it.uri.toString() }))
         }
         albumDetailLauncher.launch(intent)
     }
+
 }

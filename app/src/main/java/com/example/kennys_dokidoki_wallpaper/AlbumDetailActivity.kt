@@ -18,6 +18,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
@@ -37,6 +38,8 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     private lateinit var tvSelectionCount: TextView
     private lateinit var recyclerView: RecyclerView
     private var isGeneratedViewer: Boolean = false
+    private var isRemoteGenerated: Boolean = false
+    private var remoteDate: String = "downloaded"
     private val virtualImages = mutableListOf<ImageEntry>()
 
     private val previewLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
@@ -72,6 +75,8 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
         val virtualUris = intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS")
         isGeneratedViewer = virtualUris != null
+        isRemoteGenerated = intent.getBooleanExtra("REMOTE_GENERATED", false)
+        remoteDate = intent.getStringExtra("REMOTE_DATE") ?: "downloaded"
 
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         isSortAscending = settingsPrefs.getBoolean("sort_ascending", true)
@@ -168,7 +173,8 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         if (isGeneratedViewer) {
             // 生成画像ビューワー: 「全画像に入れる」をケバブに用意
-            val importItem = menu.add(0, 101, 0, "全画像に入れる")
+            val importTitle = if (isRemoteGenerated) "端末へダウンロードして全画像に入れる" else "全画像に入れる"
+            val importItem = menu.add(0, 101, 0, importTitle)
             importItem.setIcon(android.R.drawable.ic_menu_add)
             importItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
         } else {
@@ -236,11 +242,11 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             }
         }
 
-        findViewById<ImageButton>(R.id.btn_selection_inspect).setOnClickListener {
-            showInspectionCategorySelector()
-        }
+        val btnInspect = findViewById<ImageButton>(R.id.btn_selection_inspect)
+        btnInspect.setOnClickListener { showInspectionCategorySelector() }
 
-        findViewById<ImageButton>(R.id.btn_selection_delete).setOnClickListener {
+        val btnDelete = findViewById<ImageButton>(R.id.btn_selection_delete)
+        btnDelete.setOnClickListener {
             val selectedEntries = imageAdapter.getSelectedEntries()
             if (selectedEntries.isEmpty()) return@setOnClickListener
 
@@ -270,6 +276,10 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                 .setNegativeButton("キャンセル", null)
                 .show()
         }
+        if (isRemoteGenerated) {
+            btnInspect.visibility = View.GONE
+            btnDelete.visibility = View.GONE
+        }
     }
 
     /** 選択画像（または指定画像）を全画像に追加する。重複はスキップ。 */
@@ -278,20 +288,46 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             Toast.makeText(this, "対象の画像がありません", Toast.LENGTH_SHORT).show()
             return
         }
+        val message = if (isRemoteGenerated)
+            "${targets.size}件をPCから端末の生成画像フォルダへダウンロードし、全画像に追加しますか？"
+        else "${targets.size}件の画像を全画像に追加しますか？"
         AlertDialog.Builder(this)
-            .setTitle("全画像に入れる")
-            .setMessage("${targets.size}件の画像を全画像に追加しますか？")
+            .setTitle(if (isRemoteGenerated) "ダウンロードして全画像に入れる" else "全画像に入れる")
+            .setMessage(message)
             .setPositiveButton("追加") { _, _ ->
-                var added = 0
-                targets.forEach { entry ->
-                    if (DataManager.allImages.none { it.uri.toString() == entry.uri.toString() }) {
-                        DataManager.allImages.add(0, entry)
-                        added++
+                if (isRemoteGenerated) {
+                    lifecycleScope.launch {
+                        var downloaded = 0
+                        var added = 0
+                        Toast.makeText(this@AlbumDetailActivity, "ダウンロード中...", Toast.LENGTH_SHORT).show()
+                        targets.forEach { entry ->
+                            val localUri = GeneratedImageImporter.download(this@AlbumDetailActivity, entry.uri, remoteDate)
+                            if (localUri != null) {
+                                downloaded++
+                                if (DataManager.allImages.none { it.uri.toString() == localUri.toString() }) {
+                                    DataManager.allImages.add(0, ImageEntry(localUri))
+                                    added++
+                                }
+                            }
+                        }
+                        if (added > 0) DataManager.saveData(this@AlbumDetailActivity)
+                        if (imageAdapter.isSelectionMode) imageAdapter.stopSelectionMode()
+                        val result = if (downloaded > 0) "${downloaded}件を端末へ保存（全画像へ新規追加: ${added}件）"
+                        else "保存できませんでした。設定で『通常の生成画像の保存先』を確認してください。"
+                        Toast.makeText(this@AlbumDetailActivity, result, Toast.LENGTH_LONG).show()
                     }
+                } else {
+                    var added = 0
+                    targets.forEach { entry ->
+                        if (DataManager.allImages.none { it.uri.toString() == entry.uri.toString() }) {
+                            DataManager.allImages.add(0, entry)
+                            added++
+                        }
+                    }
+                    if (added > 0) DataManager.saveData(this)
+                    if (imageAdapter.isSelectionMode) imageAdapter.stopSelectionMode()
+                    Toast.makeText(this, "${added}件を全画像に追加しました", Toast.LENGTH_SHORT).show()
                 }
-                if (added > 0) DataManager.saveData(this)
-                if (imageAdapter.isSelectionMode) imageAdapter.stopSelectionMode()
-                Toast.makeText(this, "${added}件を全画像に追加しました", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("キャンセル", null)
             .show()
@@ -408,17 +444,19 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
     private fun loadImages() {
         if (isGeneratedViewer) {
-            val folderUriStr = intent.getStringExtra("FOLDER_URI") ?: return
-            val folder = DocumentFile.fromTreeUri(this, Uri.parse(folderUriStr)) ?: return
-            val files = folder.listFiles()
-                .filter { it.isFile && (it.type?.startsWith("image/") == true || it.name?.endsWith(".png") == true || it.name?.endsWith(".jpg") == true) }
-                .sortedByDescending { it.name }
-            
             images.clear()
-            files.forEach { file ->
-                images.add(ImageEntry(file.uri))
+            if (isRemoteGenerated) {
+                intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS")
+                    ?.forEach { images.add(ImageEntry(Uri.parse(it))) }
+            } else {
+                val folderUriStr = intent.getStringExtra("FOLDER_URI") ?: return
+                val folder = DocumentFile.fromTreeUri(this, Uri.parse(folderUriStr)) ?: return
+                folder.listFiles()
+                    .filter { it.isFile && (it.type?.startsWith("image/") == true ||
+                        it.name?.lowercase()?.let { name -> name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") } == true) }
+                    .sortedByDescending { it.name }
+                    .forEach { images.add(ImageEntry(it.uri)) }
             }
-            // 生成フォルダは常に新しい画像が先頭（ソートトグルには依存しない）
         } else {
             val currentSet = DataManager.imageSetList.find { it.name == albumName }
             if (currentSet != null) {
