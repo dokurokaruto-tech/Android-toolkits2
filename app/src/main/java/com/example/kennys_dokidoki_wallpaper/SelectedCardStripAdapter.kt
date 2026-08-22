@@ -67,7 +67,7 @@ class SelectedCardStripAdapter(
             3 -> Color.parseColor("#E91E63") to (3 * density).toInt()  // 赤
             else -> Color.parseColor("#49454F") to (1 * density).toInt()
         }
-        holder.card.strokeColor = ColorStateList.valueOf(color)
+        holder.card.setStrokeColor(ColorStateList.valueOf(color))
         holder.card.strokeWidth = width
 
         holder.card.setOnClickListener { onTap(cardData) }
