@@ -3,20 +3,25 @@ package com.example.kennys_dokidoki_wallpaper
 import android.net.Uri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.LinkedHashMap
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.coroutineContext
 
 /**
  * Session-only encoded original image cache. It keeps at most 50 images and never writes
- * them to disk. KennysApplication clears it after the app is minimized.
+ * them to disk. Downloads are owned by this cache, not by a viewer Activity: turning a
+ * page or closing the viewer stops waiting but the transfer finishes in the background.
  */
 object OriginalImageMemoryCache {
     private const val MAX_ENTRIES = 50
@@ -26,7 +31,9 @@ object OriginalImageMemoryCache {
 
     private val lock = Any()
     private val entries = LinkedHashMap<String, ByteArray>(MAX_ENTRIES, 0.75f, true)
-    private val inFlight = ConcurrentHashMap<String, CompletableDeferred<ByteArray>>()
+    private val inFlight = mutableMapOf<String, CompletableDeferred<ByteArray>>()
+    private val downloadJobs = mutableMapOf<String, Job>()
+    private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var totalBytes = 0L
     private var generation = 0L
 
@@ -34,27 +41,41 @@ object OriginalImageMemoryCache {
 
     suspend fun getOrDownload(uri: Uri): ByteArray {
         val key = uri.toString()
-        synchronized(lock) { entries[key]?.let { return it } }
+        synchronized(lock) { entries[key] }?.let { return it }
+        return requestOwnedDownload(uri, key).await()
+    }
 
-        val mine = CompletableDeferred<ByteArray>()
-        val existing = inFlight.putIfAbsent(key, mine)
-        if (existing != null) return existing.await()
-        val requestGeneration = synchronized(lock) { generation }
-        try {
-            val bytes = download(uri)
-            synchronized(lock) {
-                // A download finishing after minimization may be displayed by its caller,
-                // but must not recreate the session cache that was just cleared.
-                if (requestGeneration == generation) putLocked(key, bytes)
-            }
-            mine.complete(bytes)
-            return bytes
-        } catch (error: Throwable) {
-            mine.completeExceptionally(error)
-            throw error
-        } finally {
-            inFlight.remove(key, mine)
+    /** Starts or joins a cache-owned transfer which survives cancellation of this caller. */
+    private fun requestOwnedDownload(uri: Uri, key: String): CompletableDeferred<ByteArray> = synchronized(lock) {
+        entries[key]?.let { cached ->
+            return@synchronized CompletableDeferred<ByteArray>().also { it.complete(cached) }
         }
+        inFlight[key]?.let { return@synchronized it }
+
+        val deferred = CompletableDeferred<ByteArray>()
+        val requestGeneration = generation
+        inFlight[key] = deferred
+        lateinit var job: Job
+        job = downloadScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val bytes = download(uri)
+                synchronized(lock) {
+                    // Minimize/low-memory clear is the only event allowed to discard a running transfer.
+                    if (requestGeneration == generation) putLocked(key, bytes)
+                }
+                deferred.complete(bytes)
+            } catch (error: Throwable) {
+                deferred.completeExceptionally(error)
+            } finally {
+                synchronized(lock) {
+                    if (inFlight[key] === deferred) inFlight.remove(key)
+                    if (downloadJobs[key] === job) downloadJobs.remove(key)
+                }
+            }
+        }
+        downloadJobs[key] = job
+        job.start()
+        deferred
     }
 
     suspend fun prefetch(uri: Uri) {
@@ -62,6 +83,7 @@ object OriginalImageMemoryCache {
         try {
             getOrDownload(uri)
         } catch (error: CancellationException) {
+            // The awaiting page plan was canceled, but the cache-owned transfer continues.
             throw error
         } catch (_: Exception) {
             // A failed speculative request must not affect the currently viewed image.
@@ -73,10 +95,17 @@ object OriginalImageMemoryCache {
             entries.clear()
             totalBytes = 0L
             generation++
+            // App minimization/low-memory is an explicit session boundary, so unlike a page
+            // change it is allowed to stop transfers and discard partial bytes.
+            downloadJobs.values.toList().forEach { it.cancel() }
+            downloadJobs.clear()
+            inFlight.values.toList().forEach { it.cancel() }
+            inFlight.clear()
         }
     }
 
     fun entryCount(): Int = synchronized(lock) { entries.size }
+    fun inFlightCount(): Int = synchronized(lock) { inFlight.size }
 
     private fun putLocked(key: String, bytes: ByteArray) {
         entries.remove(key)?.let { totalBytes -= it.size }
