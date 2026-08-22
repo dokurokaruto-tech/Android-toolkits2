@@ -517,6 +517,43 @@
                         android:overScrollMode="never"
                         android:scrollbars="horizontal" />
                 </LinearLayout>
+
+                <!-- 履歴操作（ストリップと一緒に上下動） -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|end"
+                    android:layout_marginTop="2dp"
+                    android:layout_marginEnd="6dp"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:background="@drawable/bg_md3_surface"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:elevation="6dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_undo"
+                        style="@style/Widget.Material3.Button.IconButton"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:contentDescription="元に戻す"
+                        app:icon="@drawable/ic_md3_undo"
+                        app:iconSize="22dp"
+                        app:iconTint="?attr/colorOnSurface"
+                        tools:ignore="HardcodedText" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_redo"
+                        style="@style/Widget.Material3.Button.IconButton"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:contentDescription="やり直し"
+                        app:icon="@drawable/ic_md3_redo"
+                        app:iconSize="22dp"
+                        app:iconTint="?attr/colorOnSurface"
+                        tools:ignore="HardcodedText" />
+                </LinearLayout>
             </com.example.kennys_dokidoki_wallpaper.CollapsibleCardStrip>
         </FrameLayout>
 

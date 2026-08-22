@@ -63,6 +63,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var recyclerSelectedCards: RecyclerView
     private var lastStripPad = -1
     private lateinit var btnSavePreset: Button
+    private lateinit var btnUndo: View
+    private lateinit var btnRedo: View
+
+    // ===== プロンプトビルダーの undo/redo =====
+    private data class BuilderSnapshot(
+        val selectionLevels: Map<String, Int>,
+        val randomEnabledCategories: Set<String>,
+        val randomizerIncludedIds: Set<String>,
+        val genWidth: Int,
+        val genHeight: Int,
+        val genSteps: Int,
+        val genBatchCount: Int,
+        val genSampler: String
+    )
+    private val builderHistory = mutableListOf<BuilderSnapshot>()
+    private var builderHistoryCursor = -1
+    private var suspendBuilderHistory = false
 
     private lateinit var selectionActionBar: LinearLayout
     private lateinit var tvSelectionCount: TextView
@@ -737,6 +754,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
                 promptCardAdapter.notifyHeadersChanged()
                 updateSelectedCardStrip()
+                commitBuilderState()
             },
             onLongClick = { card ->
                 showEditPromptCardDialog(card)
@@ -754,6 +772,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 btnGenerateConcatenatedTop.isEnabled = promptCardAdapter.getSelectedCardsWithLevels().isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
                 btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
                 updateSelectedCardStrip()
+                commitBuilderState()
             },
             onStartDrag = { viewHolder ->
                 promptItemTouchHelper.startDrag(viewHolder)
@@ -862,6 +881,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             PromptCardManager.saveCards(this)
             promptCardAdapter.updateList(PromptCardManager.promptCards)
             updateSelectedCardStrip()
+            commitBuilderState()
         }, { card ->
             scrollToCardInBuilder(card)
         })
@@ -894,6 +914,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {}
         })
         updateSelectedCardStrip()
+
+        // undo/redo ボタン
+        btnUndo = findViewById(R.id.btn_undo)
+        btnRedo = findViewById(R.id.btn_redo)
+        btnUndo.setOnClickListener { undoBuilder() }
+        btnRedo.setOnClickListener { redoBuilder() }
+        // 初期状態を履歴の起点にする（最初のundoはここへ戻る）
+        builderHistory.clear()
+        builderHistory.add(captureBuilderSnapshot())
+        builderHistoryCursor = 0
+        updateUndoRedoButtons()
 
         btnSavePreset.setOnClickListener { showAddPresetDialog() }
 
@@ -1114,7 +1145,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     isThumbnail = true,
                     oldThumbnailUri = preset.thumbnailUri,
                     onGenerated = { uri ->
+                        // プリセットのサムネイルは生成完了と同時に即座に適用＆保存する
+                        // （保存ボタンを待たず、1枚ごとに確実に紐づける）
+                        preset.thumbnailUri = uri
                         tempCardThumbnailUri = uri
+                        PresetManager.savePresets(this@MainActivity)
+                        presetAdapter.notifyDataSetChanged()
                         loadThumbnailPreview(uri)
                     }
                 )
@@ -1256,6 +1292,87 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         builderScroll.smoothScrollTo(0, target)
     }
 
+    // ===== プロンプトビルダーの undo/redo 実装 =====
+
+    /** 現在のビルダー状態（選択・ランダム・生成設定）のスナップショットを撮る。 */
+    private fun captureBuilderSnapshot(): BuilderSnapshot = BuilderSnapshot(
+        selectionLevels = PromptCardManager.selectionLevels.toMap(),
+        randomEnabledCategories = PromptCardManager.randomEnabledCategories.toSet(),
+        randomizerIncludedIds = PromptCardManager.randomizerIncludedIds.toSet(),
+        genWidth = genWidth,
+        genHeight = genHeight,
+        genSteps = genSteps,
+        genBatchCount = genBatchCount,
+        genSampler = genSampler
+    )
+
+    /**
+     * 現在の状態を履歴に確定する。各種操作の完了時に呼ぶ。
+     * redo 可能な分は破棄し、上限を超えた古い履歴は切り捨てる。
+     */
+    private fun commitBuilderState() {
+        if (suspendBuilderHistory) return
+        if (builderHistoryCursor < builderHistory.size - 1) {
+            builderHistory.subList(builderHistoryCursor + 1, builderHistory.size).clear()
+        }
+        builderHistory.add(captureBuilderSnapshot())
+        builderHistoryCursor = builderHistory.size - 1
+        while (builderHistory.size > 100) {
+            builderHistory.removeAt(0)
+            builderHistoryCursor--
+        }
+        updateUndoRedoButtons()
+    }
+
+    /** スナップショットの状態をビルダーに復元する（履歴への追記はしない）。 */
+    private fun applyBuilderSnapshot(s: BuilderSnapshot) {
+        suspendBuilderHistory = true
+        try {
+            PromptCardManager.selectionLevels.clear()
+            PromptCardManager.selectionLevels.putAll(s.selectionLevels)
+            PromptCardManager.randomEnabledCategories.clear()
+            PromptCardManager.randomEnabledCategories.addAll(s.randomEnabledCategories)
+            PromptCardManager.randomizerIncludedIds.clear()
+            PromptCardManager.randomizerIncludedIds.addAll(s.randomizerIncludedIds)
+            genWidth = s.genWidth
+            genHeight = s.genHeight
+            genSteps = s.genSteps
+            genBatchCount = s.genBatchCount
+            genSampler = s.genSampler
+            PromptCardManager.saveCards(this)
+            saveGenSettings()
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+            updateSelectedCardStrip()
+        } finally {
+            suspendBuilderHistory = false
+        }
+        updateUndoRedoButtons()
+    }
+
+    private fun undoBuilder() {
+        if (builderHistoryCursor <= 0) return
+        builderHistoryCursor--
+        applyBuilderSnapshot(builderHistory[builderHistoryCursor])
+        Toast.makeText(this, "元に戻しました", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun redoBuilder() {
+        if (builderHistoryCursor >= builderHistory.size - 1) return
+        builderHistoryCursor++
+        applyBuilderSnapshot(builderHistory[builderHistoryCursor])
+        Toast.makeText(this, "やり直しました", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateUndoRedoButtons() {
+        if (!::btnUndo.isInitialized || !::btnRedo.isInitialized) return
+        val canUndo = builderHistoryCursor > 0
+        val canRedo = builderHistoryCursor in 0..(builderHistory.size - 2)
+        btnUndo.isEnabled = canUndo
+        btnUndo.alpha = if (canUndo) 1f else 0.35f
+        btnRedo.isEnabled = canRedo
+        btnRedo.alpha = if (canRedo) 1f else 0.35f
+    }
+
     private fun showAddPresetDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_edit_prompt_card, null)
         val etName = dialogView.findViewById<EditText>(R.id.et_card_label)
@@ -1298,20 +1415,26 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun applyPreset(preset: Preset) {
-        PromptCardManager.selectionLevels.clear()
-        PromptCardManager.selectionLevels.putAll(preset.activePromptStates)
-        PromptCardManager.randomEnabledCategories.clear()
-        PromptCardManager.randomEnabledCategories.addAll(preset.randomEnabledCategories)
-        genWidth = preset.width
-        genHeight = preset.height
-        genSteps = preset.steps
-        genBatchCount = preset.batchCount
-        genSampler = preset.sampler
-        
-        saveGenSettings()
-        PromptCardManager.saveCards(this)
-        promptCardAdapter.updateList(PromptCardManager.promptCards)
-        updateSelectedCardStrip()
+        suspendBuilderHistory = true
+        try {
+            PromptCardManager.selectionLevels.clear()
+            PromptCardManager.selectionLevels.putAll(preset.activePromptStates)
+            PromptCardManager.randomEnabledCategories.clear()
+            PromptCardManager.randomEnabledCategories.addAll(preset.randomEnabledCategories)
+            genWidth = preset.width
+            genHeight = preset.height
+            genSteps = preset.steps
+            genBatchCount = preset.batchCount
+            genSampler = preset.sampler
+
+            saveGenSettings()
+            PromptCardManager.saveCards(this)
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+            updateSelectedCardStrip()
+        } finally {
+            suspendBuilderHistory = false
+        }
+        commitBuilderState()
         Toast.makeText(this, "プリセット『${preset.name}』を適用しました。", Toast.LENGTH_SHORT).show()
     }
 
@@ -1527,6 +1650,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             putString("gen_sampler", genSampler)
         }.apply()
         updateGenSettingsUI()
+        // ユーザーによる設定変更なら履歴へ。復元/プリセット適用/リセット中は suspend されており無視される。
+        commitBuilderState()
     }
 
     private fun showResolutionDialog() {
@@ -1807,32 +1932,39 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     putBoolean("reset_random_inclusion", cbRandomInclusion)
                 }.apply()
 
-                if (cbSettings) {
-                    genWidth = 720
-                    genHeight = 1280
-                    genSteps = 20
-                    genBatchCount = 1
-                    genSampler = "Euler a"
-                    saveGenSettings()
-                }
-                if (cbSelection) {
-                    PromptCardManager.selectionLevels.clear()
-                }
-                if (cbRandomOn) {
-                    PromptCardManager.randomEnabledCategories.clear()
-                }
-                if (cbRandomInclusion) {
-                    PromptCardManager.randomizerIncludedIds.clear()
-                    PromptCardManager.promptCards.forEach { 
-                        it.useIndividualRandomizer = false
-                        it.randomizerProbability = 50
+                suspendBuilderHistory = true
+                try {
+                    if (cbSettings) {
+                        genWidth = 720
+                        genHeight = 1280
+                        genSteps = 20
+                        genBatchCount = 1
+                        genSampler = "Euler a"
+                        saveGenSettings()
                     }
-                }
+                    if (cbSelection) {
+                        PromptCardManager.selectionLevels.clear()
+                    }
+                    if (cbRandomOn) {
+                        PromptCardManager.randomEnabledCategories.clear()
+                    }
+                    if (cbRandomInclusion) {
+                        PromptCardManager.randomizerIncludedIds.clear()
+                        PromptCardManager.promptCards.forEach {
+                            it.useIndividualRandomizer = false
+                            it.randomizerProbability = 50
+                        }
+                    }
 
-                if (cbSelection || cbRandomOn || cbRandomInclusion) {
-                    PromptCardManager.saveCards(this)
-                    promptCardAdapter.updateList(PromptCardManager.promptCards)
+                    if (cbSelection || cbRandomOn || cbRandomInclusion) {
+                        PromptCardManager.saveCards(this)
+                        promptCardAdapter.updateList(PromptCardManager.promptCards)
+                        updateSelectedCardStrip()
+                    }
+                } finally {
+                    suspendBuilderHistory = false
                 }
+                commitBuilderState()
                 Toast.makeText(this, "リセットが完了しました。", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("キャンセル", null)

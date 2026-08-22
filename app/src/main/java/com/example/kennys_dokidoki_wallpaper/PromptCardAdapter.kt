@@ -211,6 +211,7 @@ class PromptCardAdapter(
                     if (randomizerEditingCategory == card.category) {
                         PromptCardManager.toggleRandomizerInclusion(holder.itemView.context, card.id)
                         notifyItemChanged(position)
+                        onSelectionChanged()
                     } else {
                         val nextLevel = (level + 1) % 4
                         if (nextLevel == 0) {
