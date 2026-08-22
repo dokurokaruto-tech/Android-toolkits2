@@ -230,6 +230,32 @@ object DataManager {
         return filtered[index]
     }
 
+    /**
+     * 現在ホーム/チャットの壁紙になっている画像が指定リスト内にあればそのURIを返す。
+     * AlbumDetail / ImagePreview / FullScreen の3画面でリストの並び順を一致させるために使う。
+     */
+    fun currentWallpaperUri(context: Context, list: List<ImageEntry>): String? {
+        val home = getActiveWallpaperImage(context, false)?.uri?.toString()
+        if (home != null && list.any { it.uri.toString() == home }) return home
+        val chat = getActiveWallpaperImage(context, true)?.uri?.toString()
+        if (chat != null && list.any { it.uri.toString() == chat }) return chat
+        return null
+    }
+
+    /**
+     * 現在壁紙になっている画像をリストの先頭に移動する。
+     * 画像一覧(AlbumDetail)・カルーセル(ImagePreview)・全画面(FullScreen)で
+     * 同じ並びにするため、どこでもこの関数でピン留めする。
+     */
+    fun pinCurrentWallpaperFirst(context: Context, list: MutableList<ImageEntry>) {
+        val uri = currentWallpaperUri(context, list) ?: return
+        val idx = list.indexOfFirst { it.uri.toString() == uri }
+        if (idx > 0) {
+            val moved = list.removeAt(idx)
+            list.add(0, moved)
+        }
+    }
+
     private fun dataFile(context: Context): File {
         return File(File(context.filesDir, "app_data").also { if (!it.exists()) it.mkdirs() }, "images_and_sets.json")
     }

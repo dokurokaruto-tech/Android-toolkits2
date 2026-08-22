@@ -352,7 +352,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
     private fun updateActiveImageHighlight() {
         // 現在壁紙になっている画像（このセット内）に外枠を付ける
-        imageAdapter.activeImageUri = currentWallpaperUri()
+        imageAdapter.activeImageUri = DataManager.currentWallpaperUri(this, images)
         if (::recyclerView.isInitialized) {
             recyclerView.invalidateItemDecorations()
         }
@@ -379,27 +379,8 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                 images.addAll(if (isSortAscending) baseList else baseList.reversed())
             }
             // 現在壁紙にしている画像がこのセットにあれば、列の一番最初に持ってくる
-            val curUri = currentWallpaperUri()
-            if (curUri != null) {
-                val idx = images.indexOfFirst { it.uri.toString() == curUri }
-                if (idx > 0) {
-                    val moved = images.removeAt(idx)
-                    images.add(0, moved)
-                }
-            }
+            DataManager.pinCurrentWallpaperFirst(this, images)
         }
-    }
-
-    /**
-     * 現在ホーム/チャットの壁紙になっている画像がこのセット内にあればそのURIを返す。
-     * （AlbumDetail で「現在壁紙の画像」を先頭表示＋外枠するために使う）
-     */
-    private fun currentWallpaperUri(): String? {
-        val home = DataManager.getActiveWallpaperImage(this, false)?.uri?.toString()
-        if (home != null && images.any { it.uri.toString() == home }) return home
-        val chat = DataManager.getActiveWallpaperImage(this, true)?.uri?.toString()
-        if (chat != null && images.any { it.uri.toString() == chat }) return chat
-        return null
     }
 
     override fun onResume() {

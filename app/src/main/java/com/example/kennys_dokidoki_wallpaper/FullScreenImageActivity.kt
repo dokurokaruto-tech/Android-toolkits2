@@ -137,6 +137,8 @@ class FullScreenImageActivity : AppCompatActivity() {
             val baseList = DataManager.allImages.toList()
             currentEntries.addAll(if (isSortAscending) baseList else baseList.reversed())
         }
+        // 画像一覧/カルーセルと同じ並びにするため、現在壁紙画像を先頭に
+        DataManager.pinCurrentWallpaperFirst(this, currentEntries)
     }
 
     private fun showImage() {
