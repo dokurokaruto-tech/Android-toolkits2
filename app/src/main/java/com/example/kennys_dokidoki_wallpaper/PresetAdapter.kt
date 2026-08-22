@@ -55,6 +55,7 @@ class PresetAdapter(
     }
 
     class HeaderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvArrow: TextView = view.findViewById(R.id.tv_header_arrow)
         val tvTitle: TextView = view.findViewById(R.id.tv_header_title)
         val btnSettings: ImageButton = view.findViewById(R.id.btn_category_settings)
         val ivDragHandle: ImageView = view.findViewById(R.id.iv_drag_handle)
@@ -89,7 +90,8 @@ class PresetAdapter(
             is HeaderViewHolder -> {
                 val header = item as AdapterItem.Header
                 val isCollapsed = PresetManager.collapsedCategories.contains(header.title)
-                holder.tvTitle.text = if (isCollapsed) "▶ ${header.title}" else "▼ ${header.title}"
+                holder.tvArrow.text = if (isCollapsed) "▶" else "▼"
+                holder.tvTitle.text = header.title
                 
                 holder.itemView.setOnClickListener {
                     PresetManager.toggleCollapsed(holder.itemView.context, header.title)

@@ -9,6 +9,16 @@
     android:background="#1C1B1F">
 
     <TextView
+        android:id="@+id/tv_header_arrow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp"
+        android:textColor="#D0BCFF"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
         android:id="@+id/tv_category_selection_count"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

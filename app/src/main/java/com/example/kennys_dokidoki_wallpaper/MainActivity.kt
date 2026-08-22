@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var isStripCollapsed = false
     private var stripTouchStartY = 0f
     private lateinit var recyclerSelectedCards: RecyclerView
+    private var lastStripPad = -1
     private lateinit var btnSavePreset: Button
 
     private lateinit var selectionActionBar: LinearLayout
@@ -863,6 +864,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         })
         recyclerSelectedCards.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         recyclerSelectedCards.adapter = selectedStripAdapter
+        // レイアウト確定（画面幅が分かったタイミング）でも中央寄せを再計算
+        recyclerSelectedCards.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            centerSelectedStrip()
+        }
 
         // ストリップのスワイプ折りたたみ
         val stripContainer = findViewById<View>(R.id.layout_selected_strip)
@@ -1173,6 +1178,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             )
         )
         selectedStripAdapter.update(sorted)
+        centerSelectedStrip()
         if (::btnGenerateConcatenatedTop.isInitialized) {
             val hasSelection = sorted.isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
             btnGenerateConcatenatedTop.isEnabled = hasSelection
@@ -1192,6 +1198,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun expandStrip(strip: View) {
         isStripCollapsed = false
         strip.animate().translationY(0f).setDuration(250).start()
+    }
+
+    /**
+     * 下部の選択中カードストリップを中央寄せする。
+     * カード幅は固定(80dp)で隣接マージン6dp。コンテンツ幅が画面幅未満のときは
+     * 左右に均等なパディングを入れて中央に寄せる。1枚ならど真ん中。
+     * 画面幅を超えるときはパディング0（通常の左詰めスクロール）。
+     */
+    private fun centerSelectedStrip() {
+        val rv = recyclerSelectedCards
+        val viewport = rv.width
+        if (viewport <= 0) return
+        val count = selectedStripAdapter.itemCount
+        val density = resources.displayMetrics.density
+        val contentWidth = (count * 80 + (count - 1).coerceAtLeast(0) * 6) * density
+        val pad = if (count == 0 || contentWidth >= viewport) 0 else ((viewport - contentWidth) / 2).toInt()
+        if (pad != lastStripPad) {
+            lastStripPad = pad
+            rv.setPadding(pad, 0, pad, 0)
+            rv.clipToPadding = false
+        }
     }
 
     private fun showAddPresetDialog() {
@@ -1386,7 +1413,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                                 promptCardAdapter.notifyDataSetChanged()
                             }
                         )
-                        if (!success) {
+                        if (success) {
+                            // 1枚生成するごとにカード↔サムネイルの紐付けを保存
+                            // （途中で中断/クラッシュしても、出来た分は確実に残す）
+                            PromptCardManager.saveCards(this@MainActivity)
+                        } else {
                             Log.e("BulkThumb", "Failed to generate for: ${card.label}")
                         }
                     }

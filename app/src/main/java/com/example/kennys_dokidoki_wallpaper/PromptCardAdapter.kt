@@ -64,6 +64,7 @@ class PromptCardAdapter(
     }
 
     class HeaderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvArrow: TextView = view.findViewById(R.id.tv_header_arrow)
         val tvSelectionCount: TextView = view.findViewById(R.id.tv_category_selection_count)
         val tvTitle: TextView = view.findViewById(R.id.tv_header_title)
         val btnRandom: ImageButton = view.findViewById(R.id.btn_category_random)
@@ -106,7 +107,8 @@ class PromptCardAdapter(
             is HeaderViewHolder -> {
                 val header = item as AdapterItem.Header
                 val isCollapsed = PromptCardManager.collapsedCategories.contains(header.title)
-                holder.tvTitle.text = if (isCollapsed) "▶ ${header.title}" else "▼ ${header.title}"
+                holder.tvArrow.text = if (isCollapsed) "▶" else "▼"
+                holder.tvTitle.text = header.title
 
                 // このカテゴリー内で現在選択されているカード枚数（0なら非表示）
                 val selectedInCategory = PromptCardManager.promptCards.count {
