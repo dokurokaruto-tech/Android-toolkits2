@@ -423,11 +423,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             GenerationProgressManager.state.collect { state ->
                 runOnUiThread {
                 if (state.isGenerating) {
-                    // 中止ボタン化：テキストと背景色だけ変える（アイコン・文字色など既存デザインは保持）
-                    btnGenerateConcatenatedTop.text = "中止"
+                    // 中断ボタン化：テキストと背景色だけ変える（アイコン・文字色など既存デザインは保持）
+                    btnGenerateConcatenatedTop.text = "中断"
                     btnGenerateConcatenatedTop.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3366"))
 
-                    // 今生成中の1枚の進行度を、中止ボタンの周りのリングで表現
+                    // 今生成中の1枚の進行度を、中断ボタンの周りの角丸四角形バーで表現
                     // （明るい線が時計回りに進み、100%で1周する。ボタン本体のデザインは変えない）
                     if (!state.silent && ::generationRing.isInitialized) {
                         generationRing.visibility = View.VISIBLE
@@ -944,7 +944,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         builderHistoryCursor = 0
         updateUndoRedoButtons()
 
-        // 中止ボタンの周りに進捗リングを重ねる（ボタン本体のデザインは変えない）
+        // 中断ボタンの周りに進捗バーを重ねる（ボタン本体のデザインは変えない）
         generationRing = ProgressRingView(this).apply {
             isClickable = false
             isFocusable = false
@@ -963,11 +963,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
         btnGenerateConcatenatedTop.setOnClickListener {
             if (GenerationProgressManager.state.value.isGenerating) {
-                // すでに生成中なら、中止の処理をするわよ！
+                // すでに生成中なら、中断の処理をするわよ！
                 if (!GenerationProgressManager.shouldStopGracefully) {
                     // 1回目：キリの良いところで止める（現在の画像が終わったら終了）
                     GenerationProgressManager.shouldStopGracefully = true
-                    btnGenerateConcatenatedTop.text = "強制中止"
+                    btnGenerateConcatenatedTop.text = "強制中断"
                     Toast.makeText(this, "現在の画像生成が完了次第、終了します。", Toast.LENGTH_SHORT).show()
                 } else {
                     // 2回目：今すぐ止める（強制終了）
@@ -1406,9 +1406,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     /**
-     * 進捗リングを中止ボタンの真ん中に重ねて配置する。
-     * ボタンを囲めるよう一辺＝ボタンサイズ+余白 の正方形にし、
-     * layout_builder(FrameLayout)上のオーバーレイとして追従させる。
+     * 進捗バー(角丸四角形)を中断ボタンの形にぴったり沿わせて重ねる。
+     * ボタンを少し囲む余白(ストローク+隙間)を取って layout_builder 上の
+     * オーバーレイとし、角丸半径もボタンに合わせる。
      */
     private fun syncGenerationRing() {
         if (!::generationRing.isInitialized) return
@@ -1420,19 +1420,31 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         layoutBuilder.getLocationInWindow(rootLoc)
         val relX = btnLoc[0] - rootLoc[0]
         val relY = btnLoc[1] - rootLoc[1]
+
         val density = resources.displayMetrics.density
-        val size = (maxOf(btn.width, btn.height) + (12 * density)).toInt()
-        val left = relX + btn.width / 2 - size / 2
-        val top = relY + btn.height / 2 - size / 2
+        val sw = 4f * density
+        val gap = 2f * density        // ボタンと線の隙間
+        val margin = (sw + gap).toInt() // ボタン周りの余白
+
+        // 角丸半径をボタンに合わせる（MaterialButton の cornerSize、取れなければピル状）
+        val matBtn = btn as? com.google.android.material.button.MaterialButton
+        val rawCorner = matBtn?.cornerSize ?: -1f
+        val btnCorner = if (rawCorner > 0f) rawCorner else (btn.height / 2f)
+        generationRing.setCornerRadius(btnCorner + gap + sw / 2f)
+
+        val w = btn.width + 2 * margin
+        val h = btn.height + 2 * margin
+        val left = relX - margin
+        val top = relY - margin
         val lp = generationRing.layoutParams
         if (lp is FrameLayout.LayoutParams) {
-            lp.width = size
-            lp.height = size
+            lp.width = w
+            lp.height = h
             lp.leftMargin = left
             lp.topMargin = top
             generationRing.layoutParams = lp
         } else {
-            generationRing.layoutParams = FrameLayout.LayoutParams(size, size).apply {
+            generationRing.layoutParams = FrameLayout.LayoutParams(w, h).apply {
                 leftMargin = left
                 topMargin = top
             }
