@@ -865,18 +865,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             },
             onStartDrag = { viewHolder ->
                 presetItemTouchHelper.startDrag(viewHolder)
-            },
-            isPresetMatchingCurrentState = { preset ->
-                PresetMatchPolicy.matches(
-                    preset = preset,
-                    selectionLevels = PromptCardManager.selectionLevels,
-                    randomEnabledCategories = PromptCardManager.randomEnabledCategories,
-                    width = genWidth,
-                    height = genHeight,
-                    steps = genSteps,
-                    batchCount = genBatchCount,
-                    sampler = genSampler
-                )
             }
         )
         val presetLayoutManager = GridLayoutManager(this, promptCardColumnCount)
@@ -886,6 +874,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         recyclerViewPresets.layoutManager = presetLayoutManager
         recyclerViewPresets.isNestedScrollingEnabled = false
         recyclerViewPresets.adapter = presetAdapter
+        refreshPresetMatchHighlight()
 
         presetItemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.Callback() {
             override fun getMovementFlags(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder): Int {
@@ -1345,7 +1334,25 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
      * redo 可能な分は破棄し、上限を超えた古い履歴は切り捨てる。
      */
     private fun refreshPresetMatchHighlight() {
-        if (::presetAdapter.isInitialized) presetAdapter.notifyDataSetChanged()
+        if (!::presetAdapter.isInitialized) return
+        val availableCardIds = PromptCardManager.promptCards.mapTo(mutableSetOf()) { it.id }
+        val matchingIds = PresetManager.presets.asSequence()
+            .filter { preset ->
+                PresetMatchPolicy.matches(
+                    preset = preset,
+                    selectionLevels = PromptCardManager.selectionLevels,
+                    randomEnabledCategories = PromptCardManager.randomEnabledCategories,
+                    width = genWidth,
+                    height = genHeight,
+                    steps = genSteps,
+                    batchCount = genBatchCount,
+                    sampler = genSampler,
+                    availableCardIds = availableCardIds
+                )
+            }
+            .map { it.id }
+            .toSet()
+        presetAdapter.updateMatchingPresetIds(matchingIds)
     }
 
     private fun commitBuilderState() {
@@ -1515,8 +1522,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun applyPreset(preset: Preset) {
         suspendBuilderHistory = true
         try {
+            val availableCardIds = PromptCardManager.promptCards.mapTo(mutableSetOf()) { it.id }
             PromptCardManager.selectionLevels.clear()
-            PromptCardManager.selectionLevels.putAll(preset.activePromptStates)
+            // 削除済みカードの古いIDがプリセットに残っていても、現在利用できる
+            // カードだけを適用する。適用直後に一致判定が崩れる原因を除く。
+            PromptCardManager.selectionLevels.putAll(
+                preset.activePromptStates.filterKeys { it in availableCardIds }
+            )
             PromptCardManager.randomEnabledCategories.clear()
             PromptCardManager.randomEnabledCategories.addAll(preset.randomEnabledCategories)
             genWidth = preset.width
@@ -1533,6 +1545,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             suspendBuilderHistory = false
         }
         commitBuilderState()
+        // RecyclerViewのクリック処理が完了した次フレームでも再同期し、
+        // pressed状態や再bindのタイミングで枠が消えるのを防止する。
+        refreshPresetMatchHighlight()
+        recyclerViewPresets.post { refreshPresetMatchHighlight() }
         Toast.makeText(this, "プリセット『${preset.name}』を適用しました。", Toast.LENGTH_SHORT).show()
     }
 

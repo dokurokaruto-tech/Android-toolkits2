@@ -16,8 +16,7 @@ class PresetAdapter(
     private val onPresetClick: (Preset) -> Unit,
     private val onPresetLongClick: (Preset) -> Unit,
     private val onCategorySettingsClick: (String) -> Unit,
-    private val onStartDrag: (RecyclerView.ViewHolder) -> Unit,
-    private val isPresetMatchingCurrentState: (Preset) -> Boolean
+    private val onStartDrag: (RecyclerView.ViewHolder) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -26,6 +25,7 @@ class PresetAdapter(
     }
 
     private val items = mutableListOf<AdapterItem>()
+    private var matchingPresetIds: Set<String> = emptySet()
 
     init {
         buildItems()
@@ -130,13 +130,14 @@ class PresetAdapter(
                     holder.ivThumbnail.setImageDrawable(null)
                 }
 
-                val matches = isPresetMatchingCurrentState(preset)
+                val matches = preset.id in matchingPresetIds
                 val density = holder.itemView.resources.displayMetrics.density
-                holder.card.strokeColor = if (matches) 0xFFD0BCFF.toInt() else 0xFF49454F.toInt()
-                holder.card.strokeWidth = ((if (matches) 3f else 1f) * density).toInt()
-                holder.card.cardElevation = (if (matches) 8f else 1f) * density
+                // 淡いラベンダーではなく、はっきり見える濃い紫で固定する。
+                holder.card.strokeColor = if (matches) 0xFF6A0DAD.toInt() else 0xFF49454F.toInt()
+                holder.card.strokeWidth = ((if (matches) 4f else 1f) * density).toInt()
+                holder.card.cardElevation = (if (matches) 10f else 1f) * density
                 holder.card.setCardBackgroundColor(
-                    if (matches) 0xFF2A2038.toInt() else 0xFF1C1B1F.toInt()
+                    if (matches) 0xFF190A24.toInt() else 0xFF1C1B1F.toInt()
                 )
 
                 holder.itemView.setOnClickListener { onPresetClick(preset) }
@@ -149,6 +150,16 @@ class PresetAdapter(
     }
 
     override fun getItemCount() = items.size
+
+    /**
+     * MainActivityで確定した一致IDを受け取る。bind中に可変なビルダー状態を
+     * 再計算しないため、プリセット適用直後でも枠が消えない。
+     */
+    fun updateMatchingPresetIds(ids: Set<String>) {
+        matchingPresetIds = ids.toSet()
+        // 同じIDでもpressed状態解除後に濃い紫の枠を確実に再適用する。
+        notifyDataSetChanged()
+    }
 
     fun updateList(newList: List<Preset>) {
         presets = newList

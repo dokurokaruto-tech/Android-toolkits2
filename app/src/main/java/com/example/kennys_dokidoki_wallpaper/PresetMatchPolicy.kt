@@ -10,9 +10,20 @@ object PresetMatchPolicy {
         height: Int,
         steps: Int,
         batchCount: Int,
-        sampler: String
+        sampler: String,
+        availableCardIds: Set<String>? = null
     ): Boolean {
-        return preset.activePromptStates == selectionLevels &&
+        val presetCards = if (availableCardIds == null) {
+            preset.activePromptStates
+        } else {
+            preset.activePromptStates.filterKeys { it in availableCardIds }
+        }
+        val currentCards = if (availableCardIds == null) {
+            selectionLevels
+        } else {
+            selectionLevels.filterKeys { it in availableCardIds }
+        }
+        return presetCards == currentCards &&
             preset.randomEnabledCategories == randomEnabledCategories &&
             preset.width == width &&
             preset.height == height &&

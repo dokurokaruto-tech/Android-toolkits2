@@ -35,6 +35,26 @@ class PresetMatchPolicyTest {
     }
 
     @Test
+    fun deletedCardIdsDoNotBreakEffectiveMatchAfterPresetTap() {
+        val presetWithDeletedCard = preset.copy(
+            activePromptStates = preset.activePromptStates + ("deleted-card" to 1)
+        )
+        assertTrue(
+            PresetMatchPolicy.matches(
+                presetWithDeletedCard,
+                selectionLevels = preset.activePromptStates,
+                randomEnabledCategories = setOf("hair"),
+                width = 720,
+                height = 1280,
+                steps = 20,
+                batchCount = 3,
+                sampler = "Euler a",
+                availableCardIds = setOf("card-a", "card-b")
+            )
+        )
+    }
+
+    @Test
     fun cardLevelOrGenerationSettingDifferenceDoesNotMatch() {
         assertFalse(
             PresetMatchPolicy.matches(
