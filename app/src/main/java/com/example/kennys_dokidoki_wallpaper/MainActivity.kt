@@ -1428,7 +1428,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         // 角丸半径をボタンに合わせる（MaterialButton の cornerSize、取れなければピル状）
         val matBtn = btn as? com.google.android.material.button.MaterialButton
-        val rawCorner = matBtn?.cornerSize ?: -1f
+        val rawCorner = matBtn?.cornerRadius?.toFloat() ?: -1f
         val btnCorner = if (rawCorner > 0f) rawCorner else (btn.height / 2f)
         generationRing.setCornerRadius(btnCorner + gap + sw / 2f)
 
