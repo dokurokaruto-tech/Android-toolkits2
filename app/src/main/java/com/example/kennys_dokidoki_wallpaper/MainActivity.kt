@@ -1531,10 +1531,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val btnCancel = dialogView.findViewById<Button>(R.id.btn_cancel_edit)
         val btnSave = dialogView.findViewById<Button>(R.id.btn_save_card)
 
-        val cbUseRandomizer = dialogView.findViewById<CheckBox>(R.id.cb_use_individual_randomizer)
+        val cbUseRandomizer = dialogView.findViewById<android.widget.CompoundButton>(R.id.cb_use_individual_randomizer)
         val llRandomizerSettings = dialogView.findViewById<LinearLayout>(R.id.ll_randomizer_settings)
-        val etRandomProbability = dialogView.findViewById<EditText>(R.id.et_random_probability)
-        val sbRandomProbability = dialogView.findViewById<SeekBar>(R.id.sb_random_probability)
+        val etRandomProbability = dialogView.findViewById<android.widget.TextView>(R.id.et_random_probability)
+        val sbRandomProbability = dialogView.findViewById<com.google.android.material.slider.Slider>(R.id.sb_random_probability)
 
         val tempAppliedTags = mutableSetOf<String>()
 
@@ -1550,14 +1550,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             cbUseRandomizer.isChecked = card.useIndividualRandomizer
             etRandomProbability.setText(card.randomizerProbability.toString())
-            sbRandomProbability.progress = card.randomizerProbability
+            sbRandomProbability.value = card.randomizerProbability.toFloat()
             btnDelete.visibility = View.VISIBLE
         } else {
             etCategory.setText(initialCategory)
             tempCardThumbnailUri = null
             cbUseRandomizer.isChecked = false
             etRandomProbability.setText("50")
-            sbRandomProbability.progress = 50
+            sbRandomProbability.value = 50f
         }
 
         llRandomizerSettings.visibility = if (cbUseRandomizer.isChecked) View.VISIBLE else View.GONE
@@ -1565,31 +1565,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             llRandomizerSettings.visibility = if (isChecked) View.VISIBLE else View.GONE
         }
 
-        sbRandomProbability.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    val snappedProgress = (Math.round(progress / 5.0) * 5).toInt().coerceIn(0, 100)
-                    if (snappedProgress != progress) {
-                        seekBar?.progress = snappedProgress
-                    }
-                    etRandomProbability.setText(snappedProgress.toString())
-                }
+        sbRandomProbability.addOnChangeListener { slider, value, fromUser ->
+            if (fromUser) {
+                etRandomProbability.text = value.toInt().toString()
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
+        }
 
-        etRandomProbability.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) {
-                val value = s.toString().toIntOrNull() ?: 0
-                val clamped = value.coerceIn(0, 100)
-                if (clamped != sbRandomProbability.progress) {
-                    sbRandomProbability.progress = clamped
-                }
-            }
-        })
+
 
         fun updateAppliedTagsDisplay() {
             if (tempAppliedTags.isEmpty()) {
@@ -1686,7 +1668,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     category = category,
                     appliedTags = tempAppliedTags,
                     useIndividualRandomizer = cbUseRandomizer.isChecked,
-                    randomizerProbability = sbRandomProbability.progress
+                    randomizerProbability = sbRandomProbability.value.toInt()
                 )
                 PromptCardManager.addCard(this, newCard)
             } else {
@@ -1698,7 +1680,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 card.appliedTags.clear()
                 card.appliedTags.addAll(tempAppliedTags)
                 card.useIndividualRandomizer = cbUseRandomizer.isChecked
-                card.randomizerProbability = sbRandomProbability.progress
+                card.randomizerProbability = sbRandomProbability.value.toInt()
                 PromptCardManager.saveCards(this)
             }
             promptCardAdapter.updateList(PromptCardManager.promptCards)

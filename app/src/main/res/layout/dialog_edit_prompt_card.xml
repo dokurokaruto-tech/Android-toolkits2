@@ -1,15 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="?attr/colorSurface">
+    android:background="?attr/colorSurface"
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="28dp"
+        android:paddingEnd="28dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="16dp">
 
         <!-- タイトル -->
         <com.google.android.material.textview.MaterialTextView
@@ -19,9 +24,64 @@
             android:text="プロンプトカードの編集"
             android:textAppearance="?attr/textAppearanceHeadlineSmall"
             android:textColor="?attr/colorOnSurface"
-            android:layout_marginBottom="24dp"
-            tools:ignore="HardcodedText"
-            xmlns:tools="http://schemas.android.com/tools" />
+            android:layout_marginBottom="20dp"
+            tools:ignore="HardcodedText" />
+
+        <!-- サムネイル -->
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tv_thumbnail_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="サムネイル"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginBottom="8dp"
+            tools:ignore="HardcodedText" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="20dp">
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                app:cardCornerRadius="40dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp"
+                app:cardBackgroundColor="?attr/colorSurfaceContainerHigh">
+
+                <ImageView
+                    android:id="@+id/iv_card_thumbnail_preview"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    android:src="@android:drawable/ic_menu_gallery"
+                    app:tint="?attr/colorOnSurfaceVariant" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_pick_card_thumbnail"
+                style="@style/Widget.Material3.Button.TextButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="選択"
+                app:icon="@drawable/ic_md3_photo_library"
+                tools:ignore="HardcodedText" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_generate_card_thumbnail"
+                style="@style/Widget.Material3.Button.TonalButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="生成"
+                app:icon="@drawable/ic_md3_auto_awesome"
+                tools:ignore="HardcodedText" />
+        </LinearLayout>
 
         <!-- カテゴリー -->
         <com.google.android.material.textfield.TextInputLayout
@@ -30,7 +90,6 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
             android:hint="カテゴリー"
-            app:boxStrokeColor="?attr/colorOutline"
             app:hintTextColor="?attr/colorPrimary">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -48,7 +107,6 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
             android:hint="ラベル"
-            app:boxStrokeColor="?attr/colorOutline"
             app:hintTextColor="?attr/colorPrimary">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -60,14 +118,22 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <!-- メインプロンプト -->
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tv_main_prompt_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="メインプロンプト"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginBottom="4dp"
+            tools:ignore="HardcodedText" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tv_main_prompt_label"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
-            android:hint="メインプロンプト"
-            app:boxStrokeColor="?attr/colorOutline"
             app:hintTextColor="?attr/colorPrimary">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -81,14 +147,22 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <!-- ネガティブプロンプト -->
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tv_negative_prompt_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ネガティブプロンプト"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginBottom="4dp"
+            tools:ignore="HardcodedText" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tv_negative_prompt_label"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:hint="ネガティブプロンプト"
-            app:boxStrokeColor="?attr/colorOutline"
+            android:layout_marginBottom="20dp"
             app:hintTextColor="?attr/colorPrimary">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -109,30 +183,43 @@
             android:textAppearance="?attr/textAppearanceLabelLarge"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="4dp"
-            tools:ignore="HardcodedText"
-            xmlns:tools="http://schemas.android.com/tools" />
+            tools:ignore="HardcodedText" />
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/tv_applied_tags_display"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="なし"
-            android:textColor="?attr/colorPrimary"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:paddingVertical="8dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="20dp">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_edit_applied_tags"
-            style="@style/Widget.Material3.Button.TonalButton.Icon"
-            android:layout_width="wrap_content"
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/tv_applied_tags_display"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="なし"
+                android:textColor="?attr/colorPrimary"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                tools:ignore="HardcodedText" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_edit_applied_tags"
+                style="@style/Widget.Material3.Button.TonalButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="タグを選択"
+                app:icon="@drawable/ic_md3_check"
+                tools:ignore="HardcodedText" />
+        </LinearLayout>
+
+        <!-- 区切り線 -->
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="タグを選択"
-            app:icon="@drawable/ic_md3_check"
-            android:layout_marginBottom="24dp"
-            tools:ignore="HardcodedText"
-            xmlns:tools="http://schemas.android.com/tools" />
+            android:layout_marginBottom="16dp"
+            app:dividerColor="?attr/colorOutlineVariant" />
 
-        <!-- ランダマイザー -->
+        <!-- 個別ランダマイザー -->
         <com.google.android.material.textview.MaterialTextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -140,129 +227,66 @@
             android:textAppearance="?attr/textAppearanceTitleMedium"
             android:textColor="?attr/colorOnSurface"
             android:layout_marginBottom="8dp"
-            tools:ignore="HardcodedText"
-            xmlns:tools="http://schemas.android.com/tools" />
+            tools:ignore="HardcodedText" />
 
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/cb_use_individual_randomizer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="個別ランダマイザーを有効にする"
+            android:text="有効にする"
             android:textColor="?attr/colorOnSurface"
             android:layout_marginBottom="8dp"
-            tools:ignore="HardcodedText"
-            xmlns:tools="http://schemas.android.com/tools" />
+            tools:ignore="HardcodedText" />
 
         <LinearLayout
             android:id="@+id/ll_randomizer_settings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:layout_marginBottom="24dp">
+            android:layout_marginBottom="20dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:layout_marginBottom="8dp">
+                android:layout_marginBottom="4dp">
 
                 <com.google.android.material.textview.MaterialTextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="出現確率："
+                    android:text="発生確率: "
                     android:textColor="?attr/colorOnSurfaceVariant"
                     android:textAppearance="?attr/textAppearanceBodyMedium"
-                    tools:ignore="HardcodedText"
-                    xmlns:tools="http://schemas.android.com/tools" />
+                    tools:ignore="HardcodedText" />
 
-                <EditText
+                <com.google.android.material.textview.MaterialTextView
                     android:id="@+id/et_random_probability"
-                    android:layout_width="60dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:inputType="number"
                     android:text="50"
-                    android:textColor="?attr/colorPrimary"
-                    android:gravity="center"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:textColor="?attr/colorOnSurface"
+                    android:textAppearance="?attr/textAppearanceTitleMedium"
+                    android:textStyle="bold"
+                    tools:ignore="HardcodedText" />
 
                 <com.google.android.material.textview.MaterialTextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text=" %"
+                    android:text="%"
                     android:textColor="?attr/colorOnSurfaceVariant"
-                    tools:ignore="HardcodedText"
-                    xmlns:tools="http://schemas.android.com/tools" />
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    tools:ignore="HardcodedText" />
             </LinearLayout>
 
-            <SeekBar
+            <com.google.android.material.slider.Slider
                 android:id="@+id/sb_random_probability"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:max="100"
-                android:progress="50"
-                android:progressTint="?attr/colorPrimary"
-                android:thumbTint="?attr/colorPrimary" />
-        </LinearLayout>
-
-        <!-- サムネイル -->
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/tv_thumbnail_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="サムネイル (9:16を推奨)"
-            android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:layout_marginBottom="8dp"
-            tools:ignore="HardcodedText"
-            xmlns:tools="http://schemas.android.com/tools" />
-
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="120dp"
-            android:layout_height="213dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="8dp"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="0dp"
-            app:strokeColor="?attr/colorOutlineVariant"
-            app:strokeWidth="1dp">
-
-            <ImageView
-                android:id="@+id/iv_card_thumbnail_preview"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="centerCrop"
-                android:background="?attr/colorSurfaceVariant" />
-        </com.google.android.material.card.MaterialCardView>
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:orientation="horizontal"
-            android:layout_marginBottom="24dp">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_pick_card_thumbnail"
-                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="選択"
-                app:icon="@drawable/ic_md3_photo_library"
-                android:layout_marginEnd="8dp"
-                tools:ignore="HardcodedText"
-                xmlns:tools="http://schemas.android.com/tools" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_generate_card_thumbnail"
-                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="生成"
-                app:icon="@drawable/ic_md3_auto_awesome"
-                tools:ignore="HardcodedText"
-                xmlns:tools="http://schemas.android.com/tools" />
+                android:valueFrom="0.0"
+                android:valueTo="100.0"
+                android:stepSize="5.0"
+                android:value="50.0" />
         </LinearLayout>
 
         <!-- アクションボタン -->
@@ -270,25 +294,16 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="end">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_delete_card"
-                style="@style/Widget.Material3.Button.TextButton.Icon"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="削除"
                 android:textColor="?attr/colorError"
-                app:icon="@drawable/ic_md3_delete"
-                app:iconTint="?attr/colorError"
-                android:visibility="gone"
-                tools:ignore="HardcodedText"
-                xmlns:tools="http://schemas.android.com/tools" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
+                tools:ignore="HardcodedText" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_cancel_edit"
@@ -296,8 +311,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="キャンセル"
-                tools:ignore="HardcodedText"
-                xmlns:tools="http://schemas.android.com/tools" />
+                tools:ignore="HardcodedText" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_save_card"
@@ -305,8 +319,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="保存"
-                tools:ignore="HardcodedText"
-                xmlns:tools="http://schemas.android.com/tools" />
+                tools:ignore="HardcodedText" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>
