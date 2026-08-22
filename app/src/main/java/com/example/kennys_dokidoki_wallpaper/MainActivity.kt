@@ -942,7 +942,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     else {
                         // 中止されたなら失敗メッセージは出さないわ
                         if (!GenerationProgressManager.shouldInterrupt && !GenerationProgressManager.shouldStopGracefully) {
-                            Toast.makeText(this@MainActivity, "${i}枚目の生成に失敗しました。", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@MainActivity, "${i}枚目: " + StabilityManager.lastErrorText(), Toast.LENGTH_SHORT).show()
                         }
                     }
 
@@ -1054,7 +1054,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 if (success) {
                     Toast.makeText(this@MainActivity, "プリセットのサムネイル生成が完了しました。", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this@MainActivity, "生成に失敗しました。", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "生成失敗: " + StabilityManager.lastErrorText(), Toast.LENGTH_SHORT).show()
                 }
             }
         }

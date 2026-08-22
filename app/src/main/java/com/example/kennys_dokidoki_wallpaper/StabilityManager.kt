@@ -23,6 +23,45 @@ import java.util.Date
 import java.util.Locale
 
 object StabilityManager {
+    // ===== 画像生成エラーコード =====
+    // 数字を伝えれば原因が一意に特定できる。UIの失敗表示にもこれを出す。
+    const val E_URL_NOT_SET = "E01"        // サーバーURL未設定
+    const val E_CONNECT_FAILED = "E02"     // サーバーに接続できない / タイムアウト
+    const val E_HTTP_ERROR = "E03"         // サーバーがHTTPエラーを返した
+    const val E_NO_IMAGES = "E04"          // レスポンスに画像が含まれない
+    const val E_SAVE_FOLDER_UNSET = "E05"  // 保存先フォルダ未設定
+    const val E_SAVE_FOLDER_ACCESS = "E06" // 保存先フォルダにアクセスできない
+    const val E_SAVE_WRITE = "E07"         // 画像の保存/書き込みに失敗
+    const val E_INTERRUPTED = "E08"        // ユーザーにより中止された
+    const val E_DECODE = "E09"             // base64 / 画像デコード失敗
+    const val E_UNKNOWN = "E10"            // 予期せぬ例外
+
+    private fun errorName(code: String): String = when (code) {
+        E_URL_NOT_SET -> "サーバーURL未設定"
+        E_CONNECT_FAILED -> "サーバーに接続できない/タイムアウト"
+        E_HTTP_ERROR -> "サーバーHTTPエラー"
+        E_NO_IMAGES -> "レスポンスに画像なし"
+        E_SAVE_FOLDER_UNSET -> "保存先フォルダ未設定"
+        E_SAVE_FOLDER_ACCESS -> "保存先フォルダにアクセス不可"
+        E_SAVE_WRITE -> "画像の保存失敗"
+        E_INTERRUPTED -> "ユーザー中止"
+        E_DECODE -> "画像デコード失敗"
+        E_UNKNOWN -> "予期せぬ例外"
+        else -> "不明"
+    }
+
+    /** 直近のエラーをユーザー向けテキストにする（"[Exx] 原因（詳細）"）。 */
+    fun lastErrorText(): String {
+        val code = GenerationProgressManager.lastErrorCode ?: return "原因不明"
+        val name = errorName(code)
+        val detail = GenerationProgressManager.lastErrorMessage
+        return if (!detail.isNullOrBlank() && detail != name) "[$code] $name（$detail）" else "[$code] $name"
+    }
+
+    private fun reportError(code: String, detail: String = "") {
+        GenerationProgressManager.reportError(code, detail)
+    }
+
     suspend fun generateImage(
         context: Context, 
         prompt: String, 
@@ -40,7 +79,10 @@ object StabilityManager {
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val baseUrl = prefs.getString("remote_server_url", "") ?: ""
         
-        if (baseUrl.isEmpty()) return false
+        if (baseUrl.isEmpty()) {
+            reportError(E_URL_NOT_SET, "PCサーバーのURLを設定してください")
+            return false
+        }
 
         // すでに外側で開始宣言（バッチモード等）されてなければ、ここで開始するわ
         val managedExternally = GenerationProgressManager.state.value.isGenerating
@@ -101,7 +143,9 @@ object StabilityManager {
                     val responseText = conn.inputStream.bufferedReader().use { it.readText() }
                     val jsonResponse = JSONObject(responseText)
                     val imagesArray = jsonResponse.optJSONArray("images")
-                    
+                    if (imagesArray == null || imagesArray.length() == 0) {
+                        reportError(E_NO_IMAGES, "サーバーは200を返したが画像が0枚")
+                    }
                     if (imagesArray != null) {
                         for (i in 0 until imagesArray.length()) {
                             val base64Image = imagesArray.getString(i)
@@ -115,10 +159,18 @@ object StabilityManager {
                     }
                     true
                 } else {
+                    val errBody = try { conn.errorStream?.bufferedReader()?.use { it.readText() }?.take(300) } catch (_: Exception) { null }
+                    reportError(E_HTTP_ERROR, "HTTP $responseCode ${errBody ?: ""}")
                     false
                 }
+            } catch (e: java.net.SocketTimeoutException) {
+                reportError(E_CONNECT_FAILED, "タイムアウト: ${e.message}")
+                false
+            } catch (e: java.io.IOException) {
+                reportError(E_CONNECT_FAILED, "${e.javaClass.simpleName}: ${e.message}")
+                false
             } catch (e: Exception) {
-                Log.e("StabilityManager", "Generation failed", e)
+                reportError(E_UNKNOWN, "${e.javaClass.simpleName}: ${e.message}")
                 false
             } finally {
                 GenerationProgressManager.endGeneration()
@@ -228,6 +280,7 @@ object StabilityManager {
             val folderUriStr = prefs.getString(folderKey, null)
             
             if (folderUriStr == null) {
+                reportError(E_SAVE_FOLDER_UNSET, if (isThumbnail) "サムネイル" else "通常")
                 Log.w("StabilityManager", "Save folder not configured ($folderKey).")
                 return null
             }
@@ -236,6 +289,7 @@ object StabilityManager {
             var directory = DocumentFile.fromTreeUri(context, folderUri)
             
             if (directory == null || !directory.exists()) {
+                reportError(E_SAVE_FOLDER_ACCESS, "フォルダにアクセスできない")
                 Log.e("StabilityManager", "Could not access configured directory.")
                 return null
             }
@@ -301,6 +355,7 @@ object StabilityManager {
                 return file.uri
             }
         } catch (e: Exception) {
+            reportError(E_SAVE_WRITE, "${e.javaClass.simpleName}: ${e.message}")
             Log.e("StabilityManager", "Failed to save image", e)
         }
         return null

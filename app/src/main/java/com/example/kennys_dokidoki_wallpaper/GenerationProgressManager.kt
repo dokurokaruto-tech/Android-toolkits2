@@ -28,6 +28,23 @@ object GenerationProgressManager {
     var shouldSkip: Boolean = false
     var isBatch: Boolean = false
 
+    // 直近のエラー（コード + 詳細）。コードは原因を一意に特定する。
+    // E01..E10 の仕様は StabilityManager の定数を参照。
+    var lastErrorCode: String? = null
+        private set
+    var lastErrorMessage: String? = null
+        private set
+
+    fun reportError(code: String, message: String) {
+        lastErrorCode = code
+        lastErrorMessage = message
+    }
+
+    fun clearError() {
+        lastErrorCode = null
+        lastErrorMessage = null
+    }
+
     fun updateState(isGenerating: Boolean, progress: Float, currentImage: Bitmap?, statusText: String = "") {
         _state.value = _state.value.copy(
             isGenerating = isGenerating,
@@ -49,6 +66,7 @@ object GenerationProgressManager {
         shouldInterrupt = false
         shouldStopGracefully = false
         shouldSkip = false
+        clearError()
         _state.value = ProgressState(
             isGenerating = true,
             statusText = "錬成準備中...",
