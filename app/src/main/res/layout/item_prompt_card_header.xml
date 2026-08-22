@@ -9,6 +9,18 @@
     android:background="#1C1B1F">
 
     <TextView
+        android:id="@+id/tv_category_selection_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="26dp"
+        android:gravity="center"
+        android:paddingStart="4dp"
+        android:paddingEnd="8dp"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/tv_header_title"
         android:layout_width="0dp"
         android:layout_height="wrap_content"

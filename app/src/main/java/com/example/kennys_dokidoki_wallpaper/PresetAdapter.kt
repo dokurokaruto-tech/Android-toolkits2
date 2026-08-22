@@ -73,6 +73,7 @@ class PresetAdapter(
             TYPE_HEADER -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_prompt_card_header, parent, false)
                 view.findViewById<View>(R.id.btn_category_random).visibility = View.GONE
+                view.findViewById<View>(R.id.tv_category_selection_count).visibility = View.GONE
                 HeaderViewHolder(view)
             }
             else -> {

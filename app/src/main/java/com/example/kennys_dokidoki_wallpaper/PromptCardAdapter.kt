@@ -64,6 +64,7 @@ class PromptCardAdapter(
     }
 
     class HeaderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvSelectionCount: TextView = view.findViewById(R.id.tv_category_selection_count)
         val tvTitle: TextView = view.findViewById(R.id.tv_header_title)
         val btnRandom: ImageButton = view.findViewById(R.id.btn_category_random)
         val btnRandomEdit: ImageButton = view.findViewById(R.id.btn_category_random_edit)
@@ -106,7 +107,19 @@ class PromptCardAdapter(
                 val header = item as AdapterItem.Header
                 val isCollapsed = PromptCardManager.collapsedCategories.contains(header.title)
                 holder.tvTitle.text = if (isCollapsed) "▶ ${header.title}" else "▼ ${header.title}"
-                
+
+                // このカテゴリー内で現在選択されているカード枚数（0なら非表示）
+                val selectedInCategory = PromptCardManager.promptCards.count {
+                    it.category.trim() == header.title.trim() && PromptCardManager.selectionLevels.containsKey(it.id)
+                }
+                if (selectedInCategory > 0) {
+                    holder.tvSelectionCount.visibility = View.VISIBLE
+                    holder.tvSelectionCount.text = selectedInCategory.toString()
+                    holder.tvSelectionCount.setTextColor(selectionCountColor(selectedInCategory))
+                } else {
+                    holder.tvSelectionCount.visibility = View.GONE
+                }
+
                 // Random Button state
                 val isRandom = PromptCardManager.randomEnabledCategories.contains(header.title)
                 holder.btnRandom.setColorFilter(if (isRandom) Color.parseColor("#00F0FF") else Color.parseColor("#8892B0"))
@@ -273,5 +286,28 @@ class PromptCardAdapter(
             return true
         }
         return false
+    }
+
+    /**
+     * 選択状態が変わったとき、カテゴリーヘッダーの選択枚数表示だけを更新する。
+     */
+    fun notifyHeadersChanged() {
+        for (i in items.indices) {
+            if (items[i] is AdapterItem.Header) {
+                notifyItemChanged(i)
+            }
+        }
+    }
+
+    /**
+     * 選択枚数に応じた色を返す。
+     * 1枚＝青、増えるごとに赤へ寄り、10枚(最大)で一番深い赤。10を超えても変わらない。
+     * HSVで色相を青(210°)→赤(360°)へ線形補間し、彩度を高く保つことで中間色も鮮やかに。
+     */
+    private fun selectionCountColor(count: Int): Int {
+        val n = count.coerceIn(1, 10)
+        val t = (n - 1) / 9f
+        val hue = 210f + 150f * t
+        return Color.HSVToColor(floatArrayOf(hue, 0.85f, 1.0f))
     }
 }
