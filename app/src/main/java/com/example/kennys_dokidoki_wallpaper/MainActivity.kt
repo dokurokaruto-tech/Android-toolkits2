@@ -1115,12 +1115,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun updateSelectedCardStrip() {
         val selected = promptCardAdapter.getSelectedCardsWithLevels()
-        // カテゴリーの並び順に従ってソート（上のカテゴリーのカードが先頭に来る）
-        val catOrder = PromptCardManager.categoryOrder
-        val sorted = selected.sortedBy { pair ->
-            val idx = catOrder.indexOf(pair.first.category)
-            if (idx == -1) Int.MAX_VALUE else idx
-        }
         // カテゴリーの並び順(categoryOrder)に準じてソート。
         // カテゴリーを移動させたら、その中のカードも一緒に移動する。
         val catIdx = PromptCardManager.categoryOrder.withIndex().associate { it.value to it.index }
