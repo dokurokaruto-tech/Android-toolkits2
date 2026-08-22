@@ -996,6 +996,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
+        findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_add_preset_inline).setOnClickListener {
+            showAddPresetDialog()
+        }
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_add_category_inline).setOnClickListener {
             showAddPromptCategoryDialog()
         }
