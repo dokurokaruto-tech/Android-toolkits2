@@ -24,9 +24,23 @@ A1111なら通常は `webui-user.bat` の `COMMANDLINE_ARGS` に `--api` を追�
 3. 初回に `config.json` が自動作成される。
 4. SD APIが標準の `http://127.0.0.1:7860` でない場合だけ、`config.json` の `sd_base_url` を直して再起動する。
 5. Windows Defender Firewallの確認が出たら、使用するネットワーク（通常はプライベート、またはTailscale）だけ許可する。
-6. Androidアプリの設定 → **PC生成エージェントの接続設定** に `http://PCのIP:3001` を保存する。
+6. 黒い画面に次のような行が表示されるので、その**実際に表示された数値をそのまま**Androidアプリへ入力する。
 
-Tailscaleを使う場合は `http://100.x.y.z:3001` のようにPCのTailscale IPを指定します。
+```text
+ANDROID APP URL (use this exact value): http://192.168.1.23:3001
+```
+
+PCごとにルーターから割り当てられるIPは異なるため、`192.168.1.23` の部分は例ではなく、起動時にエージェント自身が検出して決定します。同じ内容は `connection-info.txt` にも自動保存されます。複数のネットワークがある場合は、同じWi-Fiなら先頭の推奨URL、Tailscaleなら `100.x.x.x:3001` と表示された候補を使います。
+
+## 接続に使う数値（ソフト側で固定済み）
+
+| 用途 | 値 |
+|---|---|
+| Stable Diffusion API（PC内部） | `http://127.0.0.1:7860` |
+| PC生成エージェントのポート | `3001` |
+| Androidから入力するURL | 起動時の `ANDROID APP URL` に表示された具体的なIP + `:3001` |
+
+`127.0.0.1` はPC自身を表すため、Android側には入力しないでください。
 
 ## 設定
 

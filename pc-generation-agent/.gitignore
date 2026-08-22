@@ -1,4 +1,5 @@
 config.json
+connection-info.txt
 data/
 generated/
 __pycache__/

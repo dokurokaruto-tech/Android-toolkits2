@@ -2599,8 +2599,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             setPadding(48, 16, 48, 0)
         }
         val urlInput = EditText(this).apply {
-            setText(prefs.getString("remote_server_url", "http://100.x.y.z:3001") ?: "http://100.x.y.z:3001")
-            hint = "http://PCのIP:3001"
+            setText(prefs.getString("remote_server_url", "") ?: "")
+            hint = "PC画面の ANDROID APP URL を入力"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
         }
