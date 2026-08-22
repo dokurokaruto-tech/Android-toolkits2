@@ -309,7 +309,7 @@
                                 app:trackThickness="4dp"
                                 app:indicatorColor="#00F0FF"
                                 app:trackColor="#33CAC4D0"
-                                app:indicatorDirection="clockwise"
+                                app:indicatorDirectionCircular="clockwise"
                                 android:visibility="gone" />
 
                             <com.google.android.material.button.MaterialButton

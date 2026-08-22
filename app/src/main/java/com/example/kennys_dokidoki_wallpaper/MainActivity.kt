@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.progressindicator.CircularProgressIndicator
 import kotlinx.coroutines.Dispatchers
@@ -90,7 +91,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var btnSortDirection: ImageButton
     private lateinit var btnPrioritySort: ImageButton
     private lateinit var tvFilterCount: TextView
-    private lateinit var btnGenerateConcatenatedTop: Button
+    private lateinit var btnGenerateConcatenatedTop: MaterialButton
     private lateinit var btnViewGenerated: Button
     private lateinit var btnRestorePip: Button
     private lateinit var btnSwitchColumns: Button
