@@ -7,6 +7,25 @@ package com.example.kennys_dokidoki_wallpaper
 object PromptCardPromptMinimalizer {
     private data class ConditionalTag(val names: Set<String>, val sourceHints: Set<String>)
 
+    private val modifierWords = setOf(
+        // Degree
+        "very", "extremely", "incredibly", "super", "slightly",
+        // Size / shape
+        "huge", "gigantic", "massive", "large", "big", "small", "tiny", "miniature",
+        "tall", "short", "long", "wide", "narrow", "thick", "thin", "round",
+        // Color / brightness
+        "red", "orange", "yellow", "green", "blue", "purple", "pink", "brown",
+        "black", "white", "gray", "grey", "golden", "silver", "dark", "light", "pale",
+        // Common visible attributes
+        "young", "old", "cute", "beautiful", "muscular", "slim", "fat", "fluffy",
+        "wet", "dirty", "injured", "transparent", "glowing", "striped", "spotted", "solo"
+    )
+
+    private val actionWords = setOf(
+        "running", "walking", "sitting", "standing", "lying", "jumping", "flying",
+        "swimming", "looking at viewer", "smiling", "crying", "sleeping"
+    )
+
     private val conditionalTags = listOf(
         ConditionalTag(setOf("8k", "8k resolution"), setOf("8k")),
         ConditionalTag(setOf("4k", "4k resolution"), setOf("4k")),
@@ -49,7 +68,7 @@ object PromptCardPromptMinimalizer {
     ): PromptCardAiResult {
         val source = naturalLanguage.lowercase()
         val seen = mutableSetOf<String>()
-        val main = result.mainPrompt.split(',')
+        val filteredTags = result.mainPrompt.split(',')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .filter { tag ->
@@ -60,7 +79,7 @@ object PromptCardPromptMinimalizer {
                 rule == null || rule.sourceHints.any { hint -> source.contains(hint) }
             }
             .filter { seen.add(normalize(it)) }
-            .joinToString(", ")
+        val main = bindStandaloneModifiers(filteredTags).joinToString(", ")
 
         val hasNegativeRequest = listOf(
             "without", "exclude", "avoid", "no ", "not ",
@@ -74,6 +93,57 @@ object PromptCardPromptMinimalizer {
             ""
         }
         return PromptCardAiResult(mainPrompt = main, negativePrompt = negative)
+    }
+
+    /**
+     * Repairs LLM output such as "very huge, horse" into "very huge horse".
+     * A modifier is never left as its own comma segment, so it cannot leak to every subject.
+     */
+    private fun bindStandaloneModifiers(tags: List<String>): List<String> {
+        val output = mutableListOf<String>()
+        var index = 0
+        while (index < tags.size) {
+            if (!isModifierOnly(tags[index])) {
+                output += tags[index]
+                index++
+                continue
+            }
+
+            val modifiers = mutableListOf<String>()
+            while (index < tags.size && isModifierOnly(tags[index])) {
+                modifiers += tags[index].trim()
+                index++
+            }
+            val modifier = modifiers.joinToString(" ")
+            val next = tags.getOrNull(index)
+            when {
+                next != null && !isActionLike(next) -> {
+                    output += "$modifier ${next.trim()}"
+                    index++
+                }
+                output.isNotEmpty() -> {
+                    val previous = output.removeAt(output.lastIndex)
+                    output += "$modifier $previous"
+                }
+                next != null -> {
+                    // No noun was available. Keep it connected rather than emitting a global tag.
+                    output += "$modifier ${next.trim()}"
+                    index++
+                }
+                else -> output += modifier
+            }
+        }
+        return output
+    }
+
+    private fun isModifierOnly(tag: String): Boolean {
+        val words = normalize(tag).replace('-', ' ').split(Regex("\\s+")).filter { it.isNotEmpty() }
+        return words.isNotEmpty() && words.all { it in modifierWords }
+    }
+
+    private fun isActionLike(tag: String): Boolean {
+        val normalized = normalize(tag)
+        return normalized in actionWords || normalized.endsWith("ing")
     }
 
     private fun containsPhrase(value: String, phrase: String): Boolean =

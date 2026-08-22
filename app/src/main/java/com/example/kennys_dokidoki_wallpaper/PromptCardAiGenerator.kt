@@ -44,12 +44,17 @@ object PromptCardAiGenerator {
         Never add quality boilerplate such as masterpiece, best quality, high quality, detailed, 8k, 4k, HDR, sharp focus, cinematic, or photorealistic unless that exact idea was explicitly requested.
         Keep negative_prompt empty unless the user explicitly says to exclude or avoid something, or asks to preserve an existing negative prompt.
         Preserve existing LoRA tokens or weighted syntax only when an existing prompt is supplied.
+        Bind every adjective, size, color, and intensity directly to the noun it describes in the SAME comma-separated phrase.
+        Never output a free-floating modifier such as "very huge, horse" or "red, horse" because it can affect every subject.
 
         Minimal examples:
         User: 馬
         Output: {"main_prompt":"horse","negative_prompt":""}
+        User: 大きい馬
+        Output: {"main_prompt":"very huge horse","negative_prompt":""}
         User: 赤い馬が走っている
         Output: {"main_prompt":"red horse, running","negative_prompt":""}
+        Do not turn 大きい馬 into "very huge, horse".
         Do not turn 馬 into "horse, morning, field, sunlight, masterpiece, 8k".
         Never add commentary, explanations, or JSON fields other than main_prompt and negative_prompt.
     """.trimIndent()
