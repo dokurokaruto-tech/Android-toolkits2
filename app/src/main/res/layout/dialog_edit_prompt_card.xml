@@ -142,8 +142,19 @@
             android:layout_marginBottom="4dp"
             tools:ignore="HardcodedText" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_ai_convert_prompt_card"
+            style="@style/Widget.Material3.Button.TonalButton.Icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginBottom="8dp"
+            android:text="自然言語から変換"
+            app:icon="@drawable/ic_md3_auto_awesome"
+            tools:ignore="HardcodedText" />
+
         <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tv_main_prompt_label"
+            android:id="@+id/til_main_prompt"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -172,7 +183,7 @@
             tools:ignore="HardcodedText" />
 
         <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tv_negative_prompt_label"
+            android:id="@+id/til_negative_prompt"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

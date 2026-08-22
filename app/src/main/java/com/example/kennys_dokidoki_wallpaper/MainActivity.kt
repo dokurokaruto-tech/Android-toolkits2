@@ -1125,6 +1125,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         ivDialogThumbnailPreview = dialogView.findViewById(R.id.iv_card_thumbnail_preview)
         val btnPickThumbnail = dialogView.findViewById<Button>(R.id.btn_pick_card_thumbnail)
         val btnGenerateThumbnail = dialogView.findViewById<Button>(R.id.btn_generate_card_thumbnail)
+        val btnAiConvertPrompt = dialogView.findViewById<View>(R.id.btn_ai_convert_prompt_card)
         val btnDelete = dialogView.findViewById<Button>(R.id.btn_delete_card)
         val btnCancel = dialogView.findViewById<Button>(R.id.btn_cancel_edit)
         val btnSave = dialogView.findViewById<Button>(R.id.btn_save_card)
@@ -1138,8 +1139,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         // プリセットの場合は個別のプロンプト編集は隠す（カードの組み合わせだからね）
         etMainPrompt.visibility = View.GONE
         dialogView.findViewById<View>(R.id.tv_main_prompt_label).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.til_main_prompt).visibility = View.GONE
+        btnAiConvertPrompt.visibility = View.GONE
         etNegativePrompt.visibility = View.GONE
         dialogView.findViewById<View>(R.id.tv_negative_prompt_label).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.til_negative_prompt).visibility = View.GONE
         tvAppliedTags.visibility = View.GONE
         btnEditAppliedTags.visibility = View.GONE
 
@@ -1488,8 +1492,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val etCategory = dialogView.findViewById<EditText>(R.id.et_card_category)
         dialogView.findViewById<View>(R.id.et_main_prompt).visibility = View.GONE
         dialogView.findViewById<View>(R.id.tv_main_prompt_label).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.til_main_prompt).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.btn_ai_convert_prompt_card).visibility = View.GONE
         dialogView.findViewById<View>(R.id.et_negative_prompt).visibility = View.GONE
         dialogView.findViewById<View>(R.id.tv_negative_prompt_label).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.til_negative_prompt).visibility = View.GONE
         dialogView.findViewById<View>(R.id.btn_pick_card_thumbnail).visibility = View.GONE
         dialogView.findViewById<View>(R.id.tv_thumbnail_label).visibility = View.GONE
         dialogView.findViewById<View>(R.id.iv_card_thumbnail_preview).visibility = View.GONE
@@ -1837,6 +1844,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         ivDialogThumbnailPreview = dialogView.findViewById(R.id.iv_card_thumbnail_preview)
         val btnPickThumbnail = dialogView.findViewById<Button>(R.id.btn_pick_card_thumbnail)
         val btnGenerateThumbnail = dialogView.findViewById<Button>(R.id.btn_generate_card_thumbnail)
+        val btnAiConvertPrompt = dialogView.findViewById<View>(R.id.btn_ai_convert_prompt_card)
         val btnDelete = dialogView.findViewById<Button>(R.id.btn_delete_card)
         val btnCancel = dialogView.findViewById<Button>(R.id.btn_cancel_edit)
         val btnSave = dialogView.findViewById<Button>(R.id.btn_save_card)
@@ -1906,6 +1914,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             pickerDialog.show()
         }
 
+        btnAiConvertPrompt.setOnClickListener {
+            PromptCardAiDialog(this).show(
+                existingMain = etMainPrompt.text.toString(),
+                existingNegative = etNegativePrompt.text.toString()
+            ) { converted ->
+                etMainPrompt.setText(converted.mainPrompt)
+                etNegativePrompt.setText(converted.negativePrompt)
+            }
+        }
+
         btnGenerateThumbnail.setOnClickListener {
             val pMain = etMainPrompt.text.toString().trim()
             val pNeg = etNegativePrompt.text.toString().trim()
@@ -1926,7 +1944,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
-        val dialog = AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper).setView(dialogView).create()
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setView(dialogView)
+            .create()
 
         btnPickThumbnail.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {

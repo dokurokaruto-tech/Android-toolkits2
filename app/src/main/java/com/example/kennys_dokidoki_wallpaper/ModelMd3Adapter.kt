@@ -41,10 +41,10 @@ class ModelMd3Adapter(
         val item = items[position]
         holder.name.text = item.name
 
-        val priceStr = if (item.isFree) {
-            "Free"
-        } else {
-            "$" + String.format("%.2f", item.pricePerMillion) + "/M"
+        val priceStr = when {
+            item.isFree -> "Free"
+            item.pricePerMillion < 0.0 -> "API key"
+            else -> "$" + String.format("%.2f", item.pricePerMillion) + "/M"
         }
         val ctxStr = if (item.contextLength >= 1000) {
             "${item.contextLength / 1000}k"
