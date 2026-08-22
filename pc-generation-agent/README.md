@@ -7,7 +7,8 @@ Android Toolkits から生成依頼を受け取り、Stable Diffusion WebUI / Fo
 - 完成画像はPCの `generated/YYYY-MM-DD/`（変更可能）へ日付別に保存します。
 - Androidの既存の「閲覧」ボタンから日付フォルダ・画像を表示できます。
 - 閲覧一覧にはPCで480×854以内へ圧縮したモバイル用JPEGサムネイルを配信します。
-- サムネイルを開いた全画面表示だけオリジナル画像を配信します。
+- サムネイルを開いた全画面表示だけオリジナル解像度の画像を配信します。
+- 初回表示はアニメーションではなく、可逆PNGストリップの実データを上から順に受信・描画します。
 - 全画面では次の2枚を先読みし、最大約50枚をメモリだけに保持します。アプリ最小化時に破棄します。
 - 閲覧・全画面表示・生成途中プレビューだけではAndroidへ画像を永続保存しません。
 - 「全画像に入れる」を実行した画像だけAndroid端末へダウンロードします。
@@ -59,6 +60,7 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
   "output_dir": "generated",
   "thumbnail_dir": "thumbnails",
   "mobile_thumbnail_dir": "data/mobile-thumbnails",
+  "progressive_tile_dir": "data/progressive-tiles",
   "database_path": "data/agent.sqlite3",
   "api_key": "",
   "request_timeout_seconds": 600,
@@ -75,6 +77,7 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
 | `output_dir` | 完成画像の保存先。絶対パスも使用可能 |
 | `thumbnail_dir` | プロンプト／プリセットカード用サムネイルのPC保存先 |
 | `mobile_thumbnail_dir` | 閲覧一覧向け圧縮サムネイルのPCキャッシュ先 |
+| `progressive_tile_dir` | 原寸閲覧を上から実データ順に表示する可逆タイルのPCキャッシュ先 |
 | `database_path` | 永続ジョブキューと状態の保存先 |
 | `api_key` | 任意の接続キー。設定した場合はAndroidにも同じ値を入力 |
 | `request_timeout_seconds` | 1枚に許可する最大通信時間 |
@@ -114,6 +117,8 @@ pc-generation-agent/
 - `GET /api/v1/library/images?date=YYYY-MM-DD` — 画像一覧
 - `GET /api/v1/files/{date}/{name}` — オリジナル完成画像
 - `GET /api/v1/mobile-thumbnails/{date}/{name}` — 閲覧一覧用の圧縮JPEG
+- `GET /api/v1/progressive/{date}/{name}/manifest` — 原寸画像の可逆ストリップ情報
+- `GET /api/v1/progressive/{date}/{name}/{index}` — 上から順に読む原寸PNGストリップ
 - `GET /api/v1/thumbnail-files/{date}/{name}` — カード用サムネイル
 - `/sdapi/v1/*` — 既存機能との互換用にSD APIへ中継
 

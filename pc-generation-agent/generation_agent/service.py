@@ -25,6 +25,7 @@ class GenerationService:
         self.config.output_dir.mkdir(parents=True, exist_ok=True)
         self.config.thumbnail_dir.mkdir(parents=True, exist_ok=True)
         self.config.mobile_thumbnail_dir.mkdir(parents=True, exist_ok=True)
+        self.config.progressive_tile_dir.mkdir(parents=True, exist_ok=True)
         self.database = JobDatabase(config.database_path)
         self.sd = StableDiffusionClient(config.sd_base_url, config.request_timeout_seconds)
         self._wake = threading.Event()
@@ -33,6 +34,7 @@ class GenerationService:
         self._active_job_id: str | None = None
         self._active_lock = threading.Lock()
         self._mobile_thumbnail_lock = threading.Lock()
+        self._progressive_tile_lock = threading.Lock()
 
     def start(self) -> None:
         self._worker.start()
@@ -235,6 +237,116 @@ class GenerationService:
                     temporary.unlink(missing_ok=True)
         return destination
 
+    def progressive_manifest(self, date: str, name: str) -> dict[str, Any] | None:
+        package = self._ensure_progressive_tiles(date, name)
+        if package is None:
+            return None
+        manifest_path, manifest = package
+        del manifest_path
+        from urllib.parse import quote
+        encoded_date = quote(date)
+        encoded_name = quote(name)
+        return {
+            "width": manifest["width"],
+            "height": manifest["height"],
+            "tile_height": manifest["tile_height"],
+            "tiles": [
+                {
+                    "index": tile["index"],
+                    "top": tile["top"],
+                    "height": tile["height"],
+                    "url": f"/api/v1/progressive/{encoded_date}/{encoded_name}/{tile['index']}",
+                }
+                for tile in manifest["tiles"]
+            ],
+        }
+
+    def progressive_tile_file(self, date: str, name: str, index: int) -> Path | None:
+        package = self._ensure_progressive_tiles(date, name)
+        if package is None:
+            return None
+        manifest_path, manifest = package
+        tile = next((item for item in manifest["tiles"] if item["index"] == index), None)
+        if tile is None:
+            return None
+        path = manifest_path.parent / tile["file"]
+        return path if path.is_file() else None
+
+    def _ensure_progressive_tiles(self, date: str, name: str) -> tuple[Path, dict[str, Any]] | None:
+        source = self.resolve_file(date, name)
+        if source is None:
+            return None
+        stat = source.stat()
+        tile_height = 128
+        cache_key = hashlib.sha256(
+            f"{source.resolve()}:{stat.st_mtime_ns}:{stat.st_size}:tiles:{tile_height}:png".encode("utf-8")
+        ).hexdigest()[:24]
+        package_dir = self.config.progressive_tile_dir / date / cache_key
+        manifest_path = package_dir / "manifest.json"
+
+        def read_manifest() -> dict[str, Any] | None:
+            if not manifest_path.is_file():
+                return None
+            try:
+                return json.loads(manifest_path.read_text(encoding="utf-8"))
+            except Exception:
+                return None
+
+        cached = read_manifest()
+        if cached is not None:
+            return manifest_path, cached
+
+        with self._progressive_tile_lock:
+            cached = read_manifest()
+            if cached is not None:
+                return manifest_path, cached
+            try:
+                from PIL import Image, ImageOps
+            except ImportError as error:
+                raise RuntimeError(
+                    "Pillow is required for progressive image tiles. Run start-agent.bat again."
+                ) from error
+
+            temporary_dir = package_dir.with_name(package_dir.name + ".part")
+            if temporary_dir.exists():
+                import shutil
+                shutil.rmtree(temporary_dir, ignore_errors=True)
+            temporary_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                with Image.open(source) as opened:
+                    image = ImageOps.exif_transpose(opened)
+                    width, height = image.size
+                    tiles: list[dict[str, Any]] = []
+                    for index, top in enumerate(range(0, height, tile_height)):
+                        bottom = min(top + tile_height, height)
+                        tile_name = f"{index:05d}.png"
+                        # Lossless strips preserve original pixels and can be decoded independently.
+                        image.crop((0, top, width, bottom)).save(
+                            temporary_dir / tile_name, "PNG", optimize=False
+                        )
+                        tiles.append({
+                            "index": index,
+                            "top": top,
+                            "height": bottom - top,
+                            "file": tile_name,
+                        })
+                manifest = {
+                    "width": width,
+                    "height": height,
+                    "tile_height": tile_height,
+                    "tiles": tiles,
+                }
+                (temporary_dir / "manifest.json").write_text(
+                    json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+                )
+                package_dir.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(temporary_dir, package_dir)
+            finally:
+                if temporary_dir.exists():
+                    import shutil
+                    shutil.rmtree(temporary_dir, ignore_errors=True)
+            return manifest_path, manifest
+
     @staticmethod
     def thumbnail_file_url(date: str, name: str) -> str:
         from urllib.parse import quote
@@ -378,6 +490,13 @@ class GenerationService:
         }
         metadata_path = metadata_dir / f"{filename}.json"
         metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+        if collection == "image":
+            # Prepare lossless top-down strips while the PC is already processing the result,
+            # so mobile viewing can start with the first real rows immediately.
+            try:
+                self._ensure_progressive_tiles(date, filename)
+            except Exception as error:
+                print(f"Progressive tile preparation failed for {filename}: {error}")
         return f"{collection}/{date}/{filename}"
 
     @staticmethod

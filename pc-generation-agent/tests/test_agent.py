@@ -76,6 +76,7 @@ class AgentIntegrationTest(unittest.TestCase):
             output_dir=root / "generated",
             thumbnail_dir=root / "thumbnails",
             mobile_thumbnail_dir=root / "data" / "mobile-thumbnails",
+            progressive_tile_dir=root / "data" / "progressive-tiles",
             database_path=root / "data" / "agent.sqlite3",
             api_key="secret",
             request_timeout_seconds=30,
@@ -158,6 +159,19 @@ class AgentIntegrationTest(unittest.TestCase):
         with urllib.request.urlopen(self.base + image_url, timeout=5) as response:
             self.assertEqual("no-store", response.headers.get("Cache-Control"))
             self.assertEqual(PNG, response.read())
+
+        encoded_name = images["images"][0]["name"]
+        _, manifest = self.request(
+            f"/api/v1/progressive/{date}/{encoded_name}/manifest"
+        )
+        self.assertEqual(1200, manifest["width"])
+        self.assertEqual(1800, manifest["height"])
+        self.assertGreater(len(manifest["tiles"]), 2)
+        first_tile = manifest["tiles"][0]["url"] + "?token=secret"
+        with urllib.request.urlopen(self.base + first_tile, timeout=5) as response:
+            tile = Image.open(io.BytesIO(response.read())).convert("RGB")
+            self.assertEqual((1200, 128), tile.size)
+            self.assertEqual((120, 30, 200), tile.getpixel((10, 10)))
 
         # Existing Android features (thumbnail generation/progress) keep using SD routes.
         _, options = self.request("/sdapi/v1/options")

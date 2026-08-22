@@ -19,18 +19,21 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.target.Target
 import com.bumptech.glide.request.transition.Transition
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class FullScreenImageActivity : AppCompatActivity() {
 
     private lateinit var rootLayout: ConstraintLayout
-    private lateinit var imageView: TopDownRevealImageView
+    private lateinit var imageView: ProgressiveTileImageView
     private lateinit var tvCounter: TextView
     private var albumName: String = ""
     private var currentIndex: Int = 0
     private val currentEntries = mutableListOf<ImageEntry>()
     private var requestSerial = 0L
     private var activeTarget: CustomTarget<Drawable>? = null
+    private var progressiveJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,6 +84,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        progressiveJob?.cancel()
         activeTarget?.let { Glide.with(this).clear(it) }
         super.onDestroy()
     }
@@ -111,24 +115,58 @@ class FullScreenImageActivity : AppCompatActivity() {
         if (currentIndex !in currentEntries.indices) return
         val entry = currentEntries[currentIndex]
         val serial = ++requestSerial
+        progressiveJob?.cancel()
+        progressiveJob = null
+        activeTarget?.let { Glide.with(this).clear(it) }
+        activeTarget = null
         tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}"
         imageView.prepareForLoad()
 
         if (ImageStoragePolicy.isRemote(entry.uri)) {
-            lifecycleScope.launch {
-                runCatching { OriginalImageMemoryCache.getOrDownload(entry.uri) }
-                    .onSuccess { bytes ->
-                        if (serial == requestSerial) displayOriginal(bytes, entry.uri, serial)
-                    }
-                    .onFailure { error ->
-                        if (serial == requestSerial) {
-                            Toast.makeText(
-                                this@FullScreenImageActivity,
-                                "オリジナル画像を読み込めません: ${error.message}",
-                                Toast.LENGTH_SHORT
-                            ).show()
+            val cached = OriginalImageMemoryCache.getIfPresent(entry.uri)
+            if (cached != null) {
+                // A prefetched/cached original is already complete and can be shown immediately.
+                displayOriginal(cached, entry.uri, serial)
+            } else {
+                progressiveJob = lifecycleScope.launch {
+                    try {
+                        ProgressiveOriginalLoader.load(
+                            originalUri = entry.uri,
+                            onDimensions = { width, height ->
+                                if (serial == requestSerial) {
+                                    applyImageRatio(width, height)
+                                    imageView.beginProgressiveLoad(width, height)
+                                }
+                            },
+                            onTile = { bitmap, top ->
+                                if (serial == requestSerial) {
+                                    imageView.appendDecodedTile(bitmap, top)
+                                } else {
+                                    bitmap.recycle()
+                                }
+                            }
+                        )
+                    } catch (progressiveError: Exception) {
+                        if (progressiveError is CancellationException) throw progressiveError
+                        // Older agents do not expose tile endpoints. Fall back to the complete
+                        // original without manufacturing a reveal animation.
+                        try {
+                            val bytes = OriginalImageMemoryCache.getOrDownload(entry.uri)
+                            if (serial == requestSerial) displayOriginal(bytes, entry.uri, serial)
+                        } catch (error: Exception) {
+                            if (error is CancellationException) throw error
+                            if (serial == requestSerial) {
+                                Toast.makeText(
+                                    this@FullScreenImageActivity,
+                                    "オリジナル画像を読み込めません: ${error.message ?: progressiveError.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                     }
+                }
+                // Keep a compressed original in the 50-entry session cache for revisits.
+                lifecycleScope.launch { OriginalImageMemoryCache.prefetch(entry.uri) }
             }
             // Current image request is started first; only then queue the following two.
             prefetchNextTwo()
@@ -150,6 +188,13 @@ class FullScreenImageActivity : AppCompatActivity() {
         }
     }
 
+    private fun applyImageRatio(width: Int, height: Int) {
+        val set = ConstraintSet()
+        set.clone(rootLayout)
+        set.setDimensionRatio(R.id.full_screen_image, "$width:$height")
+        set.applyTo(rootLayout)
+    }
+
     private fun displayOriginal(model: Any, sourceUri: Uri, serial: Long) {
         activeTarget?.let { Glide.with(this).clear(it) }
         val target = object : CustomTarget<Drawable>(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL) {
@@ -157,18 +202,12 @@ class FullScreenImageActivity : AppCompatActivity() {
                 if (serial != requestSerial) return
                 val width = resource.intrinsicWidth
                 val height = resource.intrinsicHeight
-                if (width > 0 && height > 0) {
-                    val set = ConstraintSet()
-                    set.clone(rootLayout)
-                    set.setDimensionRatio(R.id.full_screen_image, "$width:$height")
-                    set.applyTo(rootLayout)
-                }
-                imageView.setImageDrawable(resource)
-                imageView.startTopDownReveal()
+                if (width > 0 && height > 0) applyImageRatio(width, height)
+                imageView.showCompleteDrawable(resource)
             }
 
             override fun onLoadCleared(placeholder: Drawable?) {
-                if (serial == requestSerial) imageView.setImageDrawable(placeholder)
+                if (serial == requestSerial) imageView.showCompleteDrawable(placeholder)
             }
         }
         activeTarget = target

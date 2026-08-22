@@ -27,6 +27,8 @@ object OriginalImageMemoryCache {
     private var totalBytes = 0L
     private var generation = 0L
 
+    fun getIfPresent(uri: Uri): ByteArray? = synchronized(lock) { entries[uri.toString()] }
+
     suspend fun getOrDownload(uri: Uri): ByteArray {
         val key = uri.toString()
         synchronized(lock) { entries[key]?.let { return it } }

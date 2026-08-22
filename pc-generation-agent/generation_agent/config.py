@@ -15,6 +15,7 @@ class AgentConfig:
     output_dir: Path
     thumbnail_dir: Path
     mobile_thumbnail_dir: Path
+    progressive_tile_dir: Path
     database_path: Path
     api_key: str
     request_timeout_seconds: int
@@ -46,6 +47,7 @@ class AgentConfig:
             output_dir=resolve(str(raw.get("output_dir", "generated"))),
             thumbnail_dir=resolve(str(raw.get("thumbnail_dir", "thumbnails"))),
             mobile_thumbnail_dir=resolve(str(raw.get("mobile_thumbnail_dir", "data/mobile-thumbnails"))),
+            progressive_tile_dir=resolve(str(raw.get("progressive_tile_dir", "data/progressive-tiles"))),
             database_path=resolve(str(raw.get("database_path", "data/agent.sqlite3"))),
             api_key=str(raw.get("api_key", "")).strip(),
             request_timeout_seconds=max(30, timeout),

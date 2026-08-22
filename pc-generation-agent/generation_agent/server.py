@@ -21,6 +21,8 @@ _STOP_AFTER_CURRENT = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/stop-after-curre
 _PREVIEW = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/preview$")
 _FILE = re.compile(r"^/api/v1/files/([^/]+)/([^/]+)$")
 _MOBILE_THUMBNAIL = re.compile(r"^/api/v1/mobile-thumbnails/([^/]+)/([^/]+)$")
+_PROGRESSIVE_MANIFEST = re.compile(r"^/api/v1/progressive/([^/]+)/([^/]+)/manifest$")
+_PROGRESSIVE_TILE = re.compile(r"^/api/v1/progressive/([^/]+)/([^/]+)/(\d+)$")
 _THUMBNAIL_FILE = re.compile(r"^/api/v1/thumbnail-files/([^/]+)/([^/]+)$")
 
 
@@ -59,6 +61,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 "output_dir": str(self.server.config.output_dir),
                 "thumbnail_dir": str(self.server.config.thumbnail_dir),
                 "mobile_thumbnails": True,
+                "progressive_tiles": True,
             })
             return
         if not self._authorized(query):
@@ -115,6 +118,32 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                     self._error(HTTPStatus.NOT_FOUND, "image not found")
                 else:
                     self._send_file(file, "image/jpeg")
+            except Exception as error:
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
+            return
+        match = _PROGRESSIVE_MANIFEST.fullmatch(path)
+        if match:
+            try:
+                manifest = self.server.service.progressive_manifest(
+                    unquote(match.group(1)), unquote(match.group(2))
+                )
+                if manifest is None:
+                    self._error(HTTPStatus.NOT_FOUND, "image not found")
+                else:
+                    self._json(HTTPStatus.OK, manifest)
+            except Exception as error:
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
+            return
+        match = _PROGRESSIVE_TILE.fullmatch(path)
+        if match:
+            try:
+                file = self.server.service.progressive_tile_file(
+                    unquote(match.group(1)), unquote(match.group(2)), int(match.group(3))
+                )
+                if file is None:
+                    self._error(HTTPStatus.NOT_FOUND, "tile not found")
+                else:
+                    self._send_file(file, "image/png")
             except Exception as error:
                 self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
             return

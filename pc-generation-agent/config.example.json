@@ -5,6 +5,7 @@
   "output_dir": "generated",
   "thumbnail_dir": "thumbnails",
   "mobile_thumbnail_dir": "data/mobile-thumbnails",
+  "progressive_tile_dir": "data/progressive-tiles",
   "database_path": "data/agent.sqlite3",
   "api_key": "",
   "request_timeout_seconds": 600,
