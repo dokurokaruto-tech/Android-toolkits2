@@ -289,6 +289,19 @@
                         tools:ignore="HardcodedText" />
 
                     <Button
+                        android:id="@+id/btn_save_preset"
+                        android:layout_width="64dp"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="8dp"
+                        android:padding="0dp"
+                        android:text="保存"
+                        android:textSize="12sp"
+                        android:textColor="#D0BCFF"
+                        android:background="@drawable/bg_persona_item"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        tools:ignore="HardcodedText" />
+
+                    <Button
                         android:id="@+id/btn_generate_concatenated_top"
                         android:layout_width="64dp"
                         android:layout_height="36dp"
@@ -343,6 +356,17 @@
                         tools:ignore="HardcodedText" />
                 </LinearLayout>
 
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/selected_cards_strip"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:paddingHorizontal="16dp"
+                    android:clipToPadding="false"
+                    android:visibility="gone"
+                    app:layout_constraintTop_toBottomOf="@id/layout_gen_settings"
+                    app:layout_constraintStart_toStartOf="parent" />
+
                 <!-- プリセットセクション -->
                 <TextView
                     android:id="@+id/tv_presets_header"
@@ -353,7 +377,7 @@
                     android:textSize="12sp"
                     android:paddingStart="16dp"
                     android:layout_marginTop="8dp"
-                    app:layout_constraintTop_toBottomOf="@id/layout_gen_settings"
+                    app:layout_constraintTop_toBottomOf="@id/selected_cards_strip"
                     app:layout_constraintStart_toStartOf="parent" />
 
                 <androidx.recyclerview.widget.RecyclerView

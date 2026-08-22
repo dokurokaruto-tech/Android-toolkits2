@@ -715,8 +715,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val selectedCount = promptCardAdapter.getSelectedCardsWithLevels().size
                 btnGenerateConcatenatedTop.isEnabled = selectedCount > 0 || PromptCardManager.randomEnabledCategories.isNotEmpty()
                 btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
-            },
                 updateSelectedCardsStrip()
+            },
             onLongClick = { card ->
                 showEditPromptCardDialog(card)
             },
