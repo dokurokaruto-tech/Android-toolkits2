@@ -25,10 +25,6 @@ import androidx.recyclerview.widget.RecyclerView
 
 class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
-    companion object {
-        const val RESULT_GO_TO_FOLDER_PICKER = 1001
-    }
-
     private lateinit var imageAdapter: ImageAdapter
     private val images = mutableListOf<ImageEntry>()
     private var albumName: String = ""
@@ -64,8 +60,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             if (imageAdapter.isSelectionMode) {
                 imageAdapter.stopSelectionMode()
             } else if (albumName.startsWith("生成:")) {
-                setResult(RESULT_GO_TO_FOLDER_PICKER)
-                finish()
+                closeGeneratedAlbum()
             } else {
                 finish()
             }
@@ -481,10 +476,16 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         if (imageAdapter.isSelectionMode) {
             imageAdapter.stopSelectionMode()
         } else if (albumName.startsWith("生成:")) {
-            setResult(RESULT_GO_TO_FOLDER_PICKER)
-            finish()
+            closeGeneratedAlbum()
         } else {
             super.onBackPressed()
+        }
+    }
+
+    private fun closeGeneratedAlbum() {
+        finish()
+        if (intent.getBooleanExtra("FROM_GENERATED_FOLDER_PICKER", false)) {
+            overridePendingTransition(0, 0)
         }
     }
 }

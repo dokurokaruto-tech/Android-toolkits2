@@ -543,7 +543,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         btnRestorePip = findViewById(R.id.btn_restore_pip)
         btnSwitchColumns = findViewById(R.id.btn_switch_columns)
 
-        btnViewGenerated.setOnClickListener { showGeneratedImagesFolderPicker() }
+        btnViewGenerated.setOnClickListener {
+            // 日付選択を独立Activityとして保持することで、画像一覧への遷移時や
+            // 戻る時にプロンプトビルダーが一瞬露出するのを防ぐ。
+            startActivity(Intent(this, GeneratedFolderPickerActivity::class.java))
+        }
         btnRestorePip.setOnClickListener {
             val intent = Intent(this, GenerationProgressActivity::class.java)
             intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
@@ -2852,155 +2856,5 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         updateActiveImageHighlight()
     }
 
-    private data class GeneratedFolderItem(
-        val name: String,
-        val count: Int,
-        val thumbnail: Any?,
-        val localFolder: DocumentFile? = null,
-        val remoteDate: String? = null
-    )
-
-    private fun showGeneratedImagesFolderPicker() {
-        lifecycleScope.launch {
-            val items = try {
-                if (GenerationAgentClient.isAvailable(this@MainActivity)) {
-                    val remote = GenerationAgentClient.fetchFolders(this@MainActivity).map {
-                        GeneratedFolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date)
-                    }
-                    val remoteNames = remote.map { it.name }.toSet()
-                    val local = loadLocalGeneratedFolders().map {
-                        if (it.name in remoteNames) it.copy(name = "${it.name} (端末)") else it
-                    }
-                    remote + local
-                } else {
-                    loadLocalGeneratedFolders()
-                }
-            } catch (error: Exception) {
-                Log.w("GeneratedViewer", "Remote library unavailable; using local folder", error)
-                loadLocalGeneratedFolders()
-            }
-
-            if (items.isEmpty()) {
-                Toast.makeText(this@MainActivity, "まだ画像が生成されていません。PCエージェントの接続も確認してください。", Toast.LENGTH_LONG).show()
-                return@launch
-            }
-
-            // 既存の閲覧ダイアログとフォルダカードをそのまま流用する。
-            val dialogView = LayoutInflater.from(this@MainActivity).inflate(R.layout.dialog_tag_picker, null)
-            val rvFolders = dialogView.findViewById<RecyclerView>(R.id.recycler_view_tags)
-            dialogView.findViewById<Button>(R.id.btn_dialog_done).visibility = View.GONE
-            dialogView.findViewById<View>(R.id.dialog_title).visibility = View.GONE
-            dialogView.findViewById<View>(R.id.btn_add_tag).visibility = View.GONE
-            (dialogView.findViewById<View>(R.id.dialog_title).parent as? View)?.visibility = View.GONE
-            if (dialogView is LinearLayout && dialogView.childCount > 1) dialogView.getChildAt(1).visibility = View.GONE
-
-            val dialog = AlertDialog.Builder(this@MainActivity, R.style.Theme_Kennys_dokidoki_wallpaper)
-                .setView(dialogView)
-                .create()
-            rvFolders.layoutManager = GridLayoutManager(this@MainActivity, 2)
-            rvFolders.adapter = GeneratedFolderAdapter(items) { folder ->
-                if (folder.remoteDate != null) openRemoteFolderAsAlbum(folder.remoteDate)
-                else folder.localFolder?.let(::openFolderAsAlbum)
-                dialog.dismiss()
-            }
-            dialog.show()
-        }
-    }
-
-    private fun loadLocalGeneratedFolders(): List<GeneratedFolderItem> {
-        val folderUriStr = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getString("gen_save_folder_uri", null) ?: return emptyList()
-        val rootDir = DocumentFile.fromTreeUri(this, Uri.parse(folderUriStr))
-            ?.takeIf { it.exists() } ?: return emptyList()
-        return rootDir.listFiles()
-            .filter { it.isDirectory }
-            .sortedByDescending { it.name }
-            .map { folder ->
-                val images = folder.listFiles().filter(::isGeneratedImageFile)
-                GeneratedFolderItem(folder.name ?: "Unknown", images.size, images.firstOrNull()?.uri, localFolder = folder)
-            }
-            .filter { it.count > 0 }
-    }
-
-    private fun isGeneratedImageFile(file: DocumentFile): Boolean =
-        file.isFile && (file.type?.startsWith("image/") == true ||
-            file.name?.lowercase()?.let { it.endsWith(".png") || it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".webp") } == true)
-
-    private inner class GeneratedFolderAdapter(
-        private val folders: List<GeneratedFolderItem>,
-        private val onFolderClick: (GeneratedFolderItem) -> Unit
-    ) : RecyclerView.Adapter<GeneratedFolderAdapter.ViewHolder>() {
-
-        inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-            val ivThumbnail: ImageView = view.findViewById(R.id.iv_folder_thumbnail)
-            val tvName: TextView = view.findViewById(R.id.tv_folder_name)
-            val tvCount: TextView = view.findViewById(R.id.tv_image_count)
-            val card: View = view.findViewById(R.id.card_folder)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-            return ViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_generated_folder, parent, false))
-        }
-
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            val folder = folders[position]
-            holder.tvName.text = folder.name
-            holder.tvCount.text = "${folder.count} 枚"
-            if (folder.thumbnail != null) {
-                val thumbnailUri = Uri.parse(folder.thumbnail.toString())
-                Glide.with(holder.ivThumbnail.context)
-                    .load(folder.thumbnail)
-                    .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(thumbnailUri))
-                    .centerCrop()
-                    .into(holder.ivThumbnail)
-            } else {
-                holder.ivThumbnail.setImageResource(R.drawable.ic_folder)
-                holder.ivThumbnail.scaleType = ImageView.ScaleType.CENTER_INSIDE
-            }
-            holder.card.setOnClickListener { onFolderClick(folder) }
-        }
-
-        override fun getItemCount() = folders.size
-    }
-
-    private val albumDetailLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == AlbumDetailActivity.RESULT_GO_TO_FOLDER_PICKER) {
-            showGeneratedImagesFolderPicker()
-        }
-    }
-
-    private fun openRemoteFolderAsAlbum(date: String) {
-        lifecycleScope.launch {
-            try {
-                val images = GenerationAgentClient.fetchImages(this@MainActivity, date)
-                if (images.isEmpty()) {
-                    Toast.makeText(this@MainActivity, "この日付の画像はありません。", Toast.LENGTH_SHORT).show()
-                    return@launch
-                }
-                val intent = Intent(this@MainActivity, AlbumDetailActivity::class.java).apply {
-                    putExtra("ALBUM_NAME", "生成: $date")
-                    putExtra("REMOTE_GENERATED", true)
-                    putExtra("REMOTE_DATE", date)
-                    putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(images.map { it.url }))
-                }
-                albumDetailLauncher.launch(intent)
-            } catch (error: Exception) {
-                Toast.makeText(this@MainActivity, "PC画像一覧を取得できません: ${error.message}", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun openFolderAsAlbum(folder: DocumentFile) {
-        val folderName = folder.name ?: "Unknown"
-        val files = folder.listFiles().filter(::isGeneratedImageFile)
-        val intent = Intent(this, AlbumDetailActivity::class.java).apply {
-            putExtra("ALBUM_NAME", "生成: $folderName")
-            putExtra("FOLDER_URI", folder.uri.toString())
-            putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(files.map { it.uri.toString() }))
-        }
-        albumDetailLauncher.launch(intent)
-    }
 
 }

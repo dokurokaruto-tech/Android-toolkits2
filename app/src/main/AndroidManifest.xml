@@ -37,6 +37,10 @@
             android:name=".AlbumDetailActivity"
             android:exported="false" />
         <activity
+            android:name=".GeneratedFolderPickerActivity"
+            android:exported="false"
+            android:theme="@style/Theme_TransparentDialog" />
+        <activity
             android:name=".ChubBrowserActivity"
             android:exported="false" />
         <activity
