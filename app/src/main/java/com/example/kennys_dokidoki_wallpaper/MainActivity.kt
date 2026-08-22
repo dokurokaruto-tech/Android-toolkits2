@@ -280,7 +280,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val iv = ivDialogThumbnailPreview ?: return
         if (uri != null) {
             iv.imageTintList = null
-            Glide.with(this).load(uri).into(iv)
+            Glide.with(this)
+                .load(uri)
+                .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(uri))
+                .into(iv)
         } else {
             iv.setImageResource(android.R.drawable.ic_menu_gallery)
             iv.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#CAC4D0"))
@@ -862,6 +865,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             },
             onStartDrag = { viewHolder ->
                 presetItemTouchHelper.startDrag(viewHolder)
+            },
+            isPresetMatchingCurrentState = { preset ->
+                PresetMatchPolicy.matches(
+                    preset = preset,
+                    selectionLevels = PromptCardManager.selectionLevels,
+                    randomEnabledCategories = PromptCardManager.randomEnabledCategories,
+                    width = genWidth,
+                    height = genHeight,
+                    steps = genSteps,
+                    batchCount = genBatchCount,
+                    sampler = genSampler
+                )
             }
         )
         val presetLayoutManager = GridLayoutManager(this, promptCardColumnCount)
@@ -1070,30 +1085,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         ).show()
                     }
                 } else {
-                    // 旧SD WebUI直結も壊さず残す。こちらは従来通り端末へ保存される。
-                    var successCount = 0
-                    for ((index, request) in requests.withIndex()) {
-                        if (GenerationProgressManager.shouldInterrupt) break
-                        if (GenerationProgressManager.shouldStopGracefully && index > 0) break
-                        GenerationProgressManager.updateBatchProgress(index + 1, requests.size)
-                        val success = StabilityManager.generateImage(
-                            this@MainActivity, request.prompt, request.negativePrompt,
-                            width = request.width, height = request.height, steps = request.steps,
-                            batchCount = 1, samplerName = request.samplerName
-                        )
-                        if (success) successCount++
-                        if (GenerationProgressManager.shouldStopGracefully) break
-                    }
-                    if (successCount > 0) {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "旧SD直結で${successCount}枚生成しました。PC保存を使うには生成エージェントを起動してください。",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else if (!GenerationProgressManager.shouldInterrupt) {
-                        showGenerationErrorDialog()
-                    }
+                    // PC保存を唯一の生成経路にする。エージェント不在時に端末へ
+                    // フォールバック保存すると、ユーザーの保存方針に反するため生成しない。
                     GenerationProgressManager.endGeneration(force = true)
+                    Toast.makeText(
+                        this@MainActivity,
+                        "PC生成エージェントに接続できません。PC側のstart-agent.batを起動してください。",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }
@@ -1179,31 +1178,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val finalNegativePrompt = presetCards.map { it.first.negativePrompt }
                     .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
 
-                val success = StabilityManager.generateImage(
-                    context = this@MainActivity,
+                val uri = generatePcThumbnail(
                     prompt = finalMainPrompt,
                     negativePrompt = finalNegativePrompt,
-                    width = 1080,
-                    height = 1920,
                     steps = preset.steps,
-                    samplerName = preset.sampler,
-                    isThumbnail = true,
-                    silent = true,
-                    oldThumbnailUri = preset.thumbnailUri,
-                    onGenerated = { uri ->
-                        // プリセットのサムネイルは生成完了と同時に即座に適用＆保存する
-                        // （保存ボタンを待たず、1枚ごとに確実に紐づける）
-                        preset.thumbnailUri = uri
-                        tempCardThumbnailUri = uri
-                        PresetManager.savePresets(this@MainActivity)
-                        presetAdapter.notifyDataSetChanged()
-                        loadThumbnailPreview(uri)
-                    }
+                    sampler = preset.sampler
                 )
-                if (success) {
-                    Toast.makeText(this@MainActivity, "プリセットのサムネイル生成が完了しました。", Toast.LENGTH_SHORT).show()
-                } else {
-                    showGenerationErrorDialog()
+                if (uri != null) {
+                    // 画像本体はPCに置き、プリセットにはリモートURIだけを保存する。
+                    preset.thumbnailUri = uri
+                    tempCardThumbnailUri = uri
+                    PresetManager.savePresets(this@MainActivity)
+                    presetAdapter.notifyDataSetChanged()
+                    loadThumbnailPreview(uri)
+                    Toast.makeText(this@MainActivity, "PCにサムネイルを保存しました。", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -1356,6 +1344,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
      * 現在の状態を履歴に確定する。各種操作の完了時に呼ぶ。
      * redo 可能な分は破棄し、上限を超えた古い履歴は切り捨てる。
      */
+    private fun refreshPresetMatchHighlight() {
+        if (::presetAdapter.isInitialized) presetAdapter.notifyDataSetChanged()
+    }
+
     private fun commitBuilderState() {
         if (suspendBuilderHistory) return
         if (builderHistoryCursor < builderHistory.size - 1) {
@@ -1368,6 +1360,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             builderHistoryCursor--
         }
         updateUndoRedoButtons()
+        refreshPresetMatchHighlight()
     }
 
     /** スナップショットの状態をビルダーに復元する（履歴への追記はしない）。 */
@@ -1393,6 +1386,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             suspendBuilderHistory = false
         }
         updateUndoRedoButtons()
+        refreshPresetMatchHighlight()
     }
 
     private fun undoBuilder() {
@@ -1659,26 +1653,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     var count = 0
                     for (card in targetCards) {
                         val (p, np) = getConcatenatedPromptForCard(card.mainPrompt, card.negativePrompt)
-                        val success = StabilityManager.generateImage(
-                            context = this@MainActivity,
-                            prompt = p,
-                            negativePrompt = np,
-                            width = 1080,
-                            height = 1920,
-                            steps = 20,
-                            samplerName = "Euler a",
-                    isThumbnail = true,
-                    silent = true,
-                    oldThumbnailUri = card.thumbnailUri,
-                            onGenerated = { uri ->
-                                card.thumbnailUri = uri
-                                count++
-                                promptCardAdapter.notifyDataSetChanged()
-                            }
-                        )
-                        if (success) {
-                            // 1枚生成するごとにカード↔サムネイルの紐付けを保存
-                            // （途中で中断/クラッシュしても、出来た分は確実に残す）
+                        val uri = generatePcThumbnail(p, np)
+                        if (uri != null) {
+                            card.thumbnailUri = uri
+                            count++
+                            promptCardAdapter.notifyDataSetChanged()
+                            // 1枚ごとにリモートURIを保存し、途中終了でも完成分を残す。
                             PromptCardManager.saveCards(this@MainActivity)
                         } else {
                             Log.e("BulkThumb", "Failed to generate for: ${card.label}")
@@ -1917,26 +1897,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             lifecycleScope.launch {
                 Toast.makeText(this@MainActivity, "サムネイルを錬成中よ...", Toast.LENGTH_SHORT).show()
                 val (p, np) = getConcatenatedPromptForCard(pMain, pNeg)
-                val success = StabilityManager.generateImage(
-                    context = this@MainActivity,
-                    prompt = p,
-                    negativePrompt = np,
-                    width = 1080,
-                    height = 1920,
-                    steps = 20,
-                    samplerName = "Euler a",
-                    isThumbnail = true,
-                    silent = true,
-                    oldThumbnailUri = card?.thumbnailUri,
-                    onGenerated = { uri ->
-                        tempCardThumbnailUri = uri
-                        loadThumbnailPreview(uri)
-                    }
-                )
-                if (success) {
-                    Toast.makeText(this@MainActivity, "いい感じに錬成できたわ！", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity, "錬成に失敗しちゃったみたい...", Toast.LENGTH_SHORT).show()
+                val uri = generatePcThumbnail(p, np)
+                if (uri != null) {
+                    tempCardThumbnailUri = uri
+                    loadThumbnailPreview(uri)
+                    Toast.makeText(this@MainActivity, "PCにサムネイルを保存しました。", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -2079,6 +2044,40 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
 
 
+
+    /** Generates and stores a card thumbnail on the PC; Android keeps only its remote URI. */
+    private suspend fun generatePcThumbnail(
+        prompt: String,
+        negativePrompt: String,
+        width: Int = 1080,
+        height: Int = 1920,
+        steps: Int = 20,
+        sampler: String = "Euler a"
+    ): Uri? {
+        return try {
+            GenerationAgentClient.generateThumbnail(
+                this,
+                AgentGenerationRequest(
+                    prompt = prompt,
+                    negativePrompt = negativePrompt,
+                    width = width,
+                    height = height,
+                    steps = steps,
+                    samplerName = sampler,
+                    purpose = "thumbnail"
+                )
+            )
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            Log.e("PcThumbnail", "PC thumbnail generation failed", error)
+            Toast.makeText(
+                this,
+                "PC生成エージェントでサムネイルを生成できません: ${error.message}",
+                Toast.LENGTH_LONG
+            ).show()
+            null
+        }
+    }
 
     private fun showGenerationErrorDialog() {
         val errorText = StabilityManager.lastErrorText()
@@ -2298,7 +2297,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             addView(TextView(this@MainActivity).apply { text = titleText; setTextColor(android.graphics.Color.parseColor("#D0BCFF")); textSize = 16f })
             if (subTitleText != null) {
                 addView(TextView(this@MainActivity).apply { 
-                    if (titleText.contains("通常の生成画像")) tvSaveFolderDisplay = this
+                    if (titleText.contains("取り込む画像")) tvSaveFolderDisplay = this
                     if (titleText.contains("サムネイルの画像")) tvThumbFolderDisplay = this
                     text = subTitleText; setTextColor(Color.GRAY); textSize = 12f 
                 })
@@ -2321,18 +2320,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             } else {
                 "未設定 (タップして選択)"
             }
-            addView(createSettingsRow("通常の生成画像の保存先フォルダー", folderName) { 
+            addView(createSettingsRow("閲覧から『全画像に入れる』で取り込む画像の保存先", folderName) {
                 pickSaveFolderLauncher.launch(null)
-            })
-
-            val currentThumbFolderUri = prefs.getString("gen_thumbnail_save_folder_uri", null)
-            val thumbFolderName = if (currentThumbFolderUri != null) {
-                DocumentFile.fromTreeUri(this@MainActivity, Uri.parse(currentThumbFolderUri))?.name ?: "設定済み"
-            } else {
-                "未設定 (タップして選択)"
-            }
-            addView(createSettingsRow("サムネイルの画像の保存先フォルダー", thumbFolderName) {
-                pickThumbnailSaveFolderLauncher.launch(null)
             })
 
             addView(createSettingsRow("AIのAPI Keyを設定") { showApiKeyDialog() })
@@ -2942,7 +2931,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             holder.tvName.text = folder.name
             holder.tvCount.text = "${folder.count} 枚"
             if (folder.thumbnail != null) {
-                Glide.with(holder.ivThumbnail.context).load(folder.thumbnail).centerCrop().into(holder.ivThumbnail)
+                val thumbnailUri = Uri.parse(folder.thumbnail.toString())
+                Glide.with(holder.ivThumbnail.context)
+                    .load(folder.thumbnail)
+                    .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(thumbnailUri))
+                    .centerCrop()
+                    .into(holder.ivThumbnail)
             } else {
                 holder.ivThumbnail.setImageResource(R.drawable.ic_folder)
                 holder.ivThumbnail.scaleType = ImageView.ScaleType.CENTER_INSIDE

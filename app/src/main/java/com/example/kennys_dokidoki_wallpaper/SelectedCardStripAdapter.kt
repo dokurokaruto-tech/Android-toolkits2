@@ -8,7 +8,6 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.google.android.material.card.MaterialCardView
 
 /**
@@ -49,7 +48,7 @@ class SelectedCardStripAdapter(
             Glide.with(holder.thumb)
                 .load(card.thumbnailUri)
                 .override(144, 208)
-                .diskCacheStrategy(DiskCacheStrategy.ALL)
+                .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(card.thumbnailUri))
                 .centerCrop()
                 .into(holder.thumb)
         } else {

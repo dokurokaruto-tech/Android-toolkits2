@@ -1,6 +1,5 @@
 package com.example.kennys_dokidoki_wallpaper
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -9,13 +8,16 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
+import com.google.android.material.card.MaterialCardView
 
 class PresetAdapter(
     private var presets: List<Preset>,
     private val onPresetClick: (Preset) -> Unit,
     private val onPresetLongClick: (Preset) -> Unit,
     private val onCategorySettingsClick: (String) -> Unit,
-    private val onStartDrag: (RecyclerView.ViewHolder) -> Unit
+    private val onStartDrag: (RecyclerView.ViewHolder) -> Unit,
+    private val isPresetMatchingCurrentState: (Preset) -> Boolean
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -49,6 +51,7 @@ class PresetAdapter(
     }
 
     class PresetViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val card: MaterialCardView = view.findViewById(R.id.card_view)
         val tvName: TextView = view.findViewById(R.id.tv_preset_name)
         val tvDetails: TextView = view.findViewById(R.id.tv_preset_details)
         val ivThumbnail: ImageView = view.findViewById(R.id.iv_preset_thumbnail)
@@ -117,10 +120,24 @@ class PresetAdapter(
                 holder.tvDetails.text = "${preset.width}x${preset.height} | Steps:${preset.steps} | Cards:${preset.activePromptStates.size}"
                 
                 if (preset.thumbnailUri != null) {
-                    holder.ivThumbnail.setImageURI(preset.thumbnailUri)
+                    Glide.with(holder.ivThumbnail)
+                        .load(preset.thumbnailUri)
+                        .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(preset.thumbnailUri))
+                        .centerCrop()
+                        .into(holder.ivThumbnail)
                 } else {
+                    Glide.with(holder.ivThumbnail).clear(holder.ivThumbnail)
                     holder.ivThumbnail.setImageDrawable(null)
                 }
+
+                val matches = isPresetMatchingCurrentState(preset)
+                val density = holder.itemView.resources.displayMetrics.density
+                holder.card.strokeColor = if (matches) 0xFFD0BCFF.toInt() else 0xFF49454F.toInt()
+                holder.card.strokeWidth = ((if (matches) 3f else 1f) * density).toInt()
+                holder.card.cardElevation = (if (matches) 8f else 1f) * density
+                holder.card.setCardBackgroundColor(
+                    if (matches) 0xFF2A2038.toInt() else 0xFF1C1B1F.toInt()
+                )
 
                 holder.itemView.setOnClickListener { onPresetClick(preset) }
                 holder.itemView.setOnLongClickListener { 

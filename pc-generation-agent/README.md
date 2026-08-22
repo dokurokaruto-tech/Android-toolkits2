@@ -6,7 +6,9 @@ Android Toolkits から生成依頼を受け取り、Stable Diffusion WebUI / Fo
 - Androidアプリを閉じても、指定枚数までPC側で生成を続けます。
 - 完成画像はPCの `generated/YYYY-MM-DD/`（変更可能）へ日付別に保存します。
 - Androidの既存の「閲覧」ボタンから日付フォルダ・画像を表示できます。
-- 選択画像はAndroid端末へダウンロードして「全画像」に取り込めます。
+- 閲覧・全画面表示・生成途中プレビューだけではAndroidへ画像を保存しません。
+- 「全画像に入れる」を実行した画像だけAndroid端末へダウンロードします。
+- カード用サムネイルもPCの `thumbnails/YYYY-MM-DD/` に保存します。
 - エージェントを途中で終了しても、次回起動時に未完了キューを再開します。
 
 ## 必要なもの
@@ -52,6 +54,7 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
   "listen_port": 3001,
   "sd_base_url": "http://127.0.0.1:7860",
   "output_dir": "generated",
+  "thumbnail_dir": "thumbnails",
   "database_path": "data/agent.sqlite3",
   "api_key": "",
   "request_timeout_seconds": 600,
@@ -66,6 +69,7 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
 | `listen_port` | エージェントのポート。標準は `3001` |
 | `sd_base_url` | 同じPCで動くSD WebUI / Forge API |
 | `output_dir` | 完成画像の保存先。絶対パスも使用可能 |
+| `thumbnail_dir` | プロンプト／プリセットカード用サムネイルのPC保存先 |
 | `database_path` | 永続ジョブキューと状態の保存先 |
 | `api_key` | 任意の接続キー。設定した場合はAndroidにも同じ値を入力 |
 | `request_timeout_seconds` | 1枚に許可する最大通信時間 |
@@ -83,6 +87,8 @@ pc-generation-agent/
 │  │  ├─ GEN_20260822_153012_123_ab12cd34_0001.png
 │  │  └─ ...
 │  └─ 2026-08-23/
+├─ thumbnails/
+│  └─ 2026-08-22/THUMB_....png
 ├─ data/
 │  ├─ agent.sqlite3
 │  └─ metadata/YYYY-MM-DD/*.json
@@ -102,11 +108,12 @@ pc-generation-agent/
 - `GET /api/v1/library/dates` — 日付フォルダ一覧
 - `GET /api/v1/library/images?date=YYYY-MM-DD` — 画像一覧
 - `GET /api/v1/files/{date}/{name}` — 完成画像
-- `/sdapi/v1/*` — 既存のサムネイル生成・進捗機能を壊さないためSD APIへ中継
+- `GET /api/v1/thumbnail-files/{date}/{name}` — カード用サムネイル
+- `/sdapi/v1/*` — 既存機能との互換用にSD APIへ中継
 
 ## 注意
 
 - PCがスリープ・休止・シャットダウン中は生成できません。復帰してエージェントを再起動すると未完了キューを再開します。
 - エージェントとSD WebUI / Forgeの両方を起動しておく必要があります。
 - インターネットへ直接ポート公開しないでください。LANまたはTailscale内で使い、必要なら `api_key` も設定してください。
-- エージェントが見つからない場合、Androidアプリは互換性のため従来のSD直結生成へフォールバックします。その場合はPC永続保存ではなく端末保存です。
+- エージェントが見つからない場合は生成を開始しません。端末への意図しないフォールバック保存は行いません。

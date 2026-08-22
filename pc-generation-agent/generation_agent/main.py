@@ -95,6 +95,7 @@ def run(config_path: Path) -> int:
         print(f" Alternative network URL              : {alternative}")
     print(f" SD API                                : {config.sd_base_url}")
     print(f" Images                                : {config.output_dir}")
+    print(f" Card thumbnails                       : {config.thumbnail_dir}")
     print(f" Connection memo                       : {connection_file}")
     print(" Close with Ctrl+C. Jobs already accepted stay in SQLite for restart.")
     print("=" * 66)

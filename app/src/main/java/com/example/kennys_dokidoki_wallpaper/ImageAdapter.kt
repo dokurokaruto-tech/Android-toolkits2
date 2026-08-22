@@ -9,7 +9,6 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.engine.DiskCacheStrategy
 import kotlin.math.max
 import kotlin.math.min
 
@@ -93,7 +92,7 @@ class ImageAdapter(
         Glide.with(holder.imageView.context)
             .load(entry.uri) // displayUri ではなくオリジナル (uri) を強制使用！
             .override(400, 711)
-            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(entry.uri))
             .centerCrop()
             .into(holder.imageView)
             

@@ -314,7 +314,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                         if (added > 0) DataManager.saveData(this@AlbumDetailActivity)
                         if (imageAdapter.isSelectionMode) imageAdapter.stopSelectionMode()
                         val result = if (downloaded > 0) "${downloaded}件を端末へ保存（全画像へ新規追加: ${added}件）"
-                        else "保存できませんでした。設定で『通常の生成画像の保存先』を確認してください。"
+                        else "保存できませんでした。設定で『全画像に入れる』画像の保存先を確認してください。"
                         Toast.makeText(this@AlbumDetailActivity, result, Toast.LENGTH_LONG).show()
                     }
                 } else {

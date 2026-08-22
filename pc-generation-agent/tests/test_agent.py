@@ -70,6 +70,7 @@ class AgentIntegrationTest(unittest.TestCase):
             listen_port=0,
             sd_base_url=f"http://127.0.0.1:{self.sd_server.server_port}",
             output_dir=root / "generated",
+            thumbnail_dir=root / "thumbnails",
             database_path=root / "data" / "agent.sqlite3",
             api_key="secret",
             request_timeout_seconds=30,
@@ -141,11 +142,33 @@ class AgentIntegrationTest(unittest.TestCase):
         self.assertEqual(2, len(images["images"]))
         image_url = images["images"][0]["url"] + "?token=secret"
         with urllib.request.urlopen(self.base + image_url, timeout=5) as response:
+            self.assertEqual("no-store", response.headers.get("Cache-Control"))
             self.assertEqual(PNG, response.read())
 
         # Existing Android features (thumbnail generation/progress) keep using SD routes.
         _, options = self.request("/sdapi/v1/options")
         self.assertEqual({}, options)
+
+    def test_thumbnail_is_pc_hosted_but_hidden_from_main_library(self) -> None:
+        _, job = self.request(
+            "/api/v1/jobs", "POST",
+            {"tasks": [{"prompt": "card thumbnail", "purpose": "thumbnail"}]},
+        )
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, state = self.request(f"/api/v1/jobs/{job['id']}")
+            if state["status"] == "completed":
+                break
+            time.sleep(0.05)
+        self.assertEqual("completed", state["status"])
+        self.assertEqual(1, len(state["images"]))
+        self.assertIn("/api/v1/thumbnail-files/", state["images"][0]["url"])
+        with urllib.request.urlopen(
+            self.base + state["images"][0]["url"] + "?token=secret", timeout=5
+        ) as response:
+            self.assertEqual(PNG, response.read())
+        _, dates = self.request("/api/v1/library/dates")
+        self.assertEqual([], dates["dates"])
 
     def test_rejects_invalid_task_and_path_traversal(self) -> None:
         with self.assertRaises(Exception):

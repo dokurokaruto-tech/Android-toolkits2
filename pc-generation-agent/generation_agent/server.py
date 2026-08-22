@@ -20,6 +20,7 @@ _SKIP = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/skip$")
 _STOP_AFTER_CURRENT = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/stop-after-current$")
 _PREVIEW = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/preview$")
 _FILE = re.compile(r"^/api/v1/files/([^/]+)/([^/]+)$")
+_THUMBNAIL_FILE = re.compile(r"^/api/v1/thumbnail-files/([^/]+)/([^/]+)$")
 
 
 class AgentServer(ThreadingHTTPServer):
@@ -55,6 +56,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 "version": "1.0.0",
                 "sd_reachable": self.server.service.sd.health(),
                 "output_dir": str(self.server.config.output_dir),
+                "thumbnail_dir": str(self.server.config.thumbnail_dir),
             })
             return
         if not self._authorized(query):
@@ -97,6 +99,15 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             file = self.server.service.resolve_file(unquote(match.group(1)), unquote(match.group(2)))
             if not file:
                 self._error(HTTPStatus.NOT_FOUND, "image not found")
+            else:
+                content_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
+                self._send_file(file, content_type)
+            return
+        match = _THUMBNAIL_FILE.fullmatch(path)
+        if match:
+            file = self.server.service.resolve_thumbnail_file(unquote(match.group(1)), unquote(match.group(2)))
+            if not file:
+                self._error(HTTPStatus.NOT_FOUND, "thumbnail not found")
             else:
                 content_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
                 self._send_file(file, content_type)
@@ -224,7 +235,8 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         self._common_headers()
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(size))
-        self.send_header("Cache-Control", "public, max-age=86400")
+        # Android browsing is intentionally stream-only until explicit import.
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         with file.open("rb") as stream:
             while chunk := stream.read(128 * 1024):

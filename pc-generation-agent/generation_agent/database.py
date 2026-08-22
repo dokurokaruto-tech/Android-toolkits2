@@ -114,6 +114,15 @@ class JobDatabase:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def completed_outputs(self, job_id: str) -> list[str]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT output_path FROM tasks WHERE job_id=? AND status='completed' "
+                "AND output_path IS NOT NULL ORDER BY task_index",
+                (job_id,),
+            ).fetchall()
+            return [str(row["output_path"]) for row in rows]
+
     def start_job(self, job_id: str) -> None:
         self._update_job(job_id, status="running", updated_at=utc_now())
 

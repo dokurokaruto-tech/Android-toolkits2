@@ -23,7 +23,8 @@ data class AgentGenerationRequest(
     val width: Int,
     val height: Int,
     val steps: Int,
-    val samplerName: String
+    val samplerName: String,
+    val purpose: String = "image"
 )
 
 data class AgentGeneratedFolder(val date: String, val count: Int, val thumbnailUrl: String?)
@@ -37,6 +38,7 @@ data class AgentJobState(
     val failed: Int,
     val progress: Float,
     val previewUrl: String?,
+    val imageUrls: List<String>,
     val error: String?
 ) {
     val isTerminal: Boolean
@@ -84,7 +86,11 @@ object GenerationAgentClient {
         }
     }
 
-    suspend fun submit(context: Context, requests: List<AgentGenerationRequest>): AgentJobState = withContext(Dispatchers.IO) {
+    suspend fun submit(
+        context: Context,
+        requests: List<AgentGenerationRequest>,
+        persistForReconnect: Boolean = true
+    ): AgentJobState = withContext(Dispatchers.IO) {
         require(requests.isNotEmpty()) { "生成リクエストが空です" }
         val tasks = JSONArray()
         requests.forEach { request ->
@@ -96,20 +102,23 @@ object GenerationAgentClient {
                 put("steps", request.steps)
                 put("cfg_scale", 7)
                 put("sampler_name", request.samplerName)
+                put("purpose", request.purpose)
             })
         }
         val body = JSONObject().apply {
             put("client_request_id", UUID.randomUUID().toString())
             put("tasks", tasks)
         }
-        val state = parseJob(requestJson(context, "/api/v1/jobs", "POST", body))
-        // Synchronous commit closes the tiny crash window between PC acceptance and local reconnect state.
-        settings(context).edit().putString(ACTIVE_JOB_KEY, state.id).commit()
+        val state = parseJob(context, requestJson(context, "/api/v1/jobs", "POST", body))
+        if (persistForReconnect) {
+            // Synchronous commit closes the tiny crash window between PC acceptance and local reconnect state.
+            settings(context).edit().putString(ACTIVE_JOB_KEY, state.id).commit()
+        }
         state
     }
 
     suspend fun getJob(context: Context, jobId: String): AgentJobState = withContext(Dispatchers.IO) {
-        parseJob(requestJson(context, "/api/v1/jobs/$jobId"))
+        parseJob(context, requestJson(context, "/api/v1/jobs/$jobId"))
     }
 
     suspend fun fetchFolders(context: Context): List<AgentGeneratedFolder> = withContext(Dispatchers.IO) {
@@ -153,11 +162,20 @@ object GenerationAgentClient {
     }
 
     /** Monitors only while Android is alive. PC execution itself is independent of this loop. */
-    suspend fun monitor(context: Context, initial: AgentJobState? = null): AgentJobState {
+    suspend fun monitor(
+        context: Context,
+        initial: AgentJobState? = null,
+        silent: Boolean = false,
+        clearReconnectState: Boolean = true
+    ): AgentJobState {
         val jobId = initial?.id ?: settings(context).getString(ACTIVE_JOB_KEY, null)
             ?: throw IllegalStateException("再接続する生成ジョブがありません")
         var state = initial ?: getJob(context, jobId)
-        GenerationProgressManager.startGeneration(batchMode = true, total = state.total)
+        GenerationProgressManager.startGeneration(
+            batchMode = !silent,
+            total = state.total,
+            silent = silent
+        )
         var controlSent = ""
         var connectionFailures = 0
         try {
@@ -205,11 +223,40 @@ object GenerationAgentClient {
                     delay(2000)
                 }
             }
-            settings(context).edit().remove(ACTIVE_JOB_KEY).apply()
+            if (clearReconnectState) {
+                settings(context).edit().remove(ACTIVE_JOB_KEY).apply()
+            }
             return state
         } finally {
             GenerationProgressManager.endGeneration(force = true)
         }
+    }
+
+    /**
+     * Generates a card thumbnail on the PC and returns only its remote URI. No image bytes
+     * are written to Android storage; Glide displays this URI with disk caching disabled.
+     */
+    suspend fun generateThumbnail(
+        context: Context,
+        request: AgentGenerationRequest
+    ): android.net.Uri {
+        if (!isAvailable(context)) {
+            throw IOException("PC生成エージェントに接続できません")
+        }
+        val accepted = submit(
+            context,
+            listOf(request.copy(purpose = "thumbnail")),
+            persistForReconnect = false
+        )
+        val completed = monitor(
+            context,
+            initial = accepted,
+            silent = true,
+            clearReconnectState = false
+        )
+        val url = completed.imageUrls.firstOrNull()
+            ?: throw IOException(completed.error ?: "PCにサムネイルが保存されませんでした")
+        return android.net.Uri.parse(url)
     }
 
     suspend fun resumePendingJob(context: Context): AgentJobState? {
@@ -231,16 +278,26 @@ object GenerationAgentClient {
         }
     }
 
-    private fun parseJob(json: JSONObject) = AgentJobState(
-        id = json.getString("id"),
-        status = json.getString("status"),
-        total = json.optInt("total", 1),
-        completed = json.optInt("completed"),
-        failed = json.optInt("failed"),
-        progress = json.optDouble("progress", 0.0).toFloat().coerceIn(0f, 1f),
-        previewUrl = json.optString("preview_url").takeIf { it.isNotBlank() },
-        error = json.optString("error").takeIf { it.isNotBlank() && it != "null" }
-    )
+    private fun parseJob(context: Context, json: JSONObject): AgentJobState {
+        val images = json.optJSONArray("images") ?: JSONArray()
+        val imageUrls = buildList {
+            for (index in 0 until images.length()) {
+                val path = images.optJSONObject(index)?.optString("url").orEmpty()
+                if (path.isNotBlank()) add(absoluteUrl(context, path))
+            }
+        }
+        return AgentJobState(
+            id = json.getString("id"),
+            status = json.getString("status"),
+            total = json.optInt("total", 1),
+            completed = json.optInt("completed"),
+            failed = json.optInt("failed"),
+            progress = json.optDouble("progress", 0.0).toFloat().coerceIn(0f, 1f),
+            previewUrl = json.optString("preview_url").takeIf { it.isNotBlank() },
+            imageUrls = imageUrls,
+            error = json.optString("error").takeIf { it.isNotBlank() && it != "null" }
+        )
+    }
 
     private fun requestJson(
         context: Context,
@@ -283,6 +340,7 @@ object GenerationAgentClient {
             val connection = URL(absoluteUrl(context, path)).openConnection().apply {
                 connectTimeout = 3000
                 readTimeout = 5000
+                useCaches = false
             }
             connection.getInputStream().use { BitmapFactory.decodeStream(it) }
         } catch (_: Exception) {

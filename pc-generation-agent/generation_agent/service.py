@@ -22,6 +22,7 @@ class GenerationService:
     def __init__(self, config: AgentConfig):
         self.config = config
         self.config.output_dir.mkdir(parents=True, exist_ok=True)
+        self.config.thumbnail_dir.mkdir(parents=True, exist_ok=True)
         self.database = JobDatabase(config.database_path)
         self.sd = StableDiffusionClient(config.sd_base_url, config.request_timeout_seconds)
         self._wake = threading.Event()
@@ -58,7 +59,8 @@ class GenerationService:
             # A deterministic destination makes crash recovery exactly-once at file level:
             # if the PNG was renamed into place before SQLite updated, restart reuses it.
             task["_agent_output_date"] = date
-            task["_agent_output_base"] = f"GEN_{stamp}_{job_id[:8]}_{index + 1:04d}"
+            prefix = "THUMB" if task["_agent_collection"] == "thumbnail" else "GEN"
+            task["_agent_output_base"] = f"{prefix}_{stamp}_{job_id[:8]}_{index + 1:04d}"
         client_request_id = str(body.get("client_request_id", "")).strip()[:200]
         job, created = self.database.create_job(job_id, client_request_id, tasks)
         if created:
@@ -161,11 +163,18 @@ class GenerationService:
         ]
 
     def resolve_file(self, date: str, name: str) -> Path | None:
+        return self._resolve_collection_file(self.config.output_dir, date, name)
+
+    def resolve_thumbnail_file(self, date: str, name: str) -> Path | None:
+        return self._resolve_collection_file(self.config.thumbnail_dir, date, name)
+
+    @staticmethod
+    def _resolve_collection_file(root: Path, date: str, name: str) -> Path | None:
         if not _DATE.fullmatch(date) or Path(name).name != name or Path(name).suffix.lower() not in _IMAGE_SUFFIXES:
             return None
-        candidate = (self.config.output_dir / date / name).resolve()
+        candidate = (root / date / name).resolve()
         try:
-            candidate.relative_to(self.config.output_dir.resolve())
+            candidate.relative_to(root.resolve())
         except ValueError:
             return None
         return candidate if candidate.is_file() else None
@@ -176,10 +185,32 @@ class GenerationService:
         return f"/api/v1/files/{quote(date)}/{quote(name)}"
 
     @staticmethod
-    def public_job(job: dict[str, Any]) -> dict[str, Any]:
+    def thumbnail_file_url(date: str, name: str) -> str:
+        from urllib.parse import quote
+        return f"/api/v1/thumbnail-files/{quote(date)}/{quote(name)}"
+
+    def output_url(self, output_path: str) -> str | None:
+        parts = output_path.replace("\\", "/").split("/")
+        if len(parts) == 2:  # Compatibility with jobs created by agent 1.0.
+            return self.file_url(parts[0], parts[1])
+        if len(parts) != 3:
+            return None
+        collection, date, name = parts
+        if collection == "thumbnail":
+            return self.thumbnail_file_url(date, name)
+        if collection == "image":
+            return self.file_url(date, name)
+        return None
+
+    def public_job(self, job: dict[str, Any]) -> dict[str, Any]:
         total = max(1, int(job["total"]))
         terminal = job["status"] in {"completed", "partial_failed", "failed", "canceled"}
         progress = (int(job["completed"]) + int(job["failed"])) / total if terminal else int(job["completed"]) / total
+        images = []
+        for output_path in self.database.completed_outputs(str(job["id"])):
+            url = self.output_url(output_path)
+            if url:
+                images.append({"url": url, "output_path": output_path})
         return {
             "id": job["id"],
             "status": job["status"],
@@ -191,6 +222,7 @@ class GenerationService:
             "progress": min(1.0, progress),
             "cancel_requested": bool(job["cancel_requested"]),
             "error": job["error"],
+            "images": images,
         }
 
     def _worker_loop(self) -> None:
@@ -243,16 +275,23 @@ class GenerationService:
                 else:
                     self.database.fail_task(job_id, index, str(error))
 
+    def _collection_root(self, payload: dict[str, Any]) -> tuple[str, Path]:
+        collection = str(payload.get("_agent_collection", "image"))
+        if collection == "thumbnail":
+            return collection, self.config.thumbnail_dir
+        return "image", self.config.output_dir
+
     def _existing_output(self, payload: dict[str, Any]) -> str | None:
         date = str(payload.get("_agent_output_date", ""))
         base = str(payload.get("_agent_output_base", ""))
         if not _DATE.fullmatch(date) or not base:
             return None
-        folder = self.config.output_dir / date
+        collection, root = self._collection_root(payload)
+        folder = root / date
         for suffix in _IMAGE_SUFFIXES:
             candidate = folder / f"{base}{suffix}"
             if candidate.is_file():
-                return f"{date}/{candidate.name}"
+                return f"{collection}/{date}/{candidate.name}"
         return None
 
     def _save_image(
@@ -266,7 +305,8 @@ class GenerationService:
     ) -> str:
         now = datetime.now().astimezone()
         date = str(stored_payload["_agent_output_date"])
-        folder = self.config.output_dir / date
+        collection, root = self._collection_root(stored_payload)
+        folder = root / date
         folder.mkdir(parents=True, exist_ok=True)
         filename = f"{stored_payload['_agent_output_base']}{suffix}"
         destination = folder / filename
@@ -282,12 +322,12 @@ class GenerationService:
             "job_id": job_id,
             "task_index": index,
             "created_at": now.isoformat(timespec="milliseconds"),
-            "file": f"{date}/{filename}",
+            "file": f"{collection}/{date}/{filename}",
             "parameters": sd_payload,
         }
         metadata_path = metadata_dir / f"{filename}.json"
         metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-        return f"{date}/{filename}"
+        return f"{collection}/{date}/{filename}"
 
     @staticmethod
     def _folder_images(folder: Path) -> list[Path]:
@@ -316,7 +356,12 @@ class GenerationService:
         width = self._integer(task.get("width", 720), "width", 64, 4096)
         height = self._integer(task.get("height", 1280), "height", 64, 4096)
         steps = self._integer(task.get("steps", 20), "steps", 1, 300)
+        purpose = str(task.get("purpose", "image")).strip().lower()
+        if purpose not in {"image", "thumbnail"}:
+            raise ValueError("purpose must be image or thumbnail")
         result = dict(task)
+        result.pop("purpose", None)
+        result["_agent_collection"] = purpose
         result.update({
             "prompt": prompt,
             "negative_prompt": str(task.get("negative_prompt", "")),

@@ -171,6 +171,7 @@ class PromptCardAdapter(
                 if (card.thumbnailUri != null) {
                     Glide.with(holder.ivThumbnail.context)
                         .load(card.thumbnailUri)
+                        .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(card.thumbnailUri))
                         .into(holder.ivThumbnail)
                 } else {
                     holder.ivThumbnail.setImageResource(android.R.drawable.ic_menu_gallery)

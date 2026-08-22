@@ -3,6 +3,7 @@
   "listen_port": 3001,
   "sd_base_url": "http://127.0.0.1:7860",
   "output_dir": "generated",
+  "thumbnail_dir": "thumbnails",
   "database_path": "data/agent.sqlite3",
   "api_key": "",
   "request_timeout_seconds": 600,

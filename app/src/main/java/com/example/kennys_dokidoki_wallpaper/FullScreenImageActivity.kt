@@ -151,7 +151,9 @@ class FullScreenImageActivity : AppCompatActivity() {
             Glide.with(this)
                 .load(entry.uri)
                 .override(Target.SIZE_ORIGINAL)
-                .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                .diskCacheStrategy(
+                    ImageStoragePolicy.glideDiskCache(entry.uri, DiskCacheStrategy.RESOURCE)
+                )
                 .listener(object : RequestListener<Drawable> {
                     override fun onLoadFailed(
                         e: GlideException?,
