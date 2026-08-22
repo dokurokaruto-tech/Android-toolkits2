@@ -998,69 +998,43 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 return@setOnClickListener
             }
 
-            val baseSelectedWithLevels = promptCardAdapter.getSelectedCardsWithLevels()
-            val totalImages = genBatchCount
+            // 生成ボタンを押した瞬間の選択と「自動付与するタグ」を凍結する。
+            // 生成中に次の依頼用へカードを変えても、今キューに入る枚数には影響しない。
+            val startSnapshot = GeneratedImageTagBinding.snapshotAtStart(
+                selected = promptCardAdapter.getSelectedCardsWithLevels(),
+                roster = PromptCardManager.promptCards.toList(),
+                randomEnabledCategories = PromptCardManager.randomEnabledCategories.toSet(),
+                randomizerIncludedIds = PromptCardManager.randomizerIncludedIds.toSet(),
+                width = genWidth,
+                height = genHeight,
+                steps = genSteps,
+                sampler = genSampler,
+                batchCount = genBatchCount
+            )
+            val preparedImages = GeneratedImageTagBinding.buildPreparedImages(
+                startSnapshot,
+                chance = { Random.nextInt(100) },
+                pickIndex = { size -> Random.nextInt(size) }
+            )
+            val totalImages = preparedImages.size
 
             // 先に全枚数分のプロンプトを確定し、一括でPCへ渡す。これによりアプリを
             // 閉じても、指定枚数がPCの永続キューに残って最後まで生成される。
-            GenerationProgressManager.startGeneration(batchMode = true, total = totalImages)
+            GenerationProgressManager.startGeneration(batchMode = true, total = totalImages.coerceAtLeast(1))
             startActivity(Intent(this, GenerationProgressActivity::class.java))
             Toast.makeText(this, "計 ${totalImages}枚をPCへ送信します。", Toast.LENGTH_SHORT).show()
 
             lifecycleScope.launch {
-                val requests = mutableListOf<AgentGenerationRequest>()
-                for (i in 1..totalImages) {
-                    val currentSelectedWithLevels = baseSelectedWithLevels.toMutableList()
-
-                    PromptCardManager.promptCards.forEach { card ->
-                        if (card.useIndividualRandomizer && !PromptCardManager.selectionLevels.containsKey(card.id)) {
-                            if (Random.nextInt(100) < card.randomizerProbability &&
-                                currentSelectedWithLevels.none { it.first.id == card.id }) {
-                                currentSelectedWithLevels.add(card to 1)
-                            }
-                        }
-                    }
-
-                    PromptCardManager.randomEnabledCategories.forEach { category ->
-                        var cardsInCategory = PromptCardManager.promptCards.filter {
-                            it.category.trim() == category.trim() && PromptCardManager.randomizerIncludedIds.contains(it.id)
-                        }
-                        if (cardsInCategory.isEmpty()) {
-                            cardsInCategory = PromptCardManager.promptCards.filter { it.category.trim() == category.trim() }
-                        }
-                        if (cardsInCategory.isNotEmpty()) {
-                            val randomCard = cardsInCategory[Random.nextInt(cardsInCategory.size)]
-                            if (currentSelectedWithLevels.none { it.first.id == randomCard.id }) {
-                                currentSelectedWithLevels.add(randomCard to 1)
-                            }
-                        }
-                    }
-
-                    if (currentSelectedWithLevels.isEmpty()) continue
-                    val finalMainPrompt = currentSelectedWithLevels.joinToString(", ") { (card, level) ->
-                        when (level) {
-                            2 -> "(${card.mainPrompt}:1.2)"
-                            3 -> "(${card.mainPrompt}:1.6)"
-                            else -> card.mainPrompt
-                        }
-                    }.trim()
-                    val finalNegativePrompt = currentSelectedWithLevels.map { it.first.negativePrompt }
-                        .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
-                    val imageTags = TagManager.minimizeTags(
-                        GeneratedImageTagBinding.collect(currentSelectedWithLevels.map { it.first.appliedTags })
+                val requests = preparedImages.map { prepared ->
+                    AgentGenerationRequest(
+                        prompt = prepared.prompt,
+                        negativePrompt = prepared.negativePrompt,
+                        width = startSnapshot.width,
+                        height = startSnapshot.height,
+                        steps = startSnapshot.steps,
+                        samplerName = startSnapshot.sampler,
+                        tags = TagManager.minimizeTags(prepared.tags.toSet()).toList()
                     )
-                    requests.add(
-                        AgentGenerationRequest(
-                            prompt = finalMainPrompt,
-                            negativePrompt = finalNegativePrompt,
-                            width = genWidth,
-                            height = genHeight,
-                            steps = genSteps,
-                            samplerName = genSampler,
-                            tags = imageTags.toList()
-                        )
-                    )
-                    Log.d("Generation", "Prepared image $i/$totalImages")
                 }
 
                 if (requests.isEmpty()) {
@@ -1078,6 +1052,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                             Toast.LENGTH_LONG
                         ).show()
                         val completed = GenerationAgentClient.monitor(this@MainActivity, accepted)
+                        GeneratedImageTagBinding.tagsForCompletedUrls(
+                            completed.imageUrls,
+                            requests.map {
+                                GeneratedImageTagBinding.PreparedImage(it.prompt, it.negativePrompt, it.tags)
+                            }
+                        ).forEach { (url, tags) ->
+                            GeneratedImageDraftStore.seedGeneratedTags(
+                                this@MainActivity,
+                                Uri.parse(url),
+                                tags
+                            )
+                        }
                         Toast.makeText(
                             this@MainActivity,
                             "PC生成完了: ${completed.completed}/${completed.total}枚（閲覧から確認できます）",

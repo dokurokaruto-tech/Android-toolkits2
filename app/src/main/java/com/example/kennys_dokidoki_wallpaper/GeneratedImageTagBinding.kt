@@ -1,9 +1,37 @@
 package com.example.kennys_dokidoki_wallpaper
 
 /**
- * プロンプトビルダーで選んだカードのタグを、生成画像へ載せるための純関数。
+ * 生成開始時点のカード選択と「自動付与するタグ」を凍結し、完成画像へ載せる。
  */
 object GeneratedImageTagBinding {
+    data class FrozenCard(
+        val id: String,
+        val category: String,
+        val mainPrompt: String,
+        val negativePrompt: String,
+        val appliedTags: Set<String>,
+        val useIndividualRandomizer: Boolean,
+        val randomizerProbability: Int
+    )
+
+    data class Snapshot(
+        val selected: List<Pair<FrozenCard, Int>>,
+        val roster: List<FrozenCard>,
+        val randomEnabledCategories: Set<String>,
+        val randomizerIncludedIds: Set<String>,
+        val width: Int,
+        val height: Int,
+        val steps: Int,
+        val sampler: String,
+        val batchCount: Int
+    )
+
+    data class PreparedImage(
+        val prompt: String,
+        val negativePrompt: String,
+        val tags: List<String>
+    )
+
     fun collect(cardTagSets: Iterable<Iterable<String>>): Set<String> {
         val result = linkedSetOf<String>()
         cardTagSets.forEach { tags ->
@@ -18,4 +46,108 @@ object GeneratedImageTagBinding {
     fun mergeForBrowse(existingDraftTags: Set<String>, generatedTags: Set<String>): Set<String> {
         return if (existingDraftTags.isNotEmpty()) existingDraftTags else generatedTags
     }
+
+    fun freezeCard(card: PromptCard): FrozenCard = FrozenCard(
+        id = card.id,
+        category = card.category,
+        mainPrompt = card.mainPrompt,
+        negativePrompt = card.negativePrompt,
+        appliedTags = card.appliedTags.map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
+        useIndividualRandomizer = card.useIndividualRandomizer,
+        randomizerProbability = card.randomizerProbability
+    )
+
+    fun snapshotAtStart(
+        selected: List<Pair<PromptCard, Int>>,
+        roster: List<PromptCard>,
+        randomEnabledCategories: Set<String>,
+        randomizerIncludedIds: Set<String>,
+        width: Int,
+        height: Int,
+        steps: Int,
+        sampler: String,
+        batchCount: Int
+    ): Snapshot = Snapshot(
+        selected = selected.map { freezeCard(it.first) to it.second },
+        roster = roster.map(::freezeCard),
+        randomEnabledCategories = randomEnabledCategories.toSet(),
+        randomizerIncludedIds = randomizerIncludedIds.toSet(),
+        width = width,
+        height = height,
+        steps = steps,
+        sampler = sampler,
+        batchCount = batchCount
+    )
+
+    fun buildPreparedImages(
+        snapshot: Snapshot,
+        chance: () -> Int,
+        pickIndex: (Int) -> Int
+    ): List<PreparedImage> {
+        val prepared = mutableListOf<PreparedImage>()
+        repeat(snapshot.batchCount.coerceAtLeast(1)) {
+            val chosen = snapshot.selected.toMutableList()
+            snapshot.roster.forEach { card ->
+                if (card.useIndividualRandomizer && chosen.none { it.first.id == card.id }) {
+                    if (chance() < card.randomizerProbability) {
+                        chosen.add(card to 1)
+                    }
+                }
+            }
+            snapshot.randomEnabledCategories.forEach { category ->
+                var pool = snapshot.roster.filter {
+                    it.category.trim() == category.trim() && snapshot.randomizerIncludedIds.contains(it.id)
+                }
+                if (pool.isEmpty()) {
+                    pool = snapshot.roster.filter { it.category.trim() == category.trim() }
+                }
+                if (pool.isNotEmpty()) {
+                    val card = pool[pickIndex(pool.size).coerceIn(0, pool.lastIndex)]
+                    if (chosen.none { it.first.id == card.id }) {
+                        chosen.add(card to 1)
+                    }
+                }
+            }
+            if (chosen.isEmpty()) return@repeat
+            val prompt = chosen.joinToString(", ") { (card, level) ->
+                when (level) {
+                    2 -> "(${card.mainPrompt}:1.2)"
+                    3 -> "(${card.mainPrompt}:1.6)"
+                    else -> card.mainPrompt
+                }
+            }.trim()
+            val negative = chosen.map { it.first.negativePrompt }
+                .filter { it.isNotEmpty() }
+                .distinct()
+                .joinToString(", ")
+                .trim()
+            prepared.add(
+                PreparedImage(
+                    prompt = prompt,
+                    negativePrompt = negative,
+                    tags = collect(chosen.map { it.first.appliedTags }).toList()
+                )
+            )
+        }
+        return prepared
+    }
+
+    fun taskIndexFromUrl(url: String): Int? {
+        val match = TASK_INDEX.find(url.substringBefore('?').substringBefore('#')) ?: return null
+        return match.groupValues[1].toIntOrNull()
+    }
+
+    fun tagsForCompletedUrls(
+        urls: List<String>,
+        prepared: List<PreparedImage>
+    ): List<Pair<String, List<String>>> {
+        return urls.mapIndexed { order, url ->
+            val fromName = taskIndexFromUrl(url)?.let { index ->
+                prepared.getOrNull(index - 1)?.tags
+            }
+            url to (fromName ?: prepared.getOrNull(order)?.tags.orEmpty())
+        }
+    }
+
+    private val TASK_INDEX = Regex("""_(\d{4})\.(?:png|jpg|jpeg|webp)$""", RegexOption.IGNORE_CASE)
 }

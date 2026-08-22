@@ -80,7 +80,7 @@ class ImageAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ImageViewHolder {
         val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_image, parent, false)
+            .inflate(R.layout.item_image_with_tags, parent, false)
         return ImageViewHolder(view)
     }
 

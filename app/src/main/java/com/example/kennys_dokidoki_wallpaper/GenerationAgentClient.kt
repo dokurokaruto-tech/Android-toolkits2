@@ -110,6 +110,11 @@ object GenerationAgentClient {
                 put("cfg_scale", 7)
                 put("sampler_name", request.samplerName)
                 put("purpose", request.purpose)
+                val tags = JSONArray()
+                request.tags.forEach { tag ->
+                    if (tag.isNotBlank()) tags.put(tag)
+                }
+                put("tags", tags)
             })
         }
         val body = JSONObject().apply {
