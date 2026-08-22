@@ -421,17 +421,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         lifecycleScope.launch {
             GenerationProgressManager.state.collect { state ->
                 runOnUiThread {
-                    if (state.isGenerating) {
-                        btnGenerateConcatenatedTop.text = "中止"
-                        btnGenerateConcatenatedTop.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3366")))
-                        
-                        // PiPが閉じてる時だけ復活ボタンを出すわよ
-                        if (!GenerationProgressActivity.isPipActive) {
-                            btnRestorePip.visibility = View.VISIBLE
-                        } else {
-                            btnRestorePip.visibility = View.GONE
-                        }
+                if (state.isGenerating) {
+                    btnGenerateConcatenatedTop.text = "中止"
+                    btnGenerateConcatenatedTop.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3366")))
+
+                    // PiPが閉じてる時だけ復活ボタンを出すわよ。
+                    // ただしサムネイル生成(silent)ではPiP画面がないので出さない
+                    // （これを出すとトップバーのボタンが詰まってタイトル/生成ボタンが縦長になる）。
+                    if (!state.silent && !GenerationProgressActivity.isPipActive) {
+                        btnRestorePip.visibility = View.VISIBLE
                     } else {
+                        btnRestorePip.visibility = View.GONE
+                    }
+                } else {
                         btnGenerateConcatenatedTop.text = "生成"
                         btnGenerateConcatenatedTop.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#D0BCFF")))
                         btnRestorePip.visibility = View.GONE
@@ -1143,6 +1145,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     steps = preset.steps,
                     samplerName = preset.sampler,
                     isThumbnail = true,
+                    silent = true,
                     oldThumbnailUri = preset.thumbnailUri,
                     onGenerated = { uri ->
                         // プリセットのサムネイルは生成完了と同時に即座に適用＆保存する
@@ -1563,8 +1566,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                             height = 1920,
                             steps = 20,
                             samplerName = "Euler a",
-                            isThumbnail = true,
-                            oldThumbnailUri = card.thumbnailUri,
+                    isThumbnail = true,
+                    silent = true,
+                    oldThumbnailUri = card.thumbnailUri,
                             onGenerated = { uri ->
                                 card.thumbnailUri = uri
                                 count++
@@ -1821,6 +1825,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     steps = 20,
                     samplerName = "Euler a",
                     isThumbnail = true,
+                    silent = true,
                     oldThumbnailUri = card?.thumbnailUri,
                     onGenerated = { uri ->
                         tempCardThumbnailUri = uri

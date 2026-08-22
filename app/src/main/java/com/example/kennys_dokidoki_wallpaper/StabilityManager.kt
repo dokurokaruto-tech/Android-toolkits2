@@ -74,11 +74,12 @@ object StabilityManager {
         isThumbnail: Boolean = false,
         oldThumbnailUri: Uri? = null,
         appliedTags: Set<String> = emptySet(),
+        silent: Boolean = false,
         onGenerated: (Uri) -> Unit = {}
     ): Boolean {
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val baseUrl = prefs.getString("remote_server_url", "") ?: ""
-        
+
         if (baseUrl.isEmpty()) {
             reportError(E_URL_NOT_SET, "PCサーバーのURLを設定してください")
             return false
@@ -87,7 +88,7 @@ object StabilityManager {
         // すでに外側で開始宣言（バッチモード等）されてなければ、ここで開始するわ
         val managedExternally = GenerationProgressManager.state.value.isGenerating
         if (!managedExternally) {
-            GenerationProgressManager.startGeneration()
+            GenerationProgressManager.startGeneration(silent = silent)
         }
 
         return withContext(Dispatchers.IO) {

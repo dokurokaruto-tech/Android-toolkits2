@@ -16,7 +16,9 @@ object GenerationProgressManager {
         val currentImage: Bitmap? = null,
         val statusText: String = "",
         val currentBatch: Int = 0,
-        val totalBatch: Int = 0
+        val totalBatch: Int = 0,
+        // サムネイル生成など PiP を伴わない（静かな）生成。ビルダーのPiP復活ボタン等を出さない。
+        val silent: Boolean = false
     )
 
     private val _state = MutableStateFlow(ProgressState())
@@ -61,7 +63,7 @@ object GenerationProgressManager {
         )
     }
 
-    fun startGeneration(batchMode: Boolean = false, total: Int = 1) {
+    fun startGeneration(batchMode: Boolean = false, total: Int = 1, silent: Boolean = false) {
         isBatch = batchMode
         shouldInterrupt = false
         shouldStopGracefully = false
@@ -71,13 +73,14 @@ object GenerationProgressManager {
             isGenerating = true,
             statusText = "錬成準備中...",
             currentBatch = if (batchMode) 1 else 0,
-            totalBatch = if (batchMode) total else 0
+            totalBatch = if (batchMode) total else 0,
+            silent = silent
         )
     }
 
     fun endGeneration(force: Boolean = false) {
         if (force || !isBatch) {
-            _state.value = _state.value.copy(isGenerating = false)
+            _state.value = _state.value.copy(isGenerating = false, silent = false)
         }
     }
 }
