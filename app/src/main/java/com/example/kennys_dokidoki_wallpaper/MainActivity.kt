@@ -1426,10 +1426,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val gap = 2f * density        // ボタンと線の隙間
         val margin = (sw + gap).toInt() // ボタン周りの余白
 
-        // 角丸半径をボタンに合わせる（MaterialButton の cornerSize、取れなければピル状）
-        val matBtn = btn as? com.google.android.material.button.MaterialButton
-        val rawCorner = matBtn?.cornerSize ?: -1f
-        val btnCorner = if (rawCorner > 0f) rawCorner else (btn.height / 2f)
+        // 角丸半径はボタンに合わせる（ピル状ボタンを想定し高さの半分）
+        val btnCorner = btn.height / 2f
         generationRing.setCornerRadius(btnCorner + gap + sw / 2f)
 
         val w = btn.width + 2 * margin
@@ -2872,7 +2870,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val folder = folders[position]
             holder.tvName.text = folder.name
             
-            val images = folder.listFiles().filter { it.isFile && (it.type?.startsWith("image/") == true || it.name?.endsWith(".png") == true || it.name?.endsWith(".jpg") == true) }
+            val images = folder.listFiles()
+                .filter { it.isFile && (it.type?.startsWith("image/") == true || it.name?.endsWith(".png") == true || it.name?.endsWith(".jpg") == true) }
+                .sortedByDescending { it.name } // 新しい画像順（サムネイルも最新になる）
             holder.tvCount.text = "${images.size} 枚"
             
             if (images.isNotEmpty()) {
@@ -2907,7 +2907,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val intent = Intent(this, AlbumDetailActivity::class.java).apply {
             putExtra("ALBUM_NAME", albumName)
             putExtra("FOLDER_URI", folderUri)
-            val files = folder.listFiles().filter { it.isFile && (it.type?.startsWith("image/") == true || it.name?.endsWith(".png") == true || it.name?.endsWith(".jpg") == true) }
+            val files = folder.listFiles()
+                .filter { it.isFile && (it.type?.startsWith("image/") == true || it.name?.endsWith(".png") == true || it.name?.endsWith(".jpg") == true) }
+                .sortedByDescending { it.name } // 新しい画像順
             putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(files.map { it.uri.toString() }))
         }
         albumDetailLauncher.launch(intent)
