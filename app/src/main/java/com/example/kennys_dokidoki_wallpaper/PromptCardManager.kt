@@ -110,6 +110,24 @@ object PromptCardManager {
         if (categoryOrder.isEmpty()) categoryOrder.add("未分類")
     }
 
+    /**
+     * Fast path for taps in the builder. It writes only the small mutable selection state,
+     * avoiding serialization of every prompt card before visual feedback can be drawn.
+     */
+    fun saveInteractiveState(context: Context) {
+        val levels = JSONObject()
+        selectionLevels.forEach { (id, level) -> levels.put(id, level) }
+        val randomCategories = JSONArray()
+        randomEnabledCategories.forEach { randomCategories.put(it) }
+        val includedIds = JSONArray()
+        randomizerIncludedIds.forEach { includedIds.put(it) }
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_SELECTION_LEVELS, levels.toString())
+            .putString(KEY_RANDOM_CATEGORIES, randomCategories.toString())
+            .putString(KEY_RANDOMIZER_INCLUDED_IDS, includedIds.toString())
+            .apply()
+    }
+
     fun saveCards(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         
@@ -221,7 +239,7 @@ object PromptCardManager {
         } else {
             randomEnabledCategories.add(category)
         }
-        saveCards(context)
+        saveInteractiveState(context)
     }
 
     fun toggleCollapsed(context: Context, category: String) {
@@ -239,6 +257,6 @@ object PromptCardManager {
         } else {
             randomizerIncludedIds.add(cardId)
         }
-        saveCards(context)
+        saveInteractiveState(context)
     }
 }

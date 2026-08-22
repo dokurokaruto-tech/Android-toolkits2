@@ -155,10 +155,21 @@ class PresetAdapter(
      * MainActivityで確定した一致IDを受け取る。bind中に可変なビルダー状態を
      * 再計算しないため、プリセット適用直後でも枠が消えない。
      */
-    fun updateMatchingPresetIds(ids: Set<String>) {
-        matchingPresetIds = ids.toSet()
-        // 同じIDでもpressed状態解除後に濃い紫の枠を確実に再適用する。
-        notifyDataSetChanged()
+    fun updateMatchingPresetIds(ids: Set<String>, forceRebind: Boolean = false) {
+        val newIds = ids.toSet()
+        if (forceRebind) {
+            matchingPresetIds = newIds
+            notifyDataSetChanged()
+            return
+        }
+        val changedIds = (matchingPresetIds - newIds) + (newIds - matchingPresetIds)
+        if (changedIds.isEmpty()) return
+        matchingPresetIds = newIds
+        items.forEachIndexed { index, item ->
+            if (item is AdapterItem.PresetItem && item.preset.id in changedIds) {
+                notifyItemChanged(index)
+            }
+        }
     }
 
     fun updateList(newList: List<Preset>) {

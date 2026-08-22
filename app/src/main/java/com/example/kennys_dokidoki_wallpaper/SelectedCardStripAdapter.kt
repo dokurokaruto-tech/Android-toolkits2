@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.google.android.material.card.MaterialCardView
@@ -24,8 +25,20 @@ class SelectedCardStripAdapter(
     private var items: List<Pair<PromptCard, Int>> = emptyList()
 
     fun update(cards: List<Pair<PromptCard, Int>>) {
-        items = cards
-        notifyDataSetChanged()
+        val oldItems = items
+        val newItems = cards.toList()
+        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = oldItems.size
+            override fun getNewListSize() = newItems.size
+            override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean =
+                oldItems[oldItemPosition].first.id == newItems[newItemPosition].first.id
+
+            override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean =
+                oldItems[oldItemPosition].second == newItems[newItemPosition].second &&
+                    oldItems[oldItemPosition].first.thumbnailUri == newItems[newItemPosition].first.thumbnailUri
+        })
+        items = newItems
+        diff.dispatchUpdatesTo(this)
     }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {

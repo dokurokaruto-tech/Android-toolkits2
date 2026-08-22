@@ -190,37 +190,28 @@ class PromptCardAdapter(
                 }
 
                 val level = PromptCardManager.selectionLevels[card.id] ?: 0
-                when (level) {
-                    1 -> {
-                        holder.selectionOverlay.visibility = View.VISIBLE
-                        holder.selectionOverlay.setBackgroundResource(R.drawable.bg_card_selected)
-                    }
-                    2 -> {
-                        holder.selectionOverlay.visibility = View.VISIBLE
-                        holder.selectionOverlay.setBackgroundResource(R.drawable.bg_card_selected_emphasis1)
-                    }
-                    3 -> {
-                        holder.selectionOverlay.visibility = View.VISIBLE
-                        holder.selectionOverlay.setBackgroundResource(R.drawable.bg_card_selected_emphasis2)
-                    }
-                    else -> {
-                        holder.selectionOverlay.visibility = View.GONE
-                    }
-                }
+                bindSelectionVisual(holder, level)
                 
                 holder.itemView.setOnClickListener {
                     if (randomizerEditingCategory == card.category) {
-                        PromptCardManager.toggleRandomizerInclusion(holder.itemView.context, card.id)
-                        notifyItemChanged(position)
+                        if (!PromptCardManager.randomizerIncludedIds.remove(card.id)) {
+                            PromptCardManager.randomizerIncludedIds.add(card.id)
+                        }
+                        val currentPosition = holder.bindingAdapterPosition
+                        if (currentPosition != RecyclerView.NO_POSITION) notifyItemChanged(currentPosition)
                         onSelectionChanged()
                     } else {
-                        val nextLevel = (level + 1) % 4
+                        val currentLevel = PromptCardManager.selectionLevels[card.id] ?: 0
+                        val nextLevel = (currentLevel + 1) % 4
                         if (nextLevel == 0) {
                             PromptCardManager.selectionLevels.remove(card.id)
                         } else {
                             PromptCardManager.selectionLevels[card.id] = nextLevel
                         }
-                        notifyItemChanged(position)
+                        // Apply the overlay synchronously before persistence, history, strip,
+                        // header and preset work. Touch feedback is therefore visible this frame.
+                        bindSelectionVisual(holder, nextLevel)
+                        notifyHeaderForCategory(card.category)
                         onSelectionChanged()
                     }
                 }
@@ -239,7 +230,30 @@ class PromptCardAdapter(
         }
     }
 
+    private fun bindSelectionVisual(holder: CardViewHolder, level: Int) {
+        when (level) {
+            1 -> {
+                holder.selectionOverlay.visibility = View.VISIBLE
+                holder.selectionOverlay.setBackgroundResource(R.drawable.bg_card_selected)
+            }
+            2 -> {
+                holder.selectionOverlay.visibility = View.VISIBLE
+                holder.selectionOverlay.setBackgroundResource(R.drawable.bg_card_selected_emphasis1)
+            }
+            3 -> {
+                holder.selectionOverlay.visibility = View.VISIBLE
+                holder.selectionOverlay.setBackgroundResource(R.drawable.bg_card_selected_emphasis2)
+            }
+            else -> holder.selectionOverlay.visibility = View.GONE
+        }
+    }
+
     override fun getItemCount() = items.size
+
+    fun notifyCardChanged(cardId: String) {
+        val position = findPositionOfCard(cardId)
+        if (position >= 0) notifyItemChanged(position)
+    }
 
     fun updateList(newList: List<PromptCard>) {
         cards = newList
@@ -302,6 +316,13 @@ class PromptCardAdapter(
             if (item is AdapterItem.Card && item.card.id == cardId) return i
         }
         return -1
+    }
+
+    private fun notifyHeaderForCategory(category: String) {
+        val position = items.indexOfFirst {
+            it is AdapterItem.Header && it.title.trim() == category.trim()
+        }
+        if (position >= 0) notifyItemChanged(position)
     }
 
     /**

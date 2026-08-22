@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private val builderHistory = mutableListOf<BuilderSnapshot>()
     private var builderHistoryCursor = -1
     private var suspendBuilderHistory = false
+    private var builderSelectionUiRefreshPosted = false
 
     private lateinit var selectionActionBar: LinearLayout
     private lateinit var tvSelectionCount: TextView
@@ -779,13 +780,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         promptCardAdapter = PromptCardAdapter(
             cards = PromptCardManager.promptCards,
             onSelectionChanged = {
-                PromptCardManager.saveCards(this)
-                val selectedCount = promptCardAdapter.getSelectedCardsWithLevels().size
-                btnGenerateConcatenatedTop.isEnabled = selectedCount > 0 || PromptCardManager.randomEnabledCategories.isNotEmpty()
-                btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
-                promptCardAdapter.notifyHeadersChanged()
-                updateSelectedCardStrip()
-                commitBuilderState()
+                // CardViewHolder has already painted the new overlay synchronously.
+                // Tiny-state persistence and list/history/preset work run after this frame,
+                // so the tap never waits behind JSON or RecyclerView rebinding.
+                val hasSelection = PromptCardManager.selectionLevels.isNotEmpty() ||
+                    PromptCardManager.randomEnabledCategories.isNotEmpty()
+                btnGenerateConcatenatedTop.isEnabled = hasSelection
+                btnGenerateConcatenatedTop.alpha = if (hasSelection) 1.0f else 0.5f
+                scheduleBuilderSelectionUiRefresh()
             },
             onLongClick = { card ->
                 showEditPromptCardDialog(card)
@@ -800,10 +802,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 PromptCardManager.toggleRandom(this, category)
                 val isRandom = PromptCardManager.randomEnabledCategories.contains(category)
                 Toast.makeText(this, "『$category』のランダム選択を${if (isRandom) "オン" else "オフ"}にしました。", Toast.LENGTH_SHORT).show()
-                btnGenerateConcatenatedTop.isEnabled = promptCardAdapter.getSelectedCardsWithLevels().isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
-                btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
-                updateSelectedCardStrip()
-                commitBuilderState()
+                val hasSelection = PromptCardManager.selectionLevels.isNotEmpty() ||
+                    PromptCardManager.randomEnabledCategories.isNotEmpty()
+                btnGenerateConcatenatedTop.isEnabled = hasSelection
+                btnGenerateConcatenatedTop.alpha = if (hasSelection) 1.0f else 0.5f
+                scheduleBuilderSelectionUiRefresh()
             },
             onStartDrag = { viewHolder ->
                 promptItemTouchHelper.startDrag(viewHolder)
@@ -910,10 +913,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         selectedStripAdapter = SelectedCardStripAdapter(this, { card ->
             if (isStripCollapsed) return@SelectedCardStripAdapter
             PromptCardManager.selectionLevels.remove(card.id)
-            PromptCardManager.saveCards(this)
-            promptCardAdapter.updateList(PromptCardManager.promptCards)
-            updateSelectedCardStrip()
-            commitBuilderState()
+            promptCardAdapter.notifyCardChanged(card.id)
+            val hasSelection = PromptCardManager.selectionLevels.isNotEmpty() ||
+                PromptCardManager.randomEnabledCategories.isNotEmpty()
+            btnGenerateConcatenatedTop.isEnabled = hasSelection
+            btnGenerateConcatenatedTop.alpha = if (hasSelection) 1f else 0.5f
+            scheduleBuilderSelectionUiRefresh()
         }, { card ->
             scrollToCardInBuilder(card)
         })
@@ -1235,6 +1240,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         dialog.show()
     }
 
+    private fun scheduleBuilderSelectionUiRefresh() {
+        if (builderSelectionUiRefreshPosted || !::recyclerViewPromptCards.isInitialized) return
+        builderSelectionUiRefreshPosted = true
+        recyclerViewPromptCards.postOnAnimation {
+            builderSelectionUiRefreshPosted = false
+            if (isFinishing || isDestroyed) return@postOnAnimation
+            PromptCardManager.saveInteractiveState(this)
+            promptCardAdapter.notifyHeadersChanged()
+            updateSelectedCardStrip()
+            commitBuilderState()
+        }
+    }
+
     private fun updateSelectedCardStrip() {
         val selected = promptCardAdapter.getSelectedCardsWithLevels()
         // カテゴリーの並び順(categoryOrder)に準じてソート。
@@ -1341,7 +1359,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
      * 現在の状態を履歴に確定する。各種操作の完了時に呼ぶ。
      * redo 可能な分は破棄し、上限を超えた古い履歴は切り捨てる。
      */
-    private fun refreshPresetMatchHighlight() {
+    private fun refreshPresetMatchHighlight(forceRebind: Boolean = false) {
         if (!::presetAdapter.isInitialized) return
         val availableCardIds = PromptCardManager.promptCards.mapTo(mutableSetOf()) { it.id }
         val matchingIds = PresetManager.presets.asSequence()
@@ -1360,7 +1378,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             .map { it.id }
             .toSet()
-        presetAdapter.updateMatchingPresetIds(matchingIds)
+        presetAdapter.updateMatchingPresetIds(matchingIds, forceRebind)
     }
 
     private fun commitBuilderState() {
@@ -1558,8 +1576,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         commitBuilderState()
         // RecyclerViewのクリック処理が完了した次フレームでも再同期し、
         // pressed状態や再bindのタイミングで枠が消えるのを防止する。
-        refreshPresetMatchHighlight()
-        recyclerViewPresets.post { refreshPresetMatchHighlight() }
+        refreshPresetMatchHighlight(forceRebind = true)
+        recyclerViewPresets.post { refreshPresetMatchHighlight(forceRebind = true) }
         Toast.makeText(this, "プリセット『${preset.name}』を適用しました。", Toast.LENGTH_SHORT).show()
     }
 
