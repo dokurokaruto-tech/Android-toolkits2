@@ -756,6 +756,19 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun applyStreamingItemChange(index: Int) {
         if (!::adapter.isInitialized) return
+
+        // ユーザーが指でドラッグしている間は、ストリーミングによる本文の再レイアウト
+        // （＝吹き出しが改行のたびに高くなる）を止める。
+        // ドラッグ中はビューポートのアンカー復元が効かないため、この再レイアウトが
+        // 「新しい改行が来るたびに表示中の文章が下へ1行ずつずれる」バグの原因になる。
+        // 指を離した瞬間（SCROLL_STATE_IDLE）のキャッチアップで最新文へ追いつくので、
+        // ドラッグ中は表示を完全に固定する。
+        if (::recyclerView.isInitialized &&
+            recyclerView.scrollState == RecyclerView.SCROLL_STATE_DRAGGING
+        ) {
+            return
+        }
+
         val follow = ChatAutoScrollPolicy.shouldFollowStreamingNewLine(
             userInteracting = isUserInteractingWithChat(),
             distanceFromBottomPx = chatDistanceFromBottomPx(),
