@@ -22,6 +22,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
 import android.util.Log
+import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -1248,24 +1249,24 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
     }
 
-    private fun fetchOpenRouterModels() {
-        Toast.makeText(this, "最新のモデルリストを取得しています...", Toast.LENGTH_SHORT).show()
+    private fun fetchOpenRouterModels(onComplete: ((Boolean) -> Unit)? = null) {
         coroutineScope.launch(Dispatchers.IO) {
+            var success = false
             try {
                 val url = URL("https://openrouter.ai/api/v1/models")
                 val conn = url.openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val response = conn.inputStream.bufferedReader().use { it.readText() }
-                    
+
                     val dataArray = JSONObject(response).getJSONArray("data")
                     val newList = mutableListOf<RemoteModel>()
                     for (i in 0 until dataArray.length()) {
                         val obj = dataArray.getJSONObject(i)
                         val pricing = obj.optJSONObject("pricing")
-                        val isFree = (pricing?.optString("prompt") == "0" || pricing?.optDouble("prompt", 1.0) == 0.0) && 
+                        val isFree = (pricing?.optString("prompt") == "0" || pricing?.optDouble("prompt", 1.0) == 0.0) &&
                                      (pricing?.optString("completion") == "0" || pricing?.optDouble("completion", 1.0) == 0.0)
                         val price = pricing?.optDouble("prompt", 0.0) ?: 0.0
-                        
+
                         newList.add(RemoteModel(
                             id = obj.getString("id"),
                             name = obj.getString("name"),
@@ -1280,22 +1281,140 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
                         .putString("cached_openrouter_models", response)
                         .apply()
-                    
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@ChatOverlayActivity, "モデルリストを更新しました。", Toast.LENGTH_SHORT).show()
-                        showOpenRouterTierMenu()
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@ChatOverlayActivity, "通信エラーが発生しました (HTTP ${conn.responseCode})", Toast.LENGTH_SHORT).show()
-                    }
+                    success = true
                 }
+                conn.disconnect()
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@ChatOverlayActivity, "モデルリストの更新に失敗しました。", Toast.LENGTH_SHORT).show()
+                success = false
+            }
+            withContext(Dispatchers.Main) {
+                onComplete?.invoke(success)
+            }
+        }
+    }
+
+    /**
+     * モデル選択画面（Material Design 3 調）。
+     * アプリ全体は独自のネオンテーマだが、この画面だけはガッチガチの MD3（Google公式アプリ風）にする。
+     * 開くたびに必ずモデルリストを最新化してから表示する。
+     */
+    private fun showMaterialModelPicker() {
+        // ベースラインの Material3（ダーク）テーマで包み、この画面だけ本物の MD3 配色にする
+        val md3 = ContextThemeWrapper(this, com.google.android.material.R.style.Theme_Material3_Dark_NoActionBar)
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val currentModel = prefs.getString("chat_openrouter_model", null)
+
+        val view = LayoutInflater.from(md3).inflate(R.layout.dialog_model_picker_md3, null)
+        val rv = view.findViewById<RecyclerView>(R.id.rv_models)
+        val progress = view.findViewById<com.google.android.material.progressindicator.CircularProgressIndicator>(R.id.progress_models)
+        val empty = view.findViewById<TextView>(R.id.tv_empty)
+        val count = view.findViewById<TextView>(R.id.tv_count)
+        val chipAll = view.findViewById<com.google.android.material.chip.Chip>(R.id.chip_all)
+        val chipFree = view.findViewById<com.google.android.material.chip.Chip>(R.id.chip_free)
+        val btnSort = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_sort)
+        val btnRefresh = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_refresh)
+
+        rv.layoutManager = LinearLayoutManager(md3)
+
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(md3)
+            .setView(view)
+            .create()
+
+        var freeOnly = false
+        var isLoading = false
+
+        fun render() {
+            // 取得中はリストも空表示も隠し、スピナーだけを出す（MD3らしい挙動）
+            if (isLoading) {
+                rv.visibility = View.GONE
+                empty.visibility = View.GONE
+                return
+            }
+            val filtered = if (freeOnly) openRouterModels.filter { it.isFree } else openRouterModels
+            val sorted = if (openRouterSortByDate) {
+                filtered.sortedByDescending { it.created }
+            } else {
+                filtered.sortedBy { it.name.lowercase() }
+            }
+            count.text = "${filtered.size} 個のモデル"
+            if (sorted.isEmpty()) {
+                rv.visibility = View.GONE
+                empty.visibility = View.VISIBLE
+            } else {
+                empty.visibility = View.GONE
+                rv.visibility = View.VISIBLE
+                val items = sorted.map {
+                    ModelMd3Item(it.id, it.name, it.contextLength, it.isFree, it.pricePerMillion)
+                }
+                rv.adapter = ModelMd3Adapter(items, currentModel) { item ->
+                    prefs.edit()
+                        .putString("chat_llm_engine", "CLOUD")
+                        .putString("chat_cloud_provider", "OPENROUTER")
+                        .putString("chat_openrouter_model", item.id)
+                        .apply()
+                    updateCounter()
+                    Toast.makeText(this, "${item.name} を選択しました。", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                    if (findViewById<View>(R.id.extra_menu_scroll).visibility == View.VISIBLE) {
+                        toggleExtraMenu()
+                    }
                 }
             }
         }
+
+        fun setLoading(loading: Boolean) {
+            isLoading = loading
+            if (loading) {
+                progress.show()
+                empty.visibility = View.GONE
+            } else {
+                progress.hide()
+            }
+            render()
+        }
+
+        val filterClick = View.OnClickListener {
+            freeOnly = chipFree.isChecked
+            render()
+        }
+        chipAll.setOnClickListener(filterClick)
+        chipFree.setOnClickListener(filterClick)
+
+        fun updateSortLabel() {
+            btnSort.text = if (openRouterSortByDate) "新着順" else "名前順"
+        }
+        updateSortLabel()
+        btnSort.setOnClickListener {
+            openRouterSortByDate = !openRouterSortByDate
+            updateSortLabel()
+            render()
+        }
+
+        fun doRefresh() {
+            setLoading(true)
+            fetchOpenRouterModels { success ->
+                if (!dialog.isShowing) return@fetchOpenRouterModels
+                setLoading(false)
+                if (!success && openRouterModels.isEmpty()) {
+                    Toast.makeText(this, "モデルリストの取得に失敗しました。", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        btnRefresh.setOnClickListener { doRefresh() }
+
+        // リストの高さを画面の60%に
+        val listHeight = (resources.displayMetrics.heightPixels * 0.6).toInt()
+        (rv.layoutParams as FrameLayout.LayoutParams).height = listHeight
+
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.95).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
+        // 開くたびに必ず最新リストを取得してから表示
+        doRefresh()
     }
 
     private fun setupExtraMenu() {
@@ -1511,7 +1630,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         val orLabel = if (engine == "CLOUD" && provider == "OPENROUTER") "● OpenRouter" else "OpenRouter"
         addMenuIcon(grid, orLabel, android.R.drawable.ic_menu_share) {
-            showOpenRouterTierMenu()
+            showMaterialModelPicker()
         }
 
         val localLabel = if (engine == "LOCAL") "● Local" else "Local"
@@ -1526,127 +1645,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             coroutineScope.launch { LlmInferenceEngine.autoLoadModel(this@ChatOverlayActivity) }
             Toast.makeText(this, "AIエンジンをローカルエンジンに切り替えました。", Toast.LENGTH_SHORT).show()
             showMainMenu()
-        }
-    }
-
-    private fun showOpenRouterTierMenu() {
-        val grid = findViewById<GridLayout>(R.id.extra_menu_grid)
-        grid.removeAllViews()
-        grid.columnCount = 4
-
-        addMenuIcon(grid, "Back", android.R.drawable.ic_menu_revert) {
-            showModelMenu()
-        }
-
-        addMenuIcon(grid, "Free Models", android.R.drawable.star_big_on) {
-            showOpenRouterModelList(freeOnly = true)
-        }
-
-        addMenuIcon(grid, "Paid Models", android.R.drawable.ic_menu_agenda) {
-            showOpenRouterModelList(freeOnly = false)
-        }
-    }
-
-    private fun showOpenRouterModelList(freeOnly: Boolean) {
-        val grid = findViewById<GridLayout>(R.id.extra_menu_grid)
-        grid.removeAllViews()
-        grid.columnCount = 1
-
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val currentModelId = prefs.getString("chat_openrouter_model", "")
-
-        addModelRow(grid, "Back", "カテゴリ選択に戻る", android.R.drawable.ic_menu_revert) {
-            showOpenRouterTierMenu()
-        }
-
-        val btnContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            setPadding(12, 12, 12, 12)
-        }
-        
-        val sortLabel = if (openRouterSortByDate) "Sort: Newest" else "Sort: Name"
-        val btnSort = createSmallIconBtn(sortLabel, android.R.drawable.ic_menu_sort_by_size) {
-            openRouterSortByDate = !openRouterSortByDate
-            showOpenRouterModelList(freeOnly)
-        }
-        btnContainer.addView(btnSort)
-
-        val btnRefresh = createSmallIconBtn("Refresh", android.R.drawable.stat_notify_sync) {
-            fetchOpenRouterModels()
-        }
-        btnContainer.addView(btnRefresh)
-        grid.addView(btnContainer)
-
-        if (openRouterModels.isEmpty()) {
-            Toast.makeText(this, "モデルリストが空です。Refreshを実行してください。", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val filtered = if (freeOnly) openRouterModels.filter { it.isFree } else openRouterModels
-        val sorted = if (openRouterSortByDate) {
-            filtered.sortedByDescending { it.created }
-        } else {
-            filtered.sortedBy { it.name.lowercase() }
-        }
-
-        for (model in sorted) {
-            val isSelected = currentModelId == model.id
-            val priceStr = if (model.isFree) "Free" else "$${String.format("%.2f", model.pricePerMillion)}/M"
-            val contextStr = if (model.contextLength >= 1000) "${model.contextLength / 1000}k" else "${model.contextLength}"
-            
-            val label = (if (isSelected) "● " else "") + model.name
-            val details = "Context: $contextStr | Price: $priceStr"
-            
-            addModelRow(grid, label, details, android.R.drawable.star_on) {
-                prefs.edit()
-                    .putString("chat_llm_engine", "CLOUD")
-                    .putString("chat_cloud_provider", "OPENROUTER")
-                    .putString("chat_openrouter_model", model.id)
-                    .apply()
-                Toast.makeText(this, "${model.name} を選択しました。", Toast.LENGTH_SHORT).show()
-                showMainMenu()
-            }
-        }
-    }
-
-    private fun addModelRow(grid: GridLayout, label: String, details: String, iconRes: Int, onClick: () -> Unit) {
-        val inflater = LayoutInflater.from(this)
-        val itemView = inflater.inflate(R.layout.item_model_row, grid, false)
-        itemView.findViewById<TextView>(R.id.menu_label).text = label
-        itemView.findViewById<TextView>(R.id.menu_details).text = details
-        itemView.findViewById<ImageView>(R.id.menu_icon).setImageResource(iconRes)
-        itemView.setOnClickListener { onClick() }
-        grid.addView(itemView)
-    }
-
-    private fun createSmallIconBtn(text: String, iconRes: Int, onClick: () -> Unit): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER
-            setPadding(24, 16, 24, 16)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1AFFFFFF"))
-                setStroke(2, android.graphics.Color.parseColor("#33FFFFFF"))
-                cornerRadius = 12f
-            }
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(8, 0, 8, 0)
-            }
-            
-            addView(ImageView(this@ChatOverlayActivity).apply {
-                layoutParams = LinearLayout.LayoutParams(16, 16).apply { marginEnd = 8 }
-                setImageResource(iconRes)
-                setColorFilter(android.graphics.Color.WHITE)
-            })
-            
-            addView(TextView(this@ChatOverlayActivity).apply {
-                this.text = text
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 11f
-            })
-            
-            setOnClickListener { onClick() }
         }
     }
 
