@@ -27,7 +27,8 @@ class ProgressRingView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
 
     private var progress = 0f // 0.0 .. 1.0
-    private var cornerRadius = 0f // px
+    private var cornerRadiusX = 0f // px
+    private var cornerRadiusY = 0f // px
 
     private val density = resources.displayMetrics.density
 
@@ -58,10 +59,14 @@ class ProgressRingView @JvmOverloads constructor(
         }
     }
 
-    /** ボタンの角丸半径(px)を合わせるために外部から設定する。 */
-    fun setCornerRadius(px: Float) {
-        if (px != cornerRadius) {
-            cornerRadius = px
+    /**
+     * ボタンとリングの角を合わせる。リングは横方向だけボタンより広いため、
+     * X/Yを分けることで上下の密着を保ったまま角の接点を揃える。
+     */
+    fun setCornerRadii(horizontalPx: Float, verticalPx: Float) {
+        if (horizontalPx != cornerRadiusX || verticalPx != cornerRadiusY) {
+            cornerRadiusX = horizontalPx
+            cornerRadiusY = verticalPx
             invalidate()
         }
     }
@@ -74,11 +79,12 @@ class ProgressRingView @JvmOverloads constructor(
         val h = height.toFloat()
         if (w <= inset * 2f || h <= inset * 2f) return
         val rect = RectF(inset, inset, w - inset, h - inset)
-        val cr = cornerRadius.coerceIn(0f, minOf(rect.width(), rect.height()) / 2f)
+        val radiusX = cornerRadiusX.coerceIn(0f, rect.width() / 2f)
+        val radiusY = cornerRadiusY.coerceIn(0f, rect.height() / 2f)
 
         // 下中央から反時計回りの角丸四角形パスを構築
         outlinePath.reset()
-        buildRoundedRectOutline(outlinePath, rect, cr)
+        buildRoundedRectOutline(outlinePath, rect, radiusX, radiusY)
 
         // 背景トラック（全体）
         canvas.drawPath(outlinePath, trackPaint)
@@ -100,7 +106,7 @@ class ProgressRingView @JvmOverloads constructor(
      * rect の角丸四角形を「下中央」から「反時計回り」にたどるパスを構築する。
      * 角の円弧はすべて負のsweep(-90°)=画面上の反時計回りで描く。
      */
-    private fun buildRoundedRectOutline(path: Path, rect: RectF, cr: Float) {
+    private fun buildRoundedRectOutline(path: Path, rect: RectF, radiusX: Float, radiusY: Float) {
         val l = rect.left
         val t = rect.top
         val r = rect.right
@@ -110,21 +116,18 @@ class ProgressRingView @JvmOverloads constructor(
         // 下中央から出発
         path.moveTo(cx, b)
         // 下辺を右へ
-        path.lineTo(r - cr, b)
-        // 右下角：90°→0°（南→東、SEを通る）
-        path.arcTo(RectF(r - 2f * cr, b - 2f * cr, r, b), 90f, -90f, false)
+        path.lineTo(r - radiusX, b)
+        // 横長リングでもボタンへ密着できるよう、角は楕円弧で描く。
+        path.arcTo(RectF(r - 2f * radiusX, b - 2f * radiusY, r, b), 90f, -90f, false)
         // 右辺を上へ
-        path.lineTo(r, t + cr)
-        // 右上角：0°→270°（東→北、NEを通る）
-        path.arcTo(RectF(r - 2f * cr, t, r, t + 2f * cr), 0f, -90f, false)
+        path.lineTo(r, t + radiusY)
+        path.arcTo(RectF(r - 2f * radiusX, t, r, t + 2f * radiusY), 0f, -90f, false)
         // 上辺を左へ
-        path.lineTo(l + cr, t)
-        // 左上角：270°→180°（北→西、NWを通る）
-        path.arcTo(RectF(l, t, l + 2f * cr, t + 2f * cr), 270f, -90f, false)
+        path.lineTo(l + radiusX, t)
+        path.arcTo(RectF(l, t, l + 2f * radiusX, t + 2f * radiusY), 270f, -90f, false)
         // 左辺を下へ
-        path.lineTo(l, b - cr)
-        // 左下角：180°→90°（西→南、SWを通る）
-        path.arcTo(RectF(l, b - 2f * cr, l + 2f * cr, b), 180f, -90f, false)
+        path.lineTo(l, b - radiusY)
+        path.arcTo(RectF(l, b - 2f * radiusY, l + 2f * radiusX, b), 180f, -90f, false)
         // 下辺を右へ、出発点へ戻る
         path.lineTo(cx, b)
         path.close()

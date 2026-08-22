@@ -434,14 +434,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     btnGenerateConcatenatedTop.text = "中断"
                     btnGenerateConcatenatedTop.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3366"))
 
-                    // 今生成中の1枚の進行度を、中断ボタンの周りの角丸四角形バーで表現
-                    // （明るい線が時計回りに進み、100%で1周する。ボタン本体のデザインは変えない）
-                    if (!state.silent && ::generationRing.isInitialized) {
+                    // 通常画像だけでなく、プロンプトカード／プリセットカードの
+                    // サムネイル生成(silent)でも同じ角丸プログレスバーを表示する。
+                    // silent はPiPを出さないという意味であり、トップバーの進捗は隠さない。
+                    if (::generationRing.isInitialized) {
                         generationRing.visibility = View.VISIBLE
                         generationRing.setProgress(state.progress)
                         syncGenerationRing()
-                    } else if (::generationRing.isInitialized) {
-                        generationRing.visibility = View.GONE
                     }
 
                     // PiPが閉じてる時だけ復活ボタンを出すわよ。
@@ -1421,9 +1420,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     /**
-     * 進捗バー(角丸四角形)を中断ボタンの形にぴったり沿わせて重ねる。
-     * ボタンを少し囲む余白(ストローク+隙間)を取って layout_builder 上の
-     * オーバーレイとし、角丸半径もボタンに合わせる。
+     * 進捗バー(角丸四角形)を中断ボタンに重ねる。
+     * 横方向の見た目は従来のままにし、縦方向だけは線とボタンの間に隙間が
+     * 一切できない位置へ置く。ストローク中心がボタンの上下端と一致する。
      */
     private fun syncGenerationRing() {
         if (!::generationRing.isInitialized) return
@@ -1437,29 +1436,41 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val relY = btnLoc[1] - rootLoc[1]
 
         val density = resources.displayMetrics.density
-        val sw = 4f * density
-        val gap = 2f * density        // ボタンと線の隙間
-        val margin = (sw + gap).toInt() // ボタン周りの余白
+        val strokeWidth = 4f * density
+        val horizontalGap = 2f * density
+        // 横幅は従来値を維持する。
+        val horizontalMargin = (strokeWidth + horizontalGap).toInt()
+        // PathはView端からstrokeWidth/2だけ内側に描かれるため、この余白なら
+        // Pathの上下端がボタンの上下端に一致し、空白がなくなる。
+        val verticalMargin = (strokeWidth / 2f).toInt()
 
-        // 角丸半径をボタンに合わせる（MaterialButton の cornerSize、取れなければピル状）
         val matBtn = btn as? com.google.android.material.button.MaterialButton
+        // MaterialButtonのView領域にはタップしやすさ用の上下insetが含まれる。
+        // 色の付いた実際のボタン形状を基準にしないと、そのinsetが空白に見える。
+        val buttonInsetTop = matBtn?.insetTop ?: 0
+        val buttonInsetBottom = matBtn?.insetBottom ?: 0
+        val visibleButtonHeight = (btn.height - buttonInsetTop - buttonInsetBottom).coerceAtLeast(1)
         val rawCorner = matBtn?.cornerRadius?.toFloat() ?: -1f
-        val btnCorner = if (rawCorner > 0f) rawCorner else (btn.height / 2f)
-        generationRing.setCornerRadius(btnCorner + gap + sw / 2f)
+        val buttonCorner = if (rawCorner > 0f) rawCorner else (visibleButtonHeight / 2f)
+        val horizontalPathExpansion = horizontalMargin - strokeWidth / 2f
+        generationRing.setCornerRadii(
+            horizontalPx = buttonCorner + horizontalPathExpansion,
+            verticalPx = buttonCorner
+        )
 
-        val w = btn.width + 2 * margin
-        val h = btn.height + 2 * margin
-        val left = relX - margin
-        val top = relY - margin
+        val width = btn.width + 2 * horizontalMargin
+        val height = visibleButtonHeight + 2 * verticalMargin
+        val left = relX - horizontalMargin
+        val top = relY + buttonInsetTop - verticalMargin
         val lp = generationRing.layoutParams
         if (lp is FrameLayout.LayoutParams) {
-            lp.width = w
-            lp.height = h
+            lp.width = width
+            lp.height = height
             lp.leftMargin = left
             lp.topMargin = top
             generationRing.layoutParams = lp
         } else {
-            generationRing.layoutParams = FrameLayout.LayoutParams(w, h).apply {
+            generationRing.layoutParams = FrameLayout.LayoutParams(width, height).apply {
                 leftMargin = left
                 topMargin = top
             }
