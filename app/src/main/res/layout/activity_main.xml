@@ -219,199 +219,225 @@
             android:visibility="gone" />
 
         <!-- Prompt-Builder 画面 -->
-        <androidx.core.widget.NestedScrollView
+        <LinearLayout
             android:id="@+id/layout_builder"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:visibility="gone"
-            android:fillViewport="true">
+            android:orientation="vertical"
+            android:visibility="gone">
 
-            <androidx.constraintlayout.widget.ConstraintLayout
+            <!-- ★常駐: タイトル＋ボタン類 -->
+            <LinearLayout
+                android:id="@+id/ll_builder_top"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content">
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
 
-                <LinearLayout
-                    android:id="@+id/ll_builder_top"
-                    android:layout_width="match_parent"
+                <TextView
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:padding="16dp"
-                    android:gravity="center_vertical"
-                    app:layout_constraintTop_toTopOf="parent">
+                    android:layout_weight="1"
+                    android:text="Prompt-Builder"
+                    android:textColor="#D0BCFF"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    tools:ignore="HardcodedText" />
+
+                <Button
+                    android:id="@+id/btn_switch_columns"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="2列"
+                    android:textSize="12sp"
+                    android:textColor="#D0BCFF"
+                    android:layout_marginEnd="8dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:background="@drawable/bg_persona_item"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    tools:ignore="HardcodedText" />
+
+                <Button
+                    android:id="@+id/btn_save_preset"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="保存"
+                    android:textSize="12sp"
+                    android:textColor="#D0BCFF"
+                    android:layout_marginEnd="8dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:background="@drawable/bg_persona_item"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    tools:ignore="HardcodedText" />
+
+                <Button
+                    android:id="@+id/btn_restore_pip"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:padding="0dp"
+                    android:text="🖼️"
+                    android:textSize="16sp"
+                    android:background="@drawable/bg_persona_item"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:visibility="gone"
+                    tools:ignore="HardcodedText" />
+
+                <Button
+                    android:id="@+id/btn_view_generated"
+                    android:layout_width="64dp"
+                    android:layout_height="36dp"
+                    android:padding="0dp"
+                    android:text="閲覧"
+                    android:textSize="12sp"
+                    android:textColor="#D0BCFF"
+                    android:background="@drawable/bg_persona_item"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    tools:ignore="HardcodedText" />
+
+                <Button
+                    android:id="@+id/btn_generate_concatenated_top"
+                    android:layout_width="64dp"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="8dp"
+                    android:padding="0dp"
+                    android:text="生成"
+                    android:textSize="12sp"
+                    android:textColor="#E6E1E5"
+                    android:backgroundTint="#D0BCFF"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    tools:ignore="HardcodedText" />
+            </LinearLayout>
+
+            <!-- ★常駐: 生成設定 -->
+            <LinearLayout
+                android:id="@+id/layout_gen_settings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingBottom="12dp"
+                android:background="#1C1B1F">
+
+                <HorizontalScrollView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        <LinearLayout android:id="@+id/btn_setting_resolution" android:layout_width="wrap_content" android:layout_height="32dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_resolution" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="720 x 1280" android:textColor="#D0BCFF" android:textSize="11sp" android:textStyle="bold" /></LinearLayout>
+                        <LinearLayout android:id="@+id/btn_setting_steps" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_steps" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Steps: 20" android:textColor="#D0BCFF" android:textSize="11sp" /></LinearLayout>
+                        <LinearLayout android:id="@+id/btn_setting_batch" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_batch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Batch: 1" android:textColor="#D0BCFF" android:textSize="11sp" /></LinearLayout>
+                        <LinearLayout android:id="@+id/btn_setting_sampler" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_sampler" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Euler a" android:textColor="#D0BCFF" android:textSize="11sp" /></LinearLayout>
+                    </LinearLayout>
+                </HorizontalScrollView>
+
+                <ImageButton
+                    android:id="@+id/btn_reset_builder"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="8dp"
+                    android:src="@android:drawable/ic_menu_revert"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    app:tint="#CAC4D0"
+                    android:contentDescription="設定のリセット"
+                    tools:ignore="HardcodedText" />
+            </LinearLayout>
+
+            <!-- スクロール可能: プリセット＋カード -->
+            <androidx.core.widget.NestedScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fillViewport="true">
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
 
                     <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Prompt-Builder"
-                        android:textColor="#D0BCFF"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        tools:ignore="HardcodedText" />
-
-                    <Button
-                        android:id="@+id/btn_switch_columns"
+                        android:id="@+id/tv_presets_header"
                         android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:text="2列"
-                        android:textSize="12sp"
-                        android:textColor="#D0BCFF"
-                        android:layout_marginEnd="8dp"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        android:background="@drawable/bg_persona_item"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        tools:ignore="HardcodedText" />
-
-                    <Button
-                        android:id="@+id/btn_restore_pip"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:layout_marginEnd="8dp"
-                        android:padding="0dp"
-                        android:text="🖼️"
-                        android:textSize="16sp"
-                        android:background="@drawable/bg_persona_item"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:visibility="gone"
-                        tools:ignore="HardcodedText" />
-
-                    <Button
-                        android:id="@+id/btn_view_generated"
-                        android:layout_width="64dp"
-                        android:layout_height="36dp"
-                        android:padding="0dp"
-                        android:text="閲覧"
-                        android:textSize="12sp"
-                        android:textColor="#D0BCFF"
-                        android:background="@drawable/bg_persona_item"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        tools:ignore="HardcodedText" />
-
-                    <Button
-                        android:id="@+id/btn_save_preset"
-                        android:layout_width="64dp"
-                        android:layout_height="36dp"
-                        android:layout_marginStart="8dp"
-                        android:padding="0dp"
-                        android:text="保存"
-                        android:textSize="12sp"
-                        android:textColor="#D0BCFF"
-                        android:background="@drawable/bg_persona_item"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        tools:ignore="HardcodedText" />
-
-                    <Button
-                        android:id="@+id/btn_generate_concatenated_top"
-                        android:layout_width="64dp"
-                        android:layout_height="36dp"
-                        android:layout_marginStart="8dp"
-                        android:padding="0dp"
-                        android:text="生成"
-                        android:textSize="12sp"
-                        android:textColor="#E6E1E5"
-                        android:backgroundTint="#D0BCFF"
-                        style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
-                        tools:ignore="HardcodedText" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/layout_gen_settings"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingHorizontal="16dp"
-                    android:paddingBottom="12dp"
-                    android:background="#1C1B1F"
-                    app:layout_constraintTop_toBottomOf="@id/ll_builder_top">
-
-                    <HorizontalScrollView
-                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:scrollbars="none">
+                        android:text="▼ プリセット"
+                        android:textColor="#CAC4D0"
+                        android:textSize="12sp"
+                        android:paddingStart="16dp"
+                        android:layout_marginTop="8dp"
+                        app:layout_constraintTop_toTopOf="parent"
+                        app:layout_constraintStart_toStartOf="parent" />
 
-                        <LinearLayout
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
-                            <LinearLayout android:id="@+id/btn_setting_resolution" android:layout_width="wrap_content" android:layout_height="32dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_resolution" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="720 x 1280" android:textColor="#D0BCFF" android:textSize="11sp" android:textStyle="bold" /></LinearLayout>
-                            <LinearLayout android:id="@+id/btn_setting_steps" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_steps" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Steps: 20" android:textColor="#D0BCFF" android:textSize="11sp" /></LinearLayout>
-                            <LinearLayout android:id="@+id/btn_setting_batch" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_batch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Batch: 1" android:textColor="#D0BCFF" android:textSize="11sp" /></LinearLayout>
-                            <LinearLayout android:id="@+id/btn_setting_sampler" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_persona_item" android:paddingHorizontal="10dp" android:gravity="center"><TextView android:id="@+id/tv_setting_sampler" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Euler a" android:textColor="#D0BCFF" android:textSize="11sp" /></LinearLayout>
-                        </LinearLayout>
-                    </HorizontalScrollView>
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recycler_view_presets"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipToPadding="false"
+                        android:padding="8dp"
+                        app:layout_constraintTop_toBottomOf="@id/tv_presets_header" />
 
-                    <ImageButton
-                        android:id="@+id/btn_reset_builder"
-                        android:layout_width="32dp"
-                        android:layout_height="32dp"
-                        android:layout_marginStart="8dp"
-                        android:src="@android:drawable/ic_menu_revert"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        app:tint="#CAC4D0"
-                        android:contentDescription="設定のリセット"
-                        tools:ignore="HardcodedText" />
-                </LinearLayout>
+                    <TextView
+                        android:id="@+id/tv_cards_header"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="▼ プロンプトカード"
+                        android:textColor="#CAC4D0"
+                        android:textSize="12sp"
+                        android:paddingStart="16dp"
+                        android:layout_marginTop="16dp"
+                        app:layout_constraintTop_toBottomOf="@id/recycler_view_presets"
+                        app:layout_constraintStart_toStartOf="parent" />
 
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/selected_cards_strip"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:paddingHorizontal="16dp"
-                    android:clipToPadding="false"
-                    android:visibility="gone"
-                    app:layout_constraintTop_toBottomOf="@id/layout_gen_settings"
-                    app:layout_constraintStart_toStartOf="parent" />
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recycler_view_prompt_cards"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipToPadding="false"
+                        android:padding="8dp"
+                        android:paddingBottom="100dp"
+                        app:layout_constraintTop_toBottomOf="@id/tv_cards_header" />
 
-                <!-- プリセットセクション -->
+                </androidx.constraintlayout.widget.ConstraintLayout>
+            </androidx.core.widget.NestedScrollView>
+
+            <!-- ★常駐: 選択中カード横スクロール（下部） -->
+            <LinearLayout
+                android:id="@+id/layout_selected_strip"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="#1C1B1F"
+                android:padding="6dp"
+                android:elevation="8dp">
+
                 <TextView
-                    android:id="@+id/tv_presets_header"
+                    android:id="@+id/tv_selected_strip_header"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="▼ プリセット"
+                    android:text="選択中のカード（タップで解除）"
                     android:textColor="#CAC4D0"
-                    android:textSize="12sp"
-                    android:paddingStart="16dp"
-                    android:layout_marginTop="8dp"
-                    app:layout_constraintTop_toBottomOf="@id/selected_cards_strip"
-                    app:layout_constraintStart_toStartOf="parent" />
+                    android:textSize="10sp"
+                    android:paddingStart="6dp"
+                    android:paddingBottom="2dp"
+                    tools:ignore="HardcodedText" />
 
                 <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/recycler_view_presets"
+                    android:id="@+id/recycler_selected_cards"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="140dp"
                     android:clipToPadding="false"
-                    android:padding="8dp"
-                    app:layout_constraintTop_toBottomOf="@id/tv_presets_header" />
-
-                <!-- カードセクション -->
-                <TextView
-                    android:id="@+id/tv_cards_header"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="▼ プロンプトカード"
-                    android:textColor="#CAC4D0"
-                    android:textSize="12sp"
-                    android:paddingStart="16dp"
-                    android:layout_marginTop="16dp"
-                    app:layout_constraintTop_toBottomOf="@id/recycler_view_presets"
-                    app:layout_constraintStart_toStartOf="parent" />
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/recycler_view_prompt_cards"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:clipToPadding="false"
-                    android:padding="8dp"
-                    android:paddingBottom="100dp"
-                    app:layout_constraintTop_toBottomOf="@id/tv_cards_header" />
-
-            </androidx.constraintlayout.widget.ConstraintLayout>
-        </androidx.core.widget.NestedScrollView>
+                    android:overScrollMode="never"
+                    android:scrollbars="horizontal" />
+            </LinearLayout>
+        </LinearLayout>
 
         <TextView
             android:id="@+id/content_placeholder"

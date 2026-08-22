@@ -55,7 +55,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var recyclerViewPresets: RecyclerView
     private lateinit var fabAdd: FloatingActionButton
     private lateinit var fabAddPromptCategory: FloatingActionButton
-    private lateinit var selectedCardsStrip: RecyclerView
+    private lateinit var selectedStripAdapter: SelectedCardStripAdapter
+    private lateinit var recyclerSelectedCards: RecyclerView
     private lateinit var btnSavePreset: Button
 
     private lateinit var selectionActionBar: LinearLayout
@@ -460,8 +461,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         recyclerViewPresets = findViewById(R.id.recycler_view_presets)
         fabAddPromptCategory = findViewById(R.id.fab_add_prompt_category)
         btnSavePreset = findViewById(R.id.btn_save_preset)
-        selectedCardsStrip = findViewById(R.id.selected_cards_strip)
-        selectedCardsStrip.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL, false)
         
         selectionActionBar = findViewById(R.id.selection_action_bar)
         tvSelectionCount = findViewById(R.id.tv_selection_count)
@@ -715,7 +714,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val selectedCount = promptCardAdapter.getSelectedCardsWithLevels().size
                 btnGenerateConcatenatedTop.isEnabled = selectedCount > 0 || PromptCardManager.randomEnabledCategories.isNotEmpty()
                 btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
-                updateSelectedCardsStrip()
+                updateSelectedCardStrip()
             },
             onLongClick = { card ->
                 showEditPromptCardDialog(card)
@@ -732,6 +731,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 Toast.makeText(this, "『$category』のランダム選択を${if (isRandom) "オン" else "オフ"}にしました。", Toast.LENGTH_SHORT).show()
                 btnGenerateConcatenatedTop.isEnabled = promptCardAdapter.getSelectedCardsWithLevels().isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
                 btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
+                updateSelectedCardStrip()
             },
             onStartDrag = { viewHolder ->
                 promptItemTouchHelper.startDrag(viewHolder)
@@ -832,6 +832,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         })
         presetItemTouchHelper.attachToRecyclerView(recyclerViewPresets)
+        // 選択中カードの横スクロールストリップ（画面下部常駐）
+        recyclerSelectedCards = findViewById(R.id.recycler_selected_cards)
+        selectedStripAdapter = SelectedCardStripAdapter(this) { card ->
+            PromptCardManager.selectionLevels.remove(card.id)
+            PromptCardManager.saveCards(this)
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+            updateSelectedCardStrip()
+        }
+        recyclerSelectedCards.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        recyclerSelectedCards.adapter = selectedStripAdapter
+        updateSelectedCardStrip()
 
         btnSavePreset.setOnClickListener { showAddPresetDialog() }
 
@@ -1102,6 +1113,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         dialog.show()
     }
 
+    private fun updateSelectedCardStrip() {
+        val selected = promptCardAdapter.getSelectedCardsWithLevels()
+        selectedStripAdapter.update(selected)
+        if (::btnGenerateConcatenatedTop.isInitialized) {
+            val hasSelection = selected.isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
+            btnGenerateConcatenatedTop.isEnabled = hasSelection
+            btnGenerateConcatenatedTop.alpha = if (hasSelection) 1.0f else 0.5f
+        }
+    }
+
     private fun showAddPresetDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_edit_prompt_card, null)
         val etName = dialogView.findViewById<EditText>(R.id.et_card_label)
@@ -1157,6 +1178,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         saveGenSettings()
         PromptCardManager.saveCards(this)
         promptCardAdapter.updateList(PromptCardManager.promptCards)
+        updateSelectedCardStrip()
         Toast.makeText(this, "プリセット『${preset.name}』を適用しました。", Toast.LENGTH_SHORT).show()
     }
 
@@ -1701,23 +1723,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
 
 
-    private fun updateSelectedCardsStrip() {
-        if (!::selectedCardsStrip.isInitialized) return
-        val items = promptCardAdapter.getSelectedCardsWithLevels()
-        if (items.isEmpty()) {
-            selectedCardsStrip.visibility = android.view.View.GONE
-        } else {
-            selectedCardsStrip.visibility = android.view.View.VISIBLE
-        }
-        selectedCardsStrip.adapter = SelectedCardStripAdapter(items) { card ->
-            PromptCardManager.selectionLevels.remove(card.id)
-            PromptCardManager.saveCards(this)
-            promptCardAdapter.updateList(PromptCardManager.promptCards)
-            updateSelectedCardsStrip()
-            btnGenerateConcatenatedTop.isEnabled = promptCardAdapter.getSelectedCardsWithLevels().isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
-            btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
-        }
-    }
 
     private fun showGenerationErrorDialog() {
         val errorText = StabilityManager.lastErrorText()
