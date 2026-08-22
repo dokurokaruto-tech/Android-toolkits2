@@ -56,6 +56,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var fabAdd: FloatingActionButton
     private lateinit var fabAddPromptCategory: FloatingActionButton
     private lateinit var selectedStripAdapter: SelectedCardStripAdapter
+    private var isStripCollapsed = false
+    private var stripTouchStartY = 0f
     private lateinit var recyclerSelectedCards: RecyclerView
     private lateinit var btnSavePreset: Button
 
@@ -842,6 +844,28 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         recyclerSelectedCards.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         recyclerSelectedCards.adapter = selectedStripAdapter
+
+        // ストリップのスワイプ折りたたみ
+        val stripContainer = findViewById<View>(R.id.layout_selected_strip)
+        recyclerSelectedCards.addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: android.view.MotionEvent): Boolean {
+                if (isStripCollapsed) {
+                    if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN || e.actionMasked == android.view.MotionEvent.ACTION_UP) {
+                        expandStrip(stripContainer)
+                    }
+                    return true
+                }
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> stripTouchStartY = e.rawY
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        if (e.rawY - stripTouchStartY > 80f) { collapseStrip(stripContainer); return true }
+                    }
+                }
+                return false
+            }
+            override fun onTouchEvent(rv: RecyclerView, e: android.view.MotionEvent) {}
+            override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {}
+        })
         updateSelectedCardStrip()
 
         btnSavePreset.setOnClickListener { showAddPresetDialog() }
@@ -1134,6 +1158,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             btnGenerateConcatenatedTop.isEnabled = hasSelection
             btnGenerateConcatenatedTop.alpha = if (hasSelection) 1.0f else 0.5f
         }
+    }
+
+    private fun collapseStrip(strip: View) {
+        isStripCollapsed = true
+        strip.post {
+            val peek = (24 * resources.displayMetrics.density).toInt()
+            val ty = (strip.height - peek).toFloat()
+            strip.animate().translationY(ty).setDuration(250).start()
+        }
+    }
+
+    private fun expandStrip(strip: View) {
+        isStripCollapsed = false
+        strip.animate().translationY(0f).setDuration(250).start()
     }
 
     private fun showAddPresetDialog() {
