@@ -530,9 +530,10 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                 val thumbnails = intent.getStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS").orEmpty()
                 originals.forEachIndexed { index, original ->
                     images.add(
-                        ImageEntry(
-                            uri = Uri.parse(original),
-                            thumbnailUri = thumbnails.getOrNull(index)?.let(Uri::parse)
+                        GeneratedImageDraftStore.entryFor(
+                            this,
+                            Uri.parse(original),
+                            thumbnails.getOrNull(index)?.let(Uri::parse)
                         )
                     )
                 }
@@ -543,7 +544,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                     .filter { it.isFile && (it.type?.startsWith("image/") == true ||
                         it.name?.lowercase()?.let { name -> name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") } == true) }
                     .sortedByDescending { it.name }
-                    .forEach { images.add(ImageEntry(it.uri)) }
+                    .forEach { images.add(GeneratedImageDraftStore.entryFor(this, it.uri)) }
             }
         } else {
             val currentSet = DataManager.imageSetList.find { it.name == albumName }
