@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -55,7 +56,7 @@ object ProgressiveOriginalLoader {
         }
     }
 
-    private fun readBytes(url: URL): ByteArray {
+    private suspend fun readBytes(url: URL): ByteArray {
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 10_000
@@ -67,7 +68,19 @@ object ProgressiveOriginalLoader {
             if (connection.responseCode !in 200..299) {
                 throw IOException("Progressive image HTTP ${connection.responseCode}")
             }
-            return connection.inputStream.use { it.readBytes() }
+            return connection.inputStream.use { input ->
+                val output = ByteArrayOutputStream(
+                    connection.contentLength.coerceAtLeast(16 * 1024)
+                )
+                val buffer = ByteArray(32 * 1024)
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
         } finally {
             connection.disconnect()
         }

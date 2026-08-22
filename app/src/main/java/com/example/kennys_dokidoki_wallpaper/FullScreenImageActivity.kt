@@ -21,6 +21,9 @@ import com.bumptech.glide.request.target.Target
 import com.bumptech.glide.request.transition.Transition
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 class FullScreenImageActivity : AppCompatActivity() {
@@ -34,6 +37,8 @@ class FullScreenImageActivity : AppCompatActivity() {
     private var requestSerial = 0L
     private var activeTarget: CustomTarget<Drawable>? = null
     private var progressiveJob: Job? = null
+    private var prefetchJob: Job? = null
+    private var isClosing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,13 +83,30 @@ class FullScreenImageActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
-        val resultIntent = android.content.Intent().putExtra("FINAL_INDEX", currentIndex)
-        setResult(RESULT_OK, resultIntent)
-        super.onBackPressed()
+        closeViewerImmediately()
+    }
+
+    private fun closeViewerImmediately() {
+        if (isClosing) return
+        isClosing = true
+        requestSerial++
+        progressiveJob?.cancel()
+        progressiveJob = null
+        prefetchJob?.cancel()
+        prefetchJob = null
+        activeTarget?.let { Glide.with(this).clear(it) }
+        activeTarget = null
+        imageView.prepareForLoad()
+        setResult(RESULT_OK, android.content.Intent().putExtra("FINAL_INDEX", currentIndex))
+        // Calling finish directly avoids waiting on the back dispatcher while image/network
+        // callbacks are being canceled, which caused intermittent apparent freezes.
+        finish()
+        overridePendingTransition(0, 0)
     }
 
     override fun onDestroy() {
         progressiveJob?.cancel()
+        prefetchJob?.cancel()
         activeTarget?.let { Glide.with(this).clear(it) }
         super.onDestroy()
     }
@@ -112,11 +134,14 @@ class FullScreenImageActivity : AppCompatActivity() {
     }
 
     private fun showImage() {
-        if (currentIndex !in currentEntries.indices) return
+        if (isClosing || currentIndex !in currentEntries.indices) return
         val entry = currentEntries[currentIndex]
+        val viewedIndex = currentIndex
         val serial = ++requestSerial
         progressiveJob?.cancel()
         progressiveJob = null
+        prefetchJob?.cancel()
+        prefetchJob = null
         activeTarget?.let { Glide.with(this).clear(it) }
         activeTarget = null
         tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}"
@@ -165,27 +190,49 @@ class FullScreenImageActivity : AppCompatActivity() {
                         }
                     }
                 }
-                // Keep a compressed original in the 50-entry session cache for revisits.
-                lifecycleScope.launch { OriginalImageMemoryCache.prefetch(entry.uri) }
             }
-            // Current image request is started first; only then queue the following two.
-            prefetchNextTwo()
+            startStagedPrefetch(viewedIndex, entry.uri, serial)
         } else {
             displayOriginal(entry.uri, entry.uri, serial)
-            prefetchNextTwo()
         }
     }
 
-    /** Starts memory-only downloads for the next two originals while the current one is viewed. */
-    private fun prefetchNextTwo() {
-        if (currentEntries.size <= 1) return
-        val count = minOf(2, currentEntries.size - 1)
-        for (offset in 1..count) {
-            val next = currentEntries[(currentIndex + offset) % currentEntries.size].uri
-            if (ImageStoragePolicy.isRemote(next)) {
-                lifecycleScope.launch { OriginalImageMemoryCache.prefetch(next) }
+    /**
+     * Download order for index 0 of 100 images:
+     * current(0) -> pair(1, 99) -> pair(2, 98) -> stop.
+     * Turning a page cancels this bounded plan and starts the same two-ring plan there.
+     */
+    private fun startStagedPrefetch(viewedIndex: Int, currentUri: Uri, serial: Long) {
+        if (!ImageStoragePolicy.isRemote(currentUri)) return
+        prefetchJob = lifecycleScope.launch {
+            // Never start surrounding originals until the viewed original itself is complete.
+            if (OriginalImageMemoryCache.getIfPresent(currentUri) == null) {
+                try {
+                    OriginalImageMemoryCache.getOrDownload(currentUri)
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    return@launch
+                }
             }
+            if (serial != requestSerial || isClosing) return@launch
+
+            for (distance in 1..2) {
+                val candidates = surroundingUris(viewedIndex, distance)
+                coroutineScope {
+                    candidates.map { uri ->
+                        async { OriginalImageMemoryCache.prefetch(uri) }
+                    }.awaitAll()
+                }
+                if (serial != requestSerial || isClosing) return@launch
+            }
+            // Intentionally stop after two pairs. More pairs are admitted only by page turns.
         }
+    }
+
+    private fun surroundingUris(center: Int, distance: Int): List<Uri> {
+        return CircularPrefetchPlanner.ring(center, currentEntries.size, distance)
+            .map { currentEntries[it].uri }
+            .filter { ImageStoragePolicy.isRemote(it) }
     }
 
     private fun applyImageRatio(width: Int, height: Int) {

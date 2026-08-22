@@ -1,8 +1,10 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -10,6 +12,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.LinkedHashMap
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.coroutineContext
 
 /**
  * Session-only encoded original image cache. It keeps at most 50 images and never writes
@@ -56,7 +59,13 @@ object OriginalImageMemoryCache {
 
     suspend fun prefetch(uri: Uri) {
         if (!ImageStoragePolicy.isRemote(uri)) return
-        runCatching { getOrDownload(uri) }
+        try {
+            getOrDownload(uri)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // A failed speculative request must not affect the currently viewed image.
+        }
     }
 
     fun clear() {
@@ -101,6 +110,7 @@ object OriginalImageMemoryCache {
                 val buffer = ByteArray(64 * 1024)
                 var total = 0
                 while (true) {
+                    coroutineContext.ensureActive()
                     val read = input.read(buffer)
                     if (read < 0) break
                     total += read
