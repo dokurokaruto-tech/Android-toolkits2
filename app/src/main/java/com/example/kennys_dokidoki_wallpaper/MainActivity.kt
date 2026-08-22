@@ -485,10 +485,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             startActivity(intent)
         }
 
-        tvSettingResolution = findViewById(R.id.tv_setting_resolution)
-        tvSettingSteps = findViewById(R.id.tv_setting_steps)
-        tvSettingBatch = findViewById(R.id.tv_setting_batch)
-        tvSettingSampler = findViewById(R.id.tv_setting_sampler)
+        tvSettingResolution = findViewById(R.id.btn_setting_resolution)
+        tvSettingSteps = findViewById(R.id.btn_setting_steps)
+        tvSettingBatch = findViewById(R.id.btn_setting_batch)
+        tvSettingSampler = findViewById(R.id.btn_setting_sampler)
         
         updateGenSettingsUI()
 
