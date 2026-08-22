@@ -109,11 +109,11 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
         if (cardView != null) {
             when {
                 isHomeActive -> {
-                    cardView.strokeColor = android.content.res.ColorStateList.valueOf(0xFFD0BCFF.toInt())
+                    cardView.strokeColor = 0xFFD0BCFF.toInt()
                     cardView.strokeWidth = (3 * density).toInt()
                 }
                 isChatActive -> {
-                    cardView.strokeColor = android.content.res.ColorStateList.valueOf(0xFFEFB8C8.toInt())
+                    cardView.strokeColor = 0xFFEFB8C8.toInt()
                     cardView.strokeWidth = (3 * density).toInt()
                 }
                 else -> {
