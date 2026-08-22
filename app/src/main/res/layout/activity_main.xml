@@ -427,22 +427,6 @@
         android:contentDescription="新しいカテゴリーを追加"
         tools:ignore="HardcodedText" />
 
-    <!-- プリセット追加ボタンも同じ位置に配置するわね -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_add_preset"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/bottom_navigation"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:srcCompat="@android:drawable/ic_menu_save"
-        android:backgroundTint="#D0BCFF"
-        app:tint="#1C1B1F"
-        android:contentDescription="現在の状態をプリセット保存"
-        tools:ignore="HardcodedText" />
-
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_navigation"
         android:layout_width="0dp"

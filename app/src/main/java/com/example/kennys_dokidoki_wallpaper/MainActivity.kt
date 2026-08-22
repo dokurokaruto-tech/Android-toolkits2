@@ -55,7 +55,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var recyclerViewPresets: RecyclerView
     private lateinit var fabAdd: FloatingActionButton
     private lateinit var fabAddPromptCategory: FloatingActionButton
-    private lateinit var fabAddPreset: FloatingActionButton
+    private lateinit var selectedCardsStrip: RecyclerView
+    private lateinit var btnSavePreset: Button
 
     private lateinit var selectionActionBar: LinearLayout
     private lateinit var tvSelectionCount: TextView
@@ -458,7 +459,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         recyclerViewPromptCards = findViewById(R.id.recycler_view_prompt_cards)
         recyclerViewPresets = findViewById(R.id.recycler_view_presets)
         fabAddPromptCategory = findViewById(R.id.fab_add_prompt_category)
-        fabAddPreset = findViewById(R.id.fab_add_preset)
+        btnSavePreset = findViewById(R.id.btn_save_preset)
+        selectedCardsStrip = findViewById(R.id.selected_cards_strip)
+        selectedCardsStrip.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL, false)
         
         selectionActionBar = findViewById(R.id.selection_action_bar)
         tvSelectionCount = findViewById(R.id.tv_selection_count)
@@ -563,7 +566,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     allImagesActionBar.visibility = View.GONE
                     fabAdd.visibility = View.GONE
                     fabAddPromptCategory.visibility = View.GONE
-                    fabAddPreset.visibility = View.GONE
                 } else {
                     selectionActionBar.visibility = View.GONE
                     val currentNavId = findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId
@@ -714,6 +716,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 btnGenerateConcatenatedTop.isEnabled = selectedCount > 0 || PromptCardManager.randomEnabledCategories.isNotEmpty()
                 btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
             },
+                updateSelectedCardsStrip()
             onLongClick = { card ->
                 showEditPromptCardDialog(card)
             },
@@ -830,7 +833,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         })
         presetItemTouchHelper.attachToRecyclerView(recyclerViewPresets)
 
-        fabAddPreset.setOnClickListener { showAddPresetDialog() }
+        btnSavePreset.setOnClickListener { showAddPresetDialog() }
 
         btnGenerateConcatenatedTop.isEnabled = PromptCardManager.randomEnabledCategories.isNotEmpty() || promptCardAdapter.getSelectedCardsWithLevels().isNotEmpty()
         btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
@@ -965,14 +968,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun updateFabVisibility(itemId: Int) {
         fabAdd.visibility = View.GONE
         fabAddPromptCategory.visibility = View.GONE
-        fabAddPreset.visibility = View.GONE
         when (itemId) {
             R.id.nav_all_images, R.id.nav_sets, R.id.nav_tag_prompts -> {
                 fabAdd.visibility = View.VISIBLE
             }
             R.id.nav_builder -> {
                 fabAddPromptCategory.visibility = View.VISIBLE
-                fabAddPreset.visibility = View.VISIBLE
             }
         }
     }
@@ -1698,6 +1699,25 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .show()
     }
 
+
+
+    private fun updateSelectedCardsStrip() {
+        if (!::selectedCardsStrip.isInitialized) return
+        val items = promptCardAdapter.getSelectedCardsWithLevels()
+        if (items.isEmpty()) {
+            selectedCardsStrip.visibility = android.view.View.GONE
+        } else {
+            selectedCardsStrip.visibility = android.view.View.VISIBLE
+        }
+        selectedCardsStrip.adapter = SelectedCardStripAdapter(items) { card ->
+            PromptCardManager.selectionLevels.remove(card.id)
+            PromptCardManager.saveCards(this)
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+            updateSelectedCardsStrip()
+            btnGenerateConcatenatedTop.isEnabled = promptCardAdapter.getSelectedCardsWithLevels().isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
+            btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
+        }
+    }
 
     private fun showGenerationErrorDialog() {
         val errorText = StabilityManager.lastErrorText()

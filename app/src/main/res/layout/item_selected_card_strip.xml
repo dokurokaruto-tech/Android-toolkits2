@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/strip_card_border"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@drawable/bg_card_selected"
+    android:layout_marginStart="4dp"
+    android:layout_marginEnd="4dp"
+    android:layout_marginTop="2dp"
+    android:layout_marginBottom="2dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <TextView
+        android:id="@+id/strip_card_label"
+        android:layout_width="76dp"
+        android:layout_height="46dp"
+        android:gravity="center"
+        android:text="Card"
+        android:textColor="#E6E1E5"
+        android:textSize="9sp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:padding="4dp" />
+</LinearLayout>
