@@ -237,7 +237,11 @@ class PromptCardAdapter(
      * Returns selected cards with their emphasis level (1, 2, or 3)
      */
     fun getSelectedCardsWithLevels(): List<Pair<PromptCard, Int>> {
-        return cards.filter { PromptCardManager.selectionLevels.containsKey(it.id) }
+        // カテゴリーの並び順に従ってソート（カテゴリー順が変われば追従）
+        val catOrder = PromptCardManager.categoryOrder
+        return cards
+            .filter { PromptCardManager.selectionLevels.containsKey(it.id) }
+            .sortedBy { catOrder.indexOf(it.category).let { i -> if (i >= 0) i else Int.MAX_VALUE } }
             .map { it to (PromptCardManager.selectionLevels[it.id] ?: 1) }
     }
     

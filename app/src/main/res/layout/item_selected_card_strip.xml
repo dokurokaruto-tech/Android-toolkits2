@@ -5,26 +5,26 @@
     android:layout_width="80dp"
     android:layout_height="wrap_content"
     android:layout_marginEnd="6dp"
-    android:clickable="true"
-    android:focusable="true"
-    app:cardBackgroundColor="#1C1B1F"
+    app:cardBackgroundColor="#211F26"
     app:cardCornerRadius="12dp"
     app:cardElevation="0dp"
-    app:strokeColor="#49454F"
-    app:strokeWidth="1dp"
-    app:rippleColor="?attr/colorOnSurface">
+    app:strokeColor="#00F0FF"
+    app:strokeWidth="3dp"
+    app:clickable="true"
+    app:focusable="true"
+    app:rippleColor="#3300F0FF">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center_horizontal"
-        android:padding="4dp">
+        android:padding="3dp">
 
         <ImageView
             android:id="@+id/strip_card_thumbnail"
-            android:layout_width="70dp"
-            android:layout_height="100dp"
+            android:layout_width="72dp"
+            android:layout_height="104dp"
             android:scaleType="centerCrop"
             android:contentDescription="card thumbnail" />
 
@@ -32,7 +32,7 @@
             android:id="@+id/strip_card_label"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="3dp"
             android:text="label"
             android:textColor="#E6E1E5"
             android:textSize="9sp"

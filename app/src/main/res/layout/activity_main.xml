@@ -369,7 +369,7 @@
                         android:id="@+id/tv_presets_header"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="▼ プリセット"
+                        android:text="プリセット"
                         android:textColor="#CAC4D0"
                         android:textSize="12sp"
                         android:paddingStart="16dp"
@@ -389,7 +389,7 @@
                         android:id="@+id/tv_cards_header"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="▼ プロンプトカード"
+                        android:text="プロンプトカード"
                         android:textColor="#CAC4D0"
                         android:textSize="12sp"
                         android:paddingStart="16dp"
@@ -460,7 +460,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:srcCompat="@android:drawable/ic_input_add"
-        android:backgroundTint="#4A148C"
+        android:backgroundTint="#4F378B"
         app:tint="#E6E1E5" />
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -473,7 +473,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:srcCompat="@android:drawable/ic_input_add"
-        android:backgroundTint="#4A148C"
+        android:backgroundTint="#4F378B"
         app:tint="#E6E1E5"
         android:contentDescription="新しいカテゴリーを追加"
         tools:ignore="HardcodedText" />

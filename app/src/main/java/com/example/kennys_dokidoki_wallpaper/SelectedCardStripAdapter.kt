@@ -2,7 +2,6 @@ package com.example.kennys_dokidoki_wallpaper
 
 import android.content.Context
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -14,9 +13,8 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.google.android.material.card.MaterialCardView
 
 /**
- * ビルダー画面下部の「選択中カード」横スクロールストリップ。
- * Material Design 3 の MaterialCardView を使用し、選択レベル
- * (1=青/2=オレンジ/3=赤) に応じてストローク色を分ける。
+ * ビルダー画面下部の「選択中カード」横スクロールストリップ（MD3）。
+ * 選択レベル(1=青/2=オレンジ/3=赤)でMaterialCardViewのstrokeColorを動的設定。
  * タップで選択を解除する。
  */
 class SelectedCardStripAdapter(
@@ -44,14 +42,13 @@ class SelectedCardStripAdapter(
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val (cardData, level) = items[position]
-        holder.label.text = cardData.label
+        val (card, level) = items[position]
+        holder.label.text = card.label
 
-        // サムネイル
-        if (cardData.thumbnailUri != null) {
+        if (card.thumbnailUri != null) {
             Glide.with(holder.thumb)
-                .load(cardData.thumbnailUri)
-                .override(140, 200)
+                .load(card.thumbnailUri)
+                .override(144, 208)
                 .diskCacheStrategy(DiskCacheStrategy.ALL)
                 .centerCrop()
                 .into(holder.thumb)
@@ -59,18 +56,16 @@ class SelectedCardStripAdapter(
             holder.thumb.setImageResource(android.R.drawable.ic_menu_gallery)
         }
 
-        // 選択レベルに応じたストローク色（保護された3色）
-        val density = holder.itemView.context.resources.displayMetrics.density
-        val (color, width) = when (level) {
-            1 -> Color.parseColor("#00F0FF") to (3 * density).toInt()  // 青
-            2 -> Color.parseColor("#FF9800") to (3 * density).toInt()  // オレンジ
-            3 -> Color.parseColor("#E91E63") to (3 * density).toInt()  // 赤
-            else -> Color.parseColor("#49454F") to (1 * density).toInt()
+        // 選択レベルに応じて枠色を動的設定（保護された3色）
+        val color = when (level) {
+            1 -> 0xFF00F0FF.toInt() // 青
+            2 -> 0xFFFF9800.toInt() // オレンジ
+            3 -> 0xFFE91E63.toInt() // 赤
+            else -> 0xFF00F0FF.toInt()
         }
-        holder.card.setStrokeColor(ColorStateList.valueOf(color))
-        holder.card.strokeWidth = width
+        holder.card.strokeColor = ColorStateList.valueOf(color)
 
-        holder.card.setOnClickListener { onTap(cardData) }
+        holder.card.setOnClickListener { onTap(card) }
     }
 
     override fun getItemCount() = items.size
