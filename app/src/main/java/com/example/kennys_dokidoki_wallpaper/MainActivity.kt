@@ -971,6 +971,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
+        findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_add_category_inline).setOnClickListener {
+            showAddPromptCategoryDialog()
+        }
         fabAddPromptCategory.setOnClickListener {
             showAddPromptCategoryDialog()
         }
@@ -984,7 +987,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 fabAdd.visibility = View.VISIBLE
             }
             R.id.nav_builder -> {
-                fabAddPromptCategory.visibility = View.VISIBLE
+                fabAddPromptCategory.visibility = View.GONE
             }
         }
     }
