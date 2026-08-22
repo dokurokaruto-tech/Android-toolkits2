@@ -9,17 +9,32 @@ if not exist config.json (
 )
 
 where py >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-  py -3 agent.py --config config.json
-) else (
-  where python >nul 2>nul
-  if not %ERRORLEVEL% EQU 0 (
-    echo [ERROR] Python 3 was not found. Install Python 3.10 or later.
-    pause
-    exit /b 1
-  )
-  python agent.py --config config.json
+if %ERRORLEVEL% EQU 0 goto use_py
+where python >nul 2>nul
+if %ERRORLEVEL% EQU 0 goto use_python
+echo [ERROR] Python 3 was not found. Install Python 3.10 or later.
+pause
+exit /b 1
+
+:use_py
+set "PYTHON_CMD=py -3"
+goto ensure_packages
+
+:use_python
+set "PYTHON_CMD=python"
+
+:ensure_packages
+%PYTHON_CMD% -c "import PIL" >nul 2>nul
+if %ERRORLEVEL% EQU 0 goto run_agent
+echo [INFO] Installing the mobile-thumbnail component...
+%PYTHON_CMD% -m pip install -r requirements.txt
+if not %ERRORLEVEL% EQU 0 (
+  echo [ERROR] Pillow installation failed. Check the PC internet connection.
+  pause
+  exit /b 1
 )
 
+:run_agent
+%PYTHON_CMD% agent.py --config config.json
 if not %ERRORLEVEL% EQU 0 pause
 endlocal

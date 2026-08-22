@@ -5,7 +5,6 @@ import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
-import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -14,30 +13,30 @@ import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.target.Target
+import com.bumptech.glide.request.transition.Transition
+import kotlinx.coroutines.launch
 
 class FullScreenImageActivity : AppCompatActivity() {
 
     private lateinit var rootLayout: ConstraintLayout
-    private lateinit var imageView: ImageView
+    private lateinit var imageView: TopDownRevealImageView
     private lateinit var tvCounter: TextView
     private var albumName: String = ""
     private var currentIndex: Int = 0
     private val currentEntries = mutableListOf<ImageEntry>()
+    private var requestSerial = 0L
+    private var activeTarget: CustomTarget<Drawable>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_full_screen_image)
-
-        // データを最新状態にする
         DataManager.loadData(this)
 
-        // フルスクリーン設定
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).let { controller ->
             controller.hide(WindowInsetsCompat.Type.systemBars())
@@ -47,73 +46,43 @@ class FullScreenImageActivity : AppCompatActivity() {
         rootLayout = findViewById(R.id.full_screen_root)
         imageView = findViewById(R.id.full_screen_image)
         tvCounter = findViewById(R.id.tv_image_counter)
-        
         albumName = intent.getStringExtra("ALBUM_NAME") ?: ""
         currentIndex = intent.getIntExtra("START_INDEX", 0)
 
         loadImages()
         showImage()
 
-        // 画像の外（空白）も、左右のタップ領域として機能させるわ！
-        // 戻る時はシステムの「戻る」ボタンかジェスチャーを使ってね♪
-        findViewById<View>(R.id.blank_space_handler).setOnClickListener {
-            // 背景クリックも左右判定に含めるようにするわよ
-            // とりあえず、背景のどこを触ったかで判定するために、このハンドラー自体を
-            // 左右のゾーンと同じ振る舞いに変更するわ。
-        }
-        
-        // 画面全体のルートを触っても「戻る」んじゃなくて「めくる」ようにするわね
-        rootLayout.setOnClickListener { event ->
-            // ここでは座標が取れないから、下の zone_left / zone_right / blank_space_handler に任せるわ
-        }
-
         val leftClick = View.OnClickListener {
-            if (currentIndex > 0) {
-                currentIndex--
-            } else {
-                // 最初の画像で左に行こうとしたら、最後にワープ！
-                currentIndex = currentEntries.size - 1
+            if (currentEntries.isNotEmpty()) {
+                currentIndex = if (currentIndex > 0) currentIndex - 1 else currentEntries.lastIndex
+                showImage()
             }
-            showImage()
         }
-
         val rightClick = View.OnClickListener {
-            if (currentIndex < currentEntries.size - 1) {
-                currentIndex++
-            } else {
-                // 最後の画像で右に行こうとしたら、最初にワープ！
-                currentIndex = 0
+            if (currentEntries.isNotEmpty()) {
+                currentIndex = if (currentIndex < currentEntries.lastIndex) currentIndex + 1 else 0
+                showImage()
             }
-            showImage()
         }
-
-        // 画像の左半分をタップ
         findViewById<View>(R.id.zone_left).setOnClickListener(leftClick)
-        // 画像の右半分をタップ
         findViewById<View>(R.id.zone_right).setOnClickListener(rightClick)
-        
-        // 背景部分もタップ領域として活用するわ！
-        // activity_full_screen_image.xml の構造上、blank_space_handler が
-        // 背景全体を覆っているはずだから、ここでも左右判定をするわね。
-        findViewById<View>(R.id.blank_space_handler).setOnTouchListener { v, event ->
+        findViewById<View>(R.id.blank_space_handler).setOnTouchListener { view, event ->
             if (event.action == android.view.MotionEvent.ACTION_UP) {
-                val midX = v.width / 2
-                if (event.x < midX) {
-                    leftClick.onClick(v)
-                } else {
-                    rightClick.onClick(v)
-                }
+                if (event.x < view.width / 2f) leftClick.onClick(view) else rightClick.onClick(view)
             }
             true
         }
     }
 
     override fun onBackPressed() {
-        // 現在のインデックスを結果として返して、カルーセル側と同期させるわよ！
-        val resultIntent = android.content.Intent()
-        resultIntent.putExtra("FINAL_INDEX", currentIndex)
+        val resultIntent = android.content.Intent().putExtra("FINAL_INDEX", currentIndex)
         setResult(RESULT_OK, resultIntent)
         super.onBackPressed()
+    }
+
+    override fun onDestroy() {
+        activeTarget?.let { Glide.with(this).clear(it) }
+        super.onDestroy()
     }
 
     private fun loadImages() {
@@ -126,10 +95,8 @@ class FullScreenImageActivity : AppCompatActivity() {
 
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val isSortAscending = settingsPrefs.getBoolean("sort_ascending", true)
-
         if (albumName.isNotEmpty()) {
-            val set = DataManager.imageSetList.find { it.name == albumName }
-            if (set != null) {
+            DataManager.imageSetList.find { it.name == albumName }?.let { set ->
                 val baseList = set.filterImages(DataManager.allImages)
                 currentEntries.addAll(if (isSortAscending) baseList else baseList.reversed())
             }
@@ -137,54 +104,81 @@ class FullScreenImageActivity : AppCompatActivity() {
             val baseList = DataManager.allImages.toList()
             currentEntries.addAll(if (isSortAscending) baseList else baseList.reversed())
         }
-        // 画像一覧/カルーセルと同じ並びにするため、現在壁紙画像を先頭に
         DataManager.pinCurrentWallpaperFirst(this, currentEntries)
     }
 
     private fun showImage() {
-        if (currentIndex in currentEntries.indices) {
-            val entry = currentEntries[currentIndex]
-            
-            // 枚数表示を更新するわ！
-            tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}"
-            
-            Glide.with(this)
-                .load(entry.uri)
-                .override(Target.SIZE_ORIGINAL)
-                .diskCacheStrategy(
-                    ImageStoragePolicy.glideDiskCache(entry.uri, DiskCacheStrategy.RESOURCE)
-                )
-                .listener(object : RequestListener<Drawable> {
-                    override fun onLoadFailed(
-                        e: GlideException?,
-                        model: Any?,
-                        target: Target<Drawable>,
-                        isFirstResource: Boolean
-                    ): Boolean {
-                        return false
-                    }
+        if (currentIndex !in currentEntries.indices) return
+        val entry = currentEntries[currentIndex]
+        val serial = ++requestSerial
+        tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}"
+        imageView.prepareForLoad()
 
-                    override fun onResourceReady(
-                        resource: Drawable,
-                        model: Any,
-                        target: Target<Drawable>?,
-                        dataSource: DataSource,
-                        isFirstResource: Boolean
-                    ): Boolean {
-                        val width = resource.intrinsicWidth
-                        val height = resource.intrinsicHeight
-                        if (width > 0 && height > 0) {
-                            runOnUiThread {
-                                val set = ConstraintSet()
-                                set.clone(rootLayout)
-                                set.setDimensionRatio(R.id.full_screen_image, "$width:$height")
-                                set.applyTo(rootLayout)
-                            }
-                        }
-                        return false
+        if (ImageStoragePolicy.isRemote(entry.uri)) {
+            lifecycleScope.launch {
+                runCatching { OriginalImageMemoryCache.getOrDownload(entry.uri) }
+                    .onSuccess { bytes ->
+                        if (serial == requestSerial) displayOriginal(bytes, entry.uri, serial)
                     }
-                })
-                .into(imageView)
+                    .onFailure { error ->
+                        if (serial == requestSerial) {
+                            Toast.makeText(
+                                this@FullScreenImageActivity,
+                                "オリジナル画像を読み込めません: ${error.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+            }
+            // Current image request is started first; only then queue the following two.
+            prefetchNextTwo()
+        } else {
+            displayOriginal(entry.uri, entry.uri, serial)
+            prefetchNextTwo()
         }
+    }
+
+    /** Starts memory-only downloads for the next two originals while the current one is viewed. */
+    private fun prefetchNextTwo() {
+        if (currentEntries.size <= 1) return
+        val count = minOf(2, currentEntries.size - 1)
+        for (offset in 1..count) {
+            val next = currentEntries[(currentIndex + offset) % currentEntries.size].uri
+            if (ImageStoragePolicy.isRemote(next)) {
+                lifecycleScope.launch { OriginalImageMemoryCache.prefetch(next) }
+            }
+        }
+    }
+
+    private fun displayOriginal(model: Any, sourceUri: Uri, serial: Long) {
+        activeTarget?.let { Glide.with(this).clear(it) }
+        val target = object : CustomTarget<Drawable>(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL) {
+            override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
+                if (serial != requestSerial) return
+                val width = resource.intrinsicWidth
+                val height = resource.intrinsicHeight
+                if (width > 0 && height > 0) {
+                    val set = ConstraintSet()
+                    set.clone(rootLayout)
+                    set.setDimensionRatio(R.id.full_screen_image, "$width:$height")
+                    set.applyTo(rootLayout)
+                }
+                imageView.setImageDrawable(resource)
+                imageView.startTopDownReveal()
+            }
+
+            override fun onLoadCleared(placeholder: Drawable?) {
+                if (serial == requestSerial) imageView.setImageDrawable(placeholder)
+            }
+        }
+        activeTarget = target
+        Glide.with(this)
+            .load(model)
+            .override(Target.SIZE_ORIGINAL)
+            .diskCacheStrategy(
+                if (model is ByteArray) DiskCacheStrategy.NONE
+                else ImageStoragePolicy.glideDiskCache(sourceUri, DiskCacheStrategy.RESOURCE)
+            )
+            .into(target)
     }
 }

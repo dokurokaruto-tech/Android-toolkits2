@@ -14,6 +14,7 @@ class AgentConfig:
     sd_base_url: str
     output_dir: Path
     thumbnail_dir: Path
+    mobile_thumbnail_dir: Path
     database_path: Path
     api_key: str
     request_timeout_seconds: int
@@ -44,6 +45,7 @@ class AgentConfig:
             sd_base_url=str(raw.get("sd_base_url", "http://127.0.0.1:7860")).rstrip("/"),
             output_dir=resolve(str(raw.get("output_dir", "generated"))),
             thumbnail_dir=resolve(str(raw.get("thumbnail_dir", "thumbnails"))),
+            mobile_thumbnail_dir=resolve(str(raw.get("mobile_thumbnail_dir", "data/mobile-thumbnails"))),
             database_path=resolve(str(raw.get("database_path", "data/agent.sqlite3"))),
             api_key=str(raw.get("api_key", "")).strip(),
             request_timeout_seconds=max(30, timeout),

@@ -442,8 +442,16 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         if (isGeneratedViewer) {
             images.clear()
             if (isRemoteGenerated) {
-                intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS")
-                    ?.forEach { images.add(ImageEntry(Uri.parse(it))) }
+                val originals = intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS").orEmpty()
+                val thumbnails = intent.getStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS").orEmpty()
+                originals.forEachIndexed { index, original ->
+                    images.add(
+                        ImageEntry(
+                            uri = Uri.parse(original),
+                            thumbnailUri = thumbnails.getOrNull(index)?.let(Uri::parse)
+                        )
+                    )
+                }
             } else {
                 val folderUriStr = intent.getStringExtra("FOLDER_URI") ?: return
                 val folder = DocumentFile.fromTreeUri(this, Uri.parse(folderUriStr)) ?: return

@@ -88,11 +88,13 @@ class ImageAdapter(
         val entry = images[position]
         val context = holder.itemView.context
         
-        // ★ アプリ内のサムネイルは「クロップを無視」してオリジナル画像を表示する
+        // PC生成画像の一覧ではサーバー側で圧縮したモバイル用サムネイルを使う。
+        // タップ後の全画面だけ entry.uri（オリジナル）を読む。
+        val gridImageUri = entry.thumbnailUri ?: entry.uri
         Glide.with(holder.imageView.context)
-            .load(entry.uri) // displayUri ではなくオリジナル (uri) を強制使用！
+            .load(gridImageUri)
             .override(400, 711)
-            .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(entry.uri))
+            .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(gridImageUri))
             .centerCrop()
             .into(holder.imageView)
             

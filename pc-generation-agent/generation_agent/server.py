@@ -20,6 +20,7 @@ _SKIP = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/skip$")
 _STOP_AFTER_CURRENT = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/stop-after-current$")
 _PREVIEW = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/preview$")
 _FILE = re.compile(r"^/api/v1/files/([^/]+)/([^/]+)$")
+_MOBILE_THUMBNAIL = re.compile(r"^/api/v1/mobile-thumbnails/([^/]+)/([^/]+)$")
 _THUMBNAIL_FILE = re.compile(r"^/api/v1/thumbnail-files/([^/]+)/([^/]+)$")
 
 
@@ -57,6 +58,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 "sd_reachable": self.server.service.sd.health(),
                 "output_dir": str(self.server.config.output_dir),
                 "thumbnail_dir": str(self.server.config.thumbnail_dir),
+                "mobile_thumbnails": True,
             })
             return
         if not self._authorized(query):
@@ -102,6 +104,19 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             else:
                 content_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
                 self._send_file(file, content_type)
+            return
+        match = _MOBILE_THUMBNAIL.fullmatch(path)
+        if match:
+            try:
+                file = self.server.service.mobile_thumbnail_file(
+                    unquote(match.group(1)), unquote(match.group(2))
+                )
+                if not file:
+                    self._error(HTTPStatus.NOT_FOUND, "image not found")
+                else:
+                    self._send_file(file, "image/jpeg")
+            except Exception as error:
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
             return
         match = _THUMBNAIL_FILE.fullmatch(path)
         if match:

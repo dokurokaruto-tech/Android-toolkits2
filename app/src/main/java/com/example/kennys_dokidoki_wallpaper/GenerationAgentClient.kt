@@ -28,7 +28,12 @@ data class AgentGenerationRequest(
 )
 
 data class AgentGeneratedFolder(val date: String, val count: Int, val thumbnailUrl: String?)
-data class AgentGeneratedImage(val name: String, val url: String, val createdAt: String)
+data class AgentGeneratedImage(
+    val name: String,
+    val url: String,
+    val thumbnailUrl: String,
+    val createdAt: String
+)
 
 data class AgentJobState(
     val id: String,
@@ -142,6 +147,10 @@ object GenerationAgentClient {
                     AgentGeneratedImage(
                         name = item.getString("name"),
                         url = absoluteUrl(context, item.getString("url")),
+                        thumbnailUrl = absoluteUrl(
+                            context,
+                            item.optString("thumbnail_url", item.getString("url"))
+                        ),
                         createdAt = item.optString("created_at")
                     )
                 )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -23,6 +24,7 @@ class GenerationService:
         self.config = config
         self.config.output_dir.mkdir(parents=True, exist_ok=True)
         self.config.thumbnail_dir.mkdir(parents=True, exist_ok=True)
+        self.config.mobile_thumbnail_dir.mkdir(parents=True, exist_ok=True)
         self.database = JobDatabase(config.database_path)
         self.sd = StableDiffusionClient(config.sd_base_url, config.request_timeout_seconds)
         self._wake = threading.Event()
@@ -30,6 +32,7 @@ class GenerationService:
         self._worker = threading.Thread(target=self._worker_loop, name="generation-worker", daemon=True)
         self._active_job_id: str | None = None
         self._active_lock = threading.Lock()
+        self._mobile_thumbnail_lock = threading.Lock()
 
     def start(self) -> None:
         self._worker.start()
@@ -141,7 +144,7 @@ class GenerationService:
                 folders.append({
                     "date": folder.name,
                     "count": len(images),
-                    "thumbnail_url": self.file_url(folder.name, images[0].name),
+                    "thumbnail_url": self.mobile_thumbnail_url(folder.name, images[0].name),
                 })
         return sorted(folders, key=lambda item: item["date"], reverse=True)
 
@@ -158,6 +161,7 @@ class GenerationService:
                 "size": image.stat().st_size,
                 "created_at": datetime.fromtimestamp(image.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
                 "url": self.file_url(date, image.name),
+                "thumbnail_url": self.mobile_thumbnail_url(date, image.name),
             }
             for image in self._folder_images(folder)
         ]
@@ -183,6 +187,53 @@ class GenerationService:
     def file_url(date: str, name: str) -> str:
         from urllib.parse import quote
         return f"/api/v1/files/{quote(date)}/{quote(name)}"
+
+    @staticmethod
+    def mobile_thumbnail_url(date: str, name: str) -> str:
+        from urllib.parse import quote
+        return f"/api/v1/mobile-thumbnails/{quote(date)}/{quote(name)}"
+
+    def mobile_thumbnail_file(self, date: str, name: str) -> Path | None:
+        source = self.resolve_file(date, name)
+        if source is None:
+            return None
+        stat = source.stat()
+        cache_key = hashlib.sha256(
+            f"{source.resolve()}:{stat.st_mtime_ns}:{stat.st_size}:480x854:q72".encode("utf-8")
+        ).hexdigest()[:24]
+        cache_dir = self.config.mobile_thumbnail_dir / date
+        destination = cache_dir / f"{cache_key}.jpg"
+        if destination.is_file():
+            return destination
+
+        with self._mobile_thumbnail_lock:
+            if destination.is_file():
+                return destination
+            try:
+                from PIL import Image, ImageOps
+            except ImportError as error:
+                raise RuntimeError(
+                    "Pillow is required for mobile thumbnails. Run start-agent.bat again."
+                ) from error
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            temporary = destination.with_suffix(".jpg.part")
+            try:
+                with Image.open(source) as image:
+                    image = ImageOps.exif_transpose(image)
+                    image.thumbnail((480, 854), Image.Resampling.LANCZOS)
+                    if image.mode != "RGB":
+                        if "A" in image.getbands():
+                            background = Image.new("RGB", image.size, "black")
+                            background.paste(image, mask=image.getchannel("A"))
+                            image = background
+                        else:
+                            image = image.convert("RGB")
+                    image.save(temporary, "JPEG", quality=72, optimize=True, progressive=True)
+                os.replace(temporary, destination)
+            finally:
+                if temporary.exists():
+                    temporary.unlink(missing_ok=True)
+        return destination
 
     @staticmethod
     def thumbnail_file_url(date: str, name: str) -> str:

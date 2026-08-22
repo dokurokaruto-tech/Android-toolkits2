@@ -1,6 +1,7 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
 
 /**
@@ -21,5 +22,20 @@ class KennysApplication : Application() {
             .edit()
             .putBoolean("is_chat_active", false)
             .apply()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            // オリジナル画像はアプリを最小化するまでだけ保持する。
+            OriginalImageMemoryCache.clear()
+            com.bumptech.glide.Glide.get(this).clearMemory()
+        }
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        OriginalImageMemoryCache.clear()
+        com.bumptech.glide.Glide.get(this).clearMemory()
     }
 }

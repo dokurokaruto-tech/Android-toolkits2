@@ -6,7 +6,10 @@ Android Toolkits から生成依頼を受け取り、Stable Diffusion WebUI / Fo
 - Androidアプリを閉じても、指定枚数までPC側で生成を続けます。
 - 完成画像はPCの `generated/YYYY-MM-DD/`（変更可能）へ日付別に保存します。
 - Androidの既存の「閲覧」ボタンから日付フォルダ・画像を表示できます。
-- 閲覧・全画面表示・生成途中プレビューだけではAndroidへ画像を保存しません。
+- 閲覧一覧にはPCで480×854以内へ圧縮したモバイル用JPEGサムネイルを配信します。
+- サムネイルを開いた全画面表示だけオリジナル画像を配信します。
+- 全画面では次の2枚を先読みし、最大約50枚をメモリだけに保持します。アプリ最小化時に破棄します。
+- 閲覧・全画面表示・生成途中プレビューだけではAndroidへ画像を永続保存しません。
 - 「全画像に入れる」を実行した画像だけAndroid端末へダウンロードします。
 - カード用サムネイルもPCの `thumbnails/YYYY-MM-DD/` に保存します。
 - エージェントを途中で終了しても、次回起動時に未完了キューを再開します。
@@ -14,7 +17,7 @@ Android Toolkits から生成依頼を受け取り、Stable Diffusion WebUI / Fo
 ## 必要なもの
 
 1. Windows 10 / 11
-2. Python 3.10以降（追加Pythonパッケージは不要）
+2. Python 3.10以降（画像圧縮用Pillowは `start-agent.bat` が初回に自動導入）
 3. APIを有効にした Stable Diffusion WebUI / Forge
 
 A1111なら通常は `webui-user.bat` の `COMMANDLINE_ARGS` に `--api` を追加します。ForgeでもAPIが利用可能な状態にしてください。
@@ -55,6 +58,7 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
   "sd_base_url": "http://127.0.0.1:7860",
   "output_dir": "generated",
   "thumbnail_dir": "thumbnails",
+  "mobile_thumbnail_dir": "data/mobile-thumbnails",
   "database_path": "data/agent.sqlite3",
   "api_key": "",
   "request_timeout_seconds": 600,
@@ -70,6 +74,7 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
 | `sd_base_url` | 同じPCで動くSD WebUI / Forge API |
 | `output_dir` | 完成画像の保存先。絶対パスも使用可能 |
 | `thumbnail_dir` | プロンプト／プリセットカード用サムネイルのPC保存先 |
+| `mobile_thumbnail_dir` | 閲覧一覧向け圧縮サムネイルのPCキャッシュ先 |
 | `database_path` | 永続ジョブキューと状態の保存先 |
 | `api_key` | 任意の接続キー。設定した場合はAndroidにも同じ値を入力 |
 | `request_timeout_seconds` | 1枚に許可する最大通信時間 |
@@ -107,7 +112,8 @@ pc-generation-agent/
 - `POST /api/v1/jobs/{id}/skip` — 現在の画像をスキップ
 - `GET /api/v1/library/dates` — 日付フォルダ一覧
 - `GET /api/v1/library/images?date=YYYY-MM-DD` — 画像一覧
-- `GET /api/v1/files/{date}/{name}` — 完成画像
+- `GET /api/v1/files/{date}/{name}` — オリジナル完成画像
+- `GET /api/v1/mobile-thumbnails/{date}/{name}` — 閲覧一覧用の圧縮JPEG
 - `GET /api/v1/thumbnail-files/{date}/{name}` — カード用サムネイル
 - `/sdapi/v1/*` — 既存機能との互換用にSD APIへ中継
 

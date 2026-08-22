@@ -14,7 +14,7 @@
         android:background="@android:color/transparent" />
 
     <!-- 画像表示 -->
-    <ImageView
+    <com.example.kennys_dokidoki_wallpaper.TopDownRevealImageView
         android:id="@+id/full_screen_image"
         android:layout_width="0dp"
         android:layout_height="0dp"

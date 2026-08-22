@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import sys
 import tempfile
@@ -10,6 +11,7 @@ import unittest
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -18,7 +20,9 @@ from generation_agent.database import JobDatabase
 from generation_agent.server import AgentServer
 from generation_agent.service import GenerationService
 
-PNG = b"\x89PNG\r\n\x1a\n" + b"test-image-data"
+_png_buffer = io.BytesIO()
+Image.new("RGB", (1200, 1800), (120, 30, 200)).save(_png_buffer, "PNG")
+PNG = _png_buffer.getvalue()
 
 
 class FakeSdHandler(BaseHTTPRequestHandler):
@@ -71,6 +75,7 @@ class AgentIntegrationTest(unittest.TestCase):
             sd_base_url=f"http://127.0.0.1:{self.sd_server.server_port}",
             output_dir=root / "generated",
             thumbnail_dir=root / "thumbnails",
+            mobile_thumbnail_dir=root / "data" / "mobile-thumbnails",
             database_path=root / "data" / "agent.sqlite3",
             api_key="secret",
             request_timeout_seconds=30,
@@ -138,8 +143,17 @@ class AgentIntegrationTest(unittest.TestCase):
         self.assertEqual(1, len(dates["dates"]))
         date = dates["dates"][0]["date"]
         self.assertEqual(2, dates["dates"][0]["count"])
+        self.assertIn("/api/v1/mobile-thumbnails/", dates["dates"][0]["thumbnail_url"])
         _, images = self.request(f"/api/v1/library/images?date={date}")
         self.assertEqual(2, len(images["images"]))
+        self.assertIn("/api/v1/mobile-thumbnails/", images["images"][0]["thumbnail_url"])
+        thumbnail_url = images["images"][0]["thumbnail_url"] + "?token=secret"
+        with urllib.request.urlopen(self.base + thumbnail_url, timeout=5) as response:
+            self.assertEqual("image/jpeg", response.headers.get_content_type())
+            thumbnail = Image.open(io.BytesIO(response.read()))
+            self.assertLessEqual(thumbnail.width, 480)
+            self.assertLessEqual(thumbnail.height, 854)
+
         image_url = images["images"][0]["url"] + "?token=secret"
         with urllib.request.urlopen(self.base + image_url, timeout=5) as response:
             self.assertEqual("no-store", response.headers.get("Cache-Control"))
