@@ -166,9 +166,16 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        val sortItem = menu.add(0, 100, 0, "並び替え順")
-        sortItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
-        updateSortMenuIcon(sortItem)
+        if (isGeneratedViewer) {
+            // 生成画像ビューワー: 「全画像に入れる」をケバブに用意
+            val importItem = menu.add(0, 101, 0, "全画像に入れる")
+            importItem.setIcon(android.R.drawable.ic_menu_add)
+            importItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        } else {
+            val sortItem = menu.add(0, 100, 0, "並び替え順")
+            sortItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+            updateSortMenuIcon(sortItem)
+        }
         return true
     }
 
@@ -181,6 +188,13 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == 101) {
+            // 全画像に入れる：選択中があればその分、なければフォルダ内すべて
+            val selected = imageAdapter.getSelectedEntries()
+            val targets = if (imageAdapter.isSelectionMode && selected.isNotEmpty()) selected else images.toList()
+            confirmAddToAllImages(targets)
+            return true
+        }
         if (item.itemId == 100) {
             isSortAscending = !isSortAscending
             getSharedPreferences("settings", Context.MODE_PRIVATE).edit().putBoolean("sort_ascending", isSortAscending).apply()
@@ -205,8 +219,17 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
         val btnImport = findViewById<ImageButton>(R.id.btn_selection_tag)
         if (isGeneratedViewer) {
-            // 自動登録されてるなら、手動登録ボタンは不要ね！非表示にするわ！
-            btnImport.visibility = View.GONE
+            // 生成画像ビューワー: 選択した画像を「全画像に入れる」ボタンにする
+            btnImport.visibility = View.VISIBLE
+            btnImport.setImageResource(android.R.drawable.ic_menu_add)
+            btnImport.setOnClickListener {
+                val selected = imageAdapter.getSelectedEntries()
+                if (selected.isEmpty()) {
+                    Toast.makeText(this, "画像を選択してください", Toast.LENGTH_SHORT).show()
+                } else {
+                    confirmAddToAllImages(selected)
+                }
+            }
         } else {
             btnImport.setOnClickListener {
                 showBatchTagPicker()
@@ -247,6 +270,31 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                 .setNegativeButton("キャンセル", null)
                 .show()
         }
+    }
+
+    /** 選択画像（または指定画像）を全画像に追加する。重複はスキップ。 */
+    private fun confirmAddToAllImages(targets: List<ImageEntry>) {
+        if (targets.isEmpty()) {
+            Toast.makeText(this, "対象の画像がありません", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("全画像に入れる")
+            .setMessage("${targets.size}件の画像を全画像に追加しますか？")
+            .setPositiveButton("追加") { _, _ ->
+                var added = 0
+                targets.forEach { entry ->
+                    if (DataManager.allImages.none { it.uri.toString() == entry.uri.toString() }) {
+                        DataManager.allImages.add(0, entry)
+                        added++
+                    }
+                }
+                if (added > 0) DataManager.saveData(this)
+                if (imageAdapter.isSelectionMode) imageAdapter.stopSelectionMode()
+                Toast.makeText(this, "${added}件を全画像に追加しました", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
     }
 
     private fun showBatchTagPicker() {
@@ -370,7 +418,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             files.forEach { file ->
                 images.add(ImageEntry(file.uri))
             }
-            if (!isSortAscending) images.reverse()
+            // 生成フォルダは常に新しい画像が先頭（ソートトグルには依存しない）
         } else {
             val currentSet = DataManager.imageSetList.find { it.name == albumName }
             if (currentSet != null) {

@@ -303,28 +303,17 @@ object StabilityManager {
                 }
 
                 withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(file.uri)?.use { 
+                    context.contentResolver.openOutputStream(file.uri)?.use {
                         it.write(imageBytes)
                     }
-                    
+
                     // 新しい画像が保存できたら、古い画像を消すわよ！
                     if (isThumbnail && oldThumbnailUri != null) {
                         DataManager.deleteImageFile(context, oldThumbnailUri)
                     }
                 }
-                
-                withContext(Dispatchers.Main) {
-                    if (!isThumbnail) {
-                        if (DataManager.allImages.none { it.uri.toString() == file.uri.toString() }) {
-                            val entry = ImageEntry(file.uri)
-                            if (appliedTags.isNotEmpty()) {
-                                entry.tags.addAll(appliedTags)
-                            }
-                            DataManager.allImages.add(0, entry)
-                            DataManager.saveData(context)
-                        }
-                    }
-                }
+
+                // 生成した画像は自動では全画像に入れず、閲覧からの手動追加に任せる
                 return file.uri
             }
         } catch (e: Exception) {
