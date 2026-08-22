@@ -837,6 +837,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         // 選択中カードの横スクロールストリップ（画面下部常駐）
         recyclerSelectedCards = findViewById(R.id.recycler_selected_cards)
         selectedStripAdapter = SelectedCardStripAdapter(this) { card ->
+            if (isStripCollapsed) return@SelectedCardStripAdapter
             PromptCardManager.selectionLevels.remove(card.id)
             PromptCardManager.saveCards(this)
             promptCardAdapter.updateList(PromptCardManager.promptCards)
