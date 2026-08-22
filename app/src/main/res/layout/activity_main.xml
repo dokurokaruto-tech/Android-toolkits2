@@ -296,34 +296,16 @@
                             android:textColor="?attr/colorPrimary"
                             tools:ignore="HardcodedText" />
 
-                        <FrameLayout
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_generate_concatenated_top"
+                            style="@style/Widget.Material3.Button.Icon"
                             android:layout_width="wrap_content"
-                            android:layout_height="wrap_content">
-
-                            <com.google.android.material.progressindicator.CircularProgressIndicator
-                                android:id="@+id/progress_generate"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_gravity="center"
-                                app:indicatorSize="52dp"
-                                app:trackThickness="4dp"
-                                app:indicatorColor="#00F0FF"
-                                app:trackColor="#33CAC4D0"
-                                app:indicatorDirectionCircular="clockwise"
-                                android:visibility="gone" />
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btn_generate_concatenated_top"
-                                style="@style/Widget.Material3.Button.Icon"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_gravity="center"
-                                android:text="生成"
-                                android:textColor="?attr/colorOnPrimary"
-                                app:icon="@drawable/ic_md3_auto_awesome"
-                                app:iconTint="?attr/colorOnPrimary"
-                                tools:ignore="HardcodedText" />
-                        </FrameLayout>
+                            android:layout_height="wrap_content"
+                            android:text="生成"
+                            android:textColor="?attr/colorOnPrimary"
+                            app:icon="@drawable/ic_md3_auto_awesome"
+                            app:iconTint="?attr/colorOnPrimary"
+                            tools:ignore="HardcodedText" />
                     </LinearLayout>
 
                     <LinearLayout

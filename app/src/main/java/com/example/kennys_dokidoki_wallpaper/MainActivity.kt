@@ -31,9 +31,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.google.android.material.bottomnavigation.BottomNavigationView
-import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.google.android.material.progressindicator.CircularProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,6 +65,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var btnSavePreset: Button
     private lateinit var btnUndo: View
     private lateinit var btnRedo: View
+    private lateinit var generationRing: ProgressRingView
 
     // ===== プロンプトビルダーの undo/redo =====
     private data class BuilderSnapshot(
@@ -91,11 +90,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var btnSortDirection: ImageButton
     private lateinit var btnPrioritySort: ImageButton
     private lateinit var tvFilterCount: TextView
-    private lateinit var btnGenerateConcatenatedTop: MaterialButton
+    private lateinit var btnGenerateConcatenatedTop: Button
     private lateinit var btnViewGenerated: Button
     private lateinit var btnRestorePip: Button
     private lateinit var btnSwitchColumns: Button
-    private lateinit var progressGenerate: CircularProgressIndicator
 
     // Generation Settings Views
     private lateinit var tvSettingResolution: TextView
@@ -425,15 +423,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             GenerationProgressManager.state.collect { state ->
                 runOnUiThread {
                 if (state.isGenerating) {
-                    // 中止ボタン化：背景を透明にして背面の円形プログレスリングを見せる
+                    // 中止ボタン化：テキストと背景色だけ変える（アイコン・文字色など既存デザインは保持）
                     btnGenerateConcatenatedTop.text = "中止"
-                    btnGenerateConcatenatedTop.setIconResource(0)
-                    btnGenerateConcatenatedTop.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
-                    btnGenerateConcatenatedTop.setTextColor(Color.parseColor("#FF3366"))
+                    btnGenerateConcatenatedTop.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3366"))
 
-                    // 今生成中の1枚の進行度をリングで表示（0→100% で時計回りに1周）
-                    progressGenerate.visibility = View.VISIBLE
-                    progressGenerate.setProgressCompat((state.progress * 100).toInt().coerceIn(0, 100), true)
+                    // 今生成中の1枚の進行度を、中止ボタンの周りのリングで表現
+                    // （明るい線が時計回りに進み、100%で1周する。ボタン本体のデザインは変えない）
+                    if (!state.silent && ::generationRing.isInitialized) {
+                        generationRing.visibility = View.VISIBLE
+                        generationRing.setProgress(state.progress)
+                        syncGenerationRing()
+                    } else if (::generationRing.isInitialized) {
+                        generationRing.visibility = View.GONE
+                    }
 
                     // PiPが閉じてる時だけ復活ボタンを出すわよ。
                     // ただしサムネイル生成(silent)ではPiP画面がないので出さない
@@ -445,11 +447,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }
                 } else {
                     btnGenerateConcatenatedTop.text = "生成"
-                    btnGenerateConcatenatedTop.setIconResource(R.drawable.ic_md3_auto_awesome)
-                    btnGenerateConcatenatedTop.iconTint = android.content.res.ColorStateList.valueOf(Color.parseColor("#381E72"))
                     btnGenerateConcatenatedTop.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#D0BCFF"))
-                    btnGenerateConcatenatedTop.setTextColor(Color.parseColor("#381E72"))
-                    progressGenerate.visibility = View.GONE
+                    if (::generationRing.isInitialized) {
+                        generationRing.visibility = View.GONE
+                        generationRing.setProgress(0f)
+                    }
                     btnRestorePip.visibility = View.GONE
                 }
                 }
@@ -531,11 +533,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         btnViewGenerated = findViewById(R.id.btn_view_generated)
         btnRestorePip = findViewById(R.id.btn_restore_pip)
         btnSwitchColumns = findViewById(R.id.btn_switch_columns)
-        progressGenerate = findViewById(R.id.progress_generate)
-        // 確定モード（進行度を直接指定）。0→100%で時計回りに1周する。
-        progressGenerate.isIndeterminate = false
-        progressGenerate.max = 100
-        
+
         btnViewGenerated.setOnClickListener { showGeneratedImagesFolderPicker() }
         btnRestorePip.setOnClickListener {
             val intent = Intent(this, GenerationProgressActivity::class.java)
@@ -945,6 +943,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         builderHistory.add(captureBuilderSnapshot())
         builderHistoryCursor = 0
         updateUndoRedoButtons()
+
+        // 中止ボタンの周りに進捗リングを重ねる（ボタン本体のデザインは変えない）
+        generationRing = ProgressRingView(this).apply {
+            isClickable = false
+            isFocusable = false
+            visibility = View.GONE
+        }
+        (layoutBuilder as FrameLayout).addView(generationRing)
+        // ボタン位置が変わったら（テキスト変化/PiP復活ボタンの出し入れ等）リングも追従
+        btnGenerateConcatenatedTop.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            syncGenerationRing()
+        }
+        btnGenerateConcatenatedTop.post { syncGenerationRing() }
 
         btnSavePreset.setOnClickListener { showAddPresetDialog() }
 
@@ -1392,6 +1403,40 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         btnUndo.alpha = if (canUndo) 1f else 0.35f
         btnRedo.isEnabled = canRedo
         btnRedo.alpha = if (canRedo) 1f else 0.35f
+    }
+
+    /**
+     * 進捗リングを中止ボタンの真ん中に重ねて配置する。
+     * ボタンを囲めるよう一辺＝ボタンサイズ+余白 の正方形にし、
+     * layout_builder(FrameLayout)上のオーバーレイとして追従させる。
+     */
+    private fun syncGenerationRing() {
+        if (!::generationRing.isInitialized) return
+        val btn = btnGenerateConcatenatedTop
+        if (btn.width == 0 || btn.height == 0) return
+        val btnLoc = IntArray(2)
+        val rootLoc = IntArray(2)
+        btn.getLocationInWindow(btnLoc)
+        layoutBuilder.getLocationInWindow(rootLoc)
+        val relX = btnLoc[0] - rootLoc[0]
+        val relY = btnLoc[1] - rootLoc[1]
+        val density = resources.displayMetrics.density
+        val size = (maxOf(btn.width, btn.height) + (12 * density)).toInt()
+        val left = relX + btn.width / 2 - size / 2
+        val top = relY + btn.height / 2 - size / 2
+        val lp = generationRing.layoutParams
+        if (lp is FrameLayout.LayoutParams) {
+            lp.width = size
+            lp.height = size
+            lp.leftMargin = left
+            lp.topMargin = top
+            generationRing.layoutParams = lp
+        } else {
+            generationRing.layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                leftMargin = left
+                topMargin = top
+            }
+        }
     }
 
     private fun showAddPresetDialog() {
