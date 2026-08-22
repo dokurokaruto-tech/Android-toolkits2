@@ -32,6 +32,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.progressindicator.CircularProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,6 +94,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var btnViewGenerated: Button
     private lateinit var btnRestorePip: Button
     private lateinit var btnSwitchColumns: Button
+    private lateinit var progressGenerate: CircularProgressIndicator
 
     // Generation Settings Views
     private lateinit var tvSettingResolution: TextView
@@ -422,8 +424,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             GenerationProgressManager.state.collect { state ->
                 runOnUiThread {
                 if (state.isGenerating) {
+                    // 中止ボタン化：背景を透明にして背面の円形プログレスリングを見せる
                     btnGenerateConcatenatedTop.text = "中止"
-                    btnGenerateConcatenatedTop.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3366")))
+                    btnGenerateConcatenatedTop.setIconResource(0)
+                    btnGenerateConcatenatedTop.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+                    btnGenerateConcatenatedTop.setTextColor(Color.parseColor("#FF3366"))
+
+                    // 今生成中の1枚の進行度をリングで表示（0→100% で時計回りに1周）
+                    progressGenerate.visibility = View.VISIBLE
+                    progressGenerate.setProgressCompat((state.progress * 100).toInt().coerceIn(0, 100), true)
 
                     // PiPが閉じてる時だけ復活ボタンを出すわよ。
                     // ただしサムネイル生成(silent)ではPiP画面がないので出さない
@@ -434,10 +443,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         btnRestorePip.visibility = View.GONE
                     }
                 } else {
-                        btnGenerateConcatenatedTop.text = "生成"
-                        btnGenerateConcatenatedTop.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#D0BCFF")))
-                        btnRestorePip.visibility = View.GONE
-                    }
+                    btnGenerateConcatenatedTop.text = "生成"
+                    btnGenerateConcatenatedTop.setIconResource(R.drawable.ic_md3_auto_awesome)
+                    btnGenerateConcatenatedTop.iconTint = android.content.res.ColorStateList.valueOf(Color.parseColor("#381E72"))
+                    btnGenerateConcatenatedTop.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#D0BCFF"))
+                    btnGenerateConcatenatedTop.setTextColor(Color.parseColor("#381E72"))
+                    progressGenerate.visibility = View.GONE
+                    btnRestorePip.visibility = View.GONE
+                }
                 }
             }
         }
@@ -517,6 +530,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         btnViewGenerated = findViewById(R.id.btn_view_generated)
         btnRestorePip = findViewById(R.id.btn_restore_pip)
         btnSwitchColumns = findViewById(R.id.btn_switch_columns)
+        progressGenerate = findViewById(R.id.progress_generate)
+        // 確定モード（進行度を直接指定）。0→100%で時計回りに1周する。
+        progressGenerate.isIndeterminate = false
+        progressGenerate.max = 100
         
         btnViewGenerated.setOnClickListener { showGeneratedImagesFolderPicker() }
         btnRestorePip.setOnClickListener {
