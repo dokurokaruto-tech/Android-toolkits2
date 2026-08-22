@@ -101,6 +101,27 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
         holder.badgeHomescreen.visibility = if (canShowHomescreenBadge && set.name == activeAlbumHomescreen) View.VISIBLE else View.GONE
         holder.badgeChat.visibility = if (canShowChatBadge && set.name == activeAlbumChat) View.VISIBLE else View.GONE
 
+        // 選択中のホーム/チャットセットにMD3のわかりやすい外枠を付ける
+        val isHomeActive = canShowHomescreenBadge && set.name == activeAlbumHomescreen
+        val isChatActive = canShowChatBadge && set.name == activeAlbumChat
+        val cardView = holder.card as? com.google.android.material.card.MaterialCardView
+        val density = holder.itemView.context.resources.displayMetrics.density
+        if (cardView != null) {
+            when {
+                isHomeActive -> {
+                    cardView.strokeColor = android.content.res.ColorStateList.valueOf(0xFFD0BCFF.toInt())
+                    cardView.strokeWidth = (3 * density).toInt()
+                }
+                isChatActive -> {
+                    cardView.strokeColor = android.content.res.ColorStateList.valueOf(0xFFEFB8C8.toInt())
+                    cardView.strokeWidth = (3 * density).toInt()
+                }
+                else -> {
+                    cardView.strokeWidth = 0
+                }
+            }
+        }
+
         if (set.isActive) {
             holder.activeIcon.setImageResource(R.drawable.ic_cyber_check)
         } else {
