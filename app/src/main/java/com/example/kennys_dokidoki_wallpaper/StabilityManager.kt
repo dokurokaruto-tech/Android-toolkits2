@@ -131,7 +131,6 @@ object StabilityManager {
                     // Forge のビルトイン拡張が process_before_every_sampling で
                     // script_args が空(0個)のまま渡されて unpack エラーになるのを防ぐため、
                     // 全スクリプトを「無効化した引数」付きで明示的に渡す。
-                    put("alwayson_scripts", buildForgeAlwaysOnScripts())
                 }
 
                 OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
@@ -159,7 +158,7 @@ object StabilityManager {
                     }
                     true
                 } else {
-                    val errBody = try { conn.errorStream?.bufferedReader()?.use { it.readText() }?.take(300) } catch (_: Exception) { null }
+                    val errBody = try { conn.errorStream?.bufferedReader()?.use { it.readText() }?.take(2000) } catch (_: Exception) { null }
                     reportError(E_HTTP_ERROR, "HTTP $responseCode ${errBody ?: ""}")
                     false
                 }
@@ -179,33 +178,6 @@ object StabilityManager {
         }
     }
 
-    /**
-     * Forge のビルトイン常駐スクリプト（dynamic_thresholding / FreeU / Kohya HRFix /
-     * Latent Modifier / MultiDiffusion / Perturbed Attention / SAG / StyleAlign）は、
-     * API リクエストに引数が無いと process_before_every_sampling で
-     * "not enough values to unpack (expected N, got 0)" を吐く。
-     * 全スクリプトを無効化したデフォルト引数を alwayson_scripts で渡してエラーを抑える。
-     * 出力には影響しない（すべて enabled=false / 強度0）。
-     * ※スクリプト名は Forge バージョン依存。合わなければ効果なしだが害もない。
-     */
-    private fun buildForgeAlwaysOnScripts(): JSONObject {
-        fun args(vararg values: Any): JSONObject {
-            val arr = JSONArray()
-            values.forEach { arr.put(it) }
-            return JSONObject().put("args", arr)
-        }
-        val o = JSONObject()
-        // 先頭 = enabled。false で各スクリプトは何もしない。要素数は unpack 期待数に合わせる。
-        o.put("Dynamic Thresholding (CFG Scale Fix)", args(false, 7, 100, "Constant", 0, "Linear", 0, 0, "Linear", 0, "Linear", 0))
-        o.put("FreeU", args(false, 1.2, 1.4, 0.9, 0.2, 0.0, 1.0))
-        o.put("Kohya HRFix", args(false, 3, 2.0, 0.0, 1.0, false, "Bicubic", "Bilinear"))
-        o.put("Latent Modifier", args(false, 0, "", 0, "", 0, 0, "", 0, 0, "", "", 0, 0, 0, 0, "", 0, 0, false, ""))
-        o.put("MultiDiffusion", args(false, "MultiDiffusion", 960, 960, 0.1, 1))
-        o.put("Perturbed Attention", args(false, 0.5, 1.0, 0, 1))
-        o.put("Self-Attention Guidance", args(false, 1.0, 2.0, 0.5))
-        o.put("StyleAlign", args(0.0, 0.0))
-        return o
-    }
 
     private suspend fun pollProgress(context: Context, baseUrl: String) {
         try {

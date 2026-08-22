@@ -942,7 +942,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     else {
                         // 中止されたなら失敗メッセージは出さないわ
                         if (!GenerationProgressManager.shouldInterrupt && !GenerationProgressManager.shouldStopGracefully) {
-                            Toast.makeText(this@MainActivity, "${i}枚目: " + StabilityManager.lastErrorText(), Toast.LENGTH_SHORT).show()
+                            val _et = "${i}枚目: " + StabilityManager.lastErrorText(); val _cb = getSystemService(android.content.ClipboardManager::class.java); _cb?.setPrimaryClip(android.content.ClipData.newPlainText("gen_error", _et))
                         }
                     }
 
@@ -1054,7 +1054,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 if (success) {
                     Toast.makeText(this@MainActivity, "プリセットのサムネイル生成が完了しました。", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this@MainActivity, "生成失敗: " + StabilityManager.lastErrorText(), Toast.LENGTH_SHORT).show()
+                    showGenerationErrorDialog()
                 }
             }
         }
@@ -1696,6 +1696,29 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             .setNegativeButton("キャンセル", null)
             .show()
+    }
+
+
+    private fun showGenerationErrorDialog() {
+        val errorText = StabilityManager.lastErrorText()
+        // 自動でクリップボードにもコピー
+        val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+        clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("gen_error", errorText))
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("画像生成エラー")
+            .setMessage(errorText)
+            .setPositiveButton("閉じる", null)
+            .setNegativeButton("コピー") { _, _ ->
+                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("gen_error", errorText))
+                Toast.makeText(this, "エラー文をコピーしました", Toast.LENGTH_SHORT).show()
+            }
+            .create()
+        dialog.show()
+        // メッセージ部分をスクロール＆選択可能に
+        dialog.findViewById<android.widget.TextView>(android.R.id.message)?.apply {
+            setTextIsSelectable(true)
+            textSize = 12f
+        }
     }
 
     override fun onBackPressed() {
