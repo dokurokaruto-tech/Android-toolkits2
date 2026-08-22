@@ -14,11 +14,12 @@ import com.google.android.material.card.MaterialCardView
 /**
  * ビルダー画面下部の「選択中カード」横スクロールストリップ（MD3）。
  * 選択レベル(1=青/2=オレンジ/3=赤)でMaterialCardViewのstrokeColorを動的設定。
- * タップで選択を解除する。
+ * タップで選択解除、長押しで編集ダイアログを開く。
  */
 class SelectedCardStripAdapter(
     private val context: Context,
-    private val onTap: (PromptCard) -> Unit
+    private val onTap: (PromptCard) -> Unit,
+    private val onLongClick: (PromptCard) -> Unit
 ) : RecyclerView.Adapter<SelectedCardStripAdapter.VH>() {
 
     private var items: List<Pair<PromptCard, Int>> = emptyList()
@@ -65,6 +66,10 @@ class SelectedCardStripAdapter(
         holder.card.strokeColor = color
 
         holder.card.setOnClickListener { onTap(card) }
+        holder.card.setOnLongClickListener {
+            onLongClick(card)
+            true
+        }
     }
 
     override fun getItemCount() = items.size

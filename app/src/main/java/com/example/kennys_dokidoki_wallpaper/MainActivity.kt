@@ -836,13 +836,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         presetItemTouchHelper.attachToRecyclerView(recyclerViewPresets)
         // 選択中カードの横スクロールストリップ（画面下部常駐）
         recyclerSelectedCards = findViewById(R.id.recycler_selected_cards)
-        selectedStripAdapter = SelectedCardStripAdapter(this) { card ->
+        selectedStripAdapter = SelectedCardStripAdapter(this, { card ->
             if (isStripCollapsed) return@SelectedCardStripAdapter
             PromptCardManager.selectionLevels.remove(card.id)
             PromptCardManager.saveCards(this)
             promptCardAdapter.updateList(PromptCardManager.promptCards)
             updateSelectedCardStrip()
-        }
+        }, { card ->
+            showEditPromptCardDialog(card)
+        })
         recyclerSelectedCards.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         recyclerSelectedCards.adapter = selectedStripAdapter
 
