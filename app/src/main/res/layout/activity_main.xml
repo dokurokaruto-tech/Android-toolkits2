@@ -131,7 +131,6 @@
                 android:textColor="#D0BCFF"
                 android:textSize="12sp"
                 android:textAllCaps="false"
-                android:background="@drawable/bg_persona_item"
                 style="@style/Widget.Material3.Button.TextButton"
                 tools:ignore="HardcodedText" />
 
@@ -256,7 +255,6 @@
                     android:layout_marginEnd="8dp"
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
-                    android:background="@drawable/bg_persona_item"
                     style="@style/Widget.Material3.Button.TextButton"
                     tools:ignore="HardcodedText" />
 
@@ -265,12 +263,13 @@
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
                     android:text="保存"
+                    app:icon="@drawable/ic_md3_save"
+                    app:iconSize="16dp"
                     android:textSize="12sp"
                     android:textColor="#D0BCFF"
                     android:layout_marginEnd="8dp"
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
-                    android:background="@drawable/bg_persona_item"
                     style="@style/Widget.Material3.Button.TextButton"
                     tools:ignore="HardcodedText" />
 
@@ -282,20 +281,20 @@
                     android:padding="0dp"
                     android:text="🖼️"
                     android:textSize="16sp"
-                    android:background="@drawable/bg_persona_item"
                     style="@style/Widget.Material3.Button.TextButton"
                     android:visibility="gone"
                     tools:ignore="HardcodedText" />
 
                 <Button
                     android:id="@+id/btn_view_generated"
-                    android:layout_width="64dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="36dp"
+                    app:icon="@drawable/ic_md3_photo_library"
+                    app:iconSize="16dp"
                     android:padding="0dp"
                     android:text="閲覧"
                     android:textSize="12sp"
                     android:textColor="#D0BCFF"
-                    android:background="@drawable/bg_persona_item"
                     style="@style/Widget.Material3.Button.TextButton"
                     tools:ignore="HardcodedText" />
 
@@ -308,7 +307,8 @@
                     android:text="生成"
                     android:textSize="12sp"
                     android:textColor="#E6E1E5"
-                    android:backgroundTint="#D0BCFF"
+                    app:icon="@drawable/ic_md3_auto_awesome"
+                    app:iconSize="16dp"
                     style="@style/Widget.Material3.Button"
                     tools:ignore="HardcodedText" />
             </LinearLayout>
