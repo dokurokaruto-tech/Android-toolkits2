@@ -2895,12 +2895,4 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         tvFilterCount.text = "${pinned.size} 枚"
         updateActiveImageHighlight()
     }
-
-
-}
-xt = "${pinned.size} 枚"
-        updateActiveImageHighlight()
-    }
-
-
 }

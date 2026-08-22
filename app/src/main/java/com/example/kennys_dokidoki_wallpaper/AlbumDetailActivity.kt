@@ -574,6 +574,20 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         }
     }
 
+    private fun forgetVirtualUri(uriStr: String) {
+        val uris = intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS") ?: return
+        val thumbnails = intent.getStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS")
+        val index = uris.indexOf(uriStr)
+        if (index != -1) {
+            uris.removeAt(index)
+            thumbnails?.let {
+                if (index < it.size) it.removeAt(index)
+            }
+            intent.putStringArrayListExtra("VIRTUAL_ALBUM_URIS", uris)
+            thumbnails?.let { intent.putStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS", it) }
+        }
+    }
+
     private fun closeGeneratedAlbum() {
         finish()
         if (intent.getBooleanExtra("FROM_GENERATED_FOLDER_PICKER", false)) {
