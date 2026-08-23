@@ -107,12 +107,7 @@ object GeneratedImageTagBinding {
                 }
             }
             snapshot.randomEnabledCategories.forEach { category ->
-                var pool = snapshot.roster.filter {
-                    it.category.trim() == category.trim() && snapshot.randomizerIncludedIds.contains(it.id)
-                }
-                if (pool.isEmpty()) {
-                    pool = snapshot.roster.filter { it.category.trim() == category.trim() }
-                }
+                val pool = categoryPool(snapshot, category, chosen)
                 if (pool.isNotEmpty()) {
                     val card = pool[pickIndex(pool.size).coerceIn(0, pool.lastIndex)]
                     if (chosen.none { it.first.id == card.id }) {
@@ -138,15 +133,40 @@ object GeneratedImageTagBinding {
                 PreparedImage(
                     prompt = prompt,
                     negativePrompt = negative,
-                    tags = collect(chosen.map { it.first.appliedTags }).toList(),
+                    tags = tagsFromChosen(chosen),
                     cardStates = chosen.associate { it.first.id to it.second },
                     randomPickedIds = randomPicked,
-                    randomEnabledCategories = snapshot.randomEnabledCategories
+                    randomEnabledCategories = snapshot.randomEnabledCategories,
+                    width = snapshot.width,
+                    height = snapshot.height,
+                    steps = snapshot.steps,
+                    sampler = snapshot.sampler
                 )
             )
         }
         return prepared
     }
+
+    /**
+     * 個別ランダマイザーで外れたカードは、カテゴリ抽選の穴埋めにも使わない。
+     * そうしないとプロンプトには出ていないのにタグだけ乗る。
+     */
+    fun categoryPool(
+        snapshot: Snapshot,
+        category: String,
+        alreadyChosen: List<Pair<FrozenCard, Int>>
+    ): List<FrozenCard> {
+        val chosenIds = alreadyChosen.map { it.first.id }.toSet()
+        val inCategory = snapshot.roster.filter { it.category.trim() == category.trim() }
+        val included = inCategory.filter { snapshot.randomizerIncludedIds.contains(it.id) }
+        val base = if (included.isNotEmpty()) included else inCategory
+        return base.filter { card ->
+            !card.useIndividualRandomizer || card.id in chosenIds
+        }
+    }
+
+    fun tagsFromChosen(chosen: List<Pair<FrozenCard, Int>>): List<String> =
+        collect(chosen.map { it.first.appliedTags }).toList()
 
     fun taskIndexFromUrl(url: String): Int? {
         val match = TASK_INDEX.find(url.substringBefore('?').substringBefore('#')) ?: return null

@@ -90,6 +90,39 @@ class GeneratedImageTagBindingTest {
     }
 
     @Test
+    fun `failed individual randomizer cards do not leak tags through category randomizer`() {
+        val base = frozen("c1", "キャラ", "girl", setOf("金髪"))
+        val extra = frozen("c2", "髪", "fox ears", setOf("狐耳"), individual = true, probability = 80)
+        val snapshot = GeneratedImageTagBinding.Snapshot(
+            selected = listOf(base to 1),
+            roster = listOf(base, extra),
+            randomEnabledCategories = setOf("髪"),
+            randomizerIncludedIds = emptySet(),
+            width = 720,
+            height = 1280,
+            steps = 20,
+            sampler = "Euler a",
+            batchCount = 1
+        )
+        val skipped = GeneratedImageTagBinding.buildPreparedImages(
+            snapshot,
+            chance = { 90 },
+            pickIndex = { 0 }
+        )
+        assertEquals(listOf("金髪"), skipped.single().tags)
+        assertEquals(mapOf("c1" to 1), skipped.single().cardStates)
+        assertTrue(skipped.single().prompt.contains("girl"))
+        assertTrue(!skipped.single().prompt.contains("fox ears"))
+        assertTrue(
+            GeneratedImageTagBinding.categoryPool(
+                snapshot,
+                "髪",
+                listOf(base to 1)
+            ).isEmpty()
+        )
+    }
+
+    @Test
     fun `category randomizer records the pick separately from explicit cards`() {
         val base = frozen("c1", "キャラ", "girl", setOf("金髪"))
         val hairA = frozen("h1", "髪", "long hair", setOf("ロング"))
