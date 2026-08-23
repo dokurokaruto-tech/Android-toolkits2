@@ -569,8 +569,15 @@ class ImageTagEditorActivity : AppCompatActivity() {
         }
         aiConfigLayout.addView(tvStatus)
 
-        // ボタンの直前に設定をねじ込むわ
-        (btnAi?.parent as? LinearLayout)?.addView(aiConfigLayout, (btnAi.parent as LinearLayout).indexOfChild(btnAi))
+        // 文章欄の直前に設定をねじ込む。AIボタンはラベル横にある。
+        val promptField = dialogView.findViewById<View>(R.id.et_prompt_input)
+        val fieldLayout = promptField?.parent as? View
+        val column = fieldLayout?.parent as? LinearLayout
+        if (column != null && fieldLayout != null) {
+            column.addView(aiConfigLayout, column.indexOfChild(fieldLayout))
+        } else {
+            (btnAi?.parent as? LinearLayout)?.addView(aiConfigLayout, (btnAi.parent as LinearLayout).indexOfChild(btnAi))
+        }
 
         tvDialogTitle?.text = "画像個別プロンプト"
         etDesc?.setText(TavernCardParser.cleanDescriptionText(entry.description))

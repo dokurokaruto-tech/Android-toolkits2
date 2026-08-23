@@ -1,5 +1,7 @@
 package com.example.kennys_dokidoki_wallpaper
 
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -13,6 +15,8 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -34,7 +38,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.OutputStreamWriter
@@ -51,11 +54,14 @@ class TagPromptEditorActivity : AppCompatActivity() {
     private lateinit var tvCounter: TextView
     private lateinit var tvLocalCardStatus: TextView
     private lateinit var btnLinkLocalCard: Button
+    private lateinit var btnAiGenerate: Button
     private lateinit var originalTag: String
     
     private val currentImpliedTags = mutableSetOf<String>()
     
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
+    private var generateJob: Job? = null
+    private var generateMotion: AnimatorSet? = null
 
     private var hybridDialog: AppCompatDialog? = null
     private var ivDialogImage: ImageView? = null
@@ -172,7 +178,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
         btnLinkLocalCard = findViewById(R.id.btn_link_local_card)
         val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar_tag_editor)
         val btnEditImplied = findViewById<Button>(R.id.btn_edit_implied_tags)
-        val btnGenerate = findViewById<Button>(R.id.btn_ai_generate)
+        btnAiGenerate = findViewById(R.id.btn_ai_generate)
         val btnMigrate = findViewById<Button>(R.id.btn_migrate)
         val btnDelete = findViewById<Button>(R.id.btn_delete)
         val btnSave = findViewById<Button>(R.id.btn_save)
@@ -233,7 +239,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
 
         btnEditImplied.setOnClickListener { showImpliedTagsPickerDialog() }
         btnLinkLocalCard.setOnClickListener { showLocalCardPickerDialog() }
-        btnGenerate.setOnClickListener { showHybridGenerateDialog() }
+        btnAiGenerate.setOnClickListener { showHybridGenerateDialog() }
         btnSave.setOnClickListener {
             val newTagName = etTagName.text.toString().trim()
             val newPrompt = etPromptInput.text.toString().trim()
@@ -501,6 +507,12 @@ class TagPromptEditorActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        stopGenerateMotion()
+        generateJob?.cancel()
+        super.onDestroy()
+    }
+
     private fun showProviderSelectionDialog(onUpdated: () -> Unit) {
         val options = arrayOf("xAI (Grok) - 高速・高精度", "OpenRouter - 多彩なモデル")
         AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
@@ -615,104 +627,172 @@ class TagPromptEditorActivity : AppCompatActivity() {
     }
 
     private fun generatePromptHybrid(instruction: String, useTagName: Boolean, useExisting: Boolean, imageUri: Uri?, systemPrompt: String) {
+        if (generateJob?.isActive == true) return
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val provider = prefs.getString("chat_cloud_provider", "GROK") ?: "GROK"
-        
-        Toast.makeText(this, "AIが考えてるわよ...", Toast.LENGTH_SHORT).show()
-        coroutineScope.launch(Dispatchers.IO) {
+        val originalPrompt = etPromptInput.text.toString()
+        val userText = TagPromptStreamPolicy.userMessage(
+            etTagName.text.toString(),
+            instruction,
+            originalPrompt,
+            useTagName,
+            useExisting
+        )
+        startGenerateMotion()
+        generateJob = coroutineScope.launch(Dispatchers.IO) {
+            var failed = true
             try {
-                var reply = ""
-                if (provider == "OPENROUTER") {
-                    val apiKey = OpenRouterManager.getActiveApiKey(this@TagPromptEditorActivity)
-                    if (apiKey == null) {
-                        withContext(Dispatchers.Main) { Toast.makeText(this@TagPromptEditorActivity, "OpenRouterのAPIキーがないわよ！", Toast.LENGTH_SHORT).show() }
-                        return@launch
-                    }
-                    val modelName = prefs.getString("chat_openrouter_model", "deepseek/deepseek-v4-flash:free") ?: "deepseek/deepseek-v4-flash:free"
-                    
-                    val url = URL("https://openrouter.ai/api/v1/chat/completions")
-                    val conn = (url.openConnection() as HttpURLConnection).apply {
-                        requestMethod = "POST"
-                        setRequestProperty("Authorization", "Bearer $apiKey")
-                        setRequestProperty("Content-Type", "application/json")
-                        doOutput = true
-                    }
-                    
-                    val userText = "ターゲット: ${if (useTagName) etTagName.text.toString() else ""}\n指示: $instruction\n${if (useExisting) "既存設定: " + etPromptInput.text.toString() else ""}"
-                    
-                    val messages = JSONArray().apply {
-                        put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-                        put(JSONObject().apply { put("role", "user"); put("content", userText) })
-                    }
-                    
-                    val requestBody = JSONObject().apply {
-                        put("model", modelName)
-                        put("messages", messages)
-                    }
-                    
-                    OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(requestBody.toString()) }
-                    
-                    if (conn.responseCode == 200) {
-                        val response = conn.inputStream.bufferedReader().use { it.readText() }
-                        reply = JSONObject(response).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
-                        OpenRouterManager.incrementUsage(this@TagPromptEditorActivity, apiKey)
-                    } else {
-                        Log.e("TagEditor", "OpenRouter Error: ${conn.responseCode} ${conn.errorStream?.bufferedReader()?.use { it.readText() }}")
-                    }
-                    conn.disconnect()
-                } else {
-                    val baseUrl = prefs.getString("remote_server_url", "") ?: ""
-                    var xaiApiKey = prefs.getString("xai_api_key", "")?.trim() ?: ""
-                    if (xaiApiKey.isNotEmpty() && !xaiApiKey.startsWith("xai-")) xaiApiKey = "xai-$xaiApiKey"
-                    
-                    if (baseUrl.isNotEmpty()) {
-                        val url = URL("$baseUrl/api/generate-prompt")
-                        val conn = (url.openConnection() as HttpURLConnection).apply {
-                            requestMethod = "POST"
-                            setRequestProperty("Content-Type", "application/json")
-                            val agentKey = prefs.getString("generation_agent_api_key", "")?.trim().orEmpty()
-                            if (agentKey.isNotEmpty()) setRequestProperty("Authorization", "Bearer $agentKey")
-                            doOutput = true
-                        }
-                        val requestBody = JSONObject().apply {
-                            put("tagName", if (useTagName) etTagName.text.toString().trim() else "")
-                            put("instruction", instruction)
-                            put("existingPrompt", if (useExisting) etPromptInput.text.toString().trim() else "")
-                            put("systemPrompt", systemPrompt)
-                            imageUri?.let { val b64 = encodeImageToBase64(it); if (b64 != null) put("image", "data:image/jpeg;base64,$b64") }
-                        }
-                        OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(requestBody.toString()) }
-                        if (conn.responseCode == 200) {
-                            reply = JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).getString("prompt")
-                        }
-                        conn.disconnect()
-                    } else if (xaiApiKey.isNotEmpty()) {
-                        val url = URL("https://api.x.ai/v1/chat/completions")
-                        val conn = (url.openConnection() as HttpURLConnection).apply { requestMethod = "POST"; setRequestProperty("Authorization", "Bearer $xaiApiKey"); setRequestProperty("Content-Type", "application/json"); doOutput = true }
-                        val jsonArray = JSONArray().put(JSONObject().put("role", "system").put("content", systemPrompt))
-                        var userText = "ターゲット: ${if (useTagName) etTagName.text.toString() else ""}\n指示: $instruction\n${if (useExisting) "既存設定: " + etPromptInput.text.toString() else ""}"
-                        jsonArray.put(JSONObject().put("role", "user").put("content", userText))
-                        val requestBody = JSONObject().put("messages", jsonArray).put("model", "grok-4-1-fast-non-reasoning")
-                        OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(requestBody.toString()) }
-                        if (conn.responseCode == 200) {
-                            reply = JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
-                        }
-                        conn.disconnect()
-                    }
+                val imageDataUrl = imageUri?.let { uri ->
+                    encodeImageToBase64(uri)?.let { "data:image/jpeg;base64,$it" }
                 }
-
+                val reply = when {
+                    provider == "OPENROUTER" -> streamOpenRouter(prefs, systemPrompt, userText, imageDataUrl)
+                    else -> streamGrokOrLegacy(prefs, instruction, useTagName, useExisting, originalPrompt, systemPrompt, userText, imageDataUrl)
+                }
                 if (reply.isNotEmpty()) {
-                    withContext(Dispatchers.Main) { 
+                    failed = false
+                    withContext(Dispatchers.Main) {
                         etPromptInput.setText(reply)
-                        Toast.makeText(this@TagPromptEditorActivity, "AIが錬成したわ！", Toast.LENGTH_SHORT).show() 
+                        Toast.makeText(this@TagPromptEditorActivity, "置き換えた。", Toast.LENGTH_SHORT).show()
                     }
-                } else {
-                    withContext(Dispatchers.Main) { Toast.makeText(this@TagPromptEditorActivity, "AIがサボっちゃったみたい...", Toast.LENGTH_SHORT).show() }
                 }
-            } catch (e: Exception) { 
+            } catch (e: Exception) {
                 Log.e("TagEditor", "Generation Failed", e)
-                withContext(Dispatchers.Main) { Toast.makeText(this@TagPromptEditorActivity, "エラーよ！", Toast.LENGTH_SHORT).show() } 
             }
+            withContext(Dispatchers.Main) {
+                if (failed) {
+                    etPromptInput.setText(TagPromptStreamPolicy.applyFailedInstruction(originalPrompt, instruction))
+                    val message = if (instruction.isNotBlank()) {
+                        "置き換えに失敗した。補足を文章へ移した。"
+                    } else {
+                        "置き換えに失敗した。"
+                    }
+                    Toast.makeText(this@TagPromptEditorActivity, message, Toast.LENGTH_SHORT).show()
+                }
+                stopGenerateMotion()
+            }
+        }
+    }
+
+    private suspend fun streamOpenRouter(
+        prefs: android.content.SharedPreferences,
+        systemPrompt: String,
+        userText: String,
+        imageDataUrl: String?
+    ): String {
+        val apiKey = OpenRouterManager.getActiveApiKey(this@TagPromptEditorActivity)
+            ?: throw IllegalStateException("OpenRouterのAPIキーがない")
+        val modelName = prefs.getString("chat_openrouter_model", "deepseek/deepseek-v4-flash:free")
+            ?: "deepseek/deepseek-v4-flash:free"
+        val reply = TagPromptStreamClient.stream(
+            TagPromptStreamClient.Endpoint(
+                url = "https://openrouter.ai/api/v1/chat/completions",
+                apiKey = apiKey,
+                model = modelName,
+                extraHeaders = mapOf(
+                    "HTTP-Referer" to "https://github.com/example/android-toolkits",
+                    "X-Title" to "Android Toolkits"
+                )
+            ),
+            systemPrompt,
+            userText,
+            imageDataUrl,
+            isActive = { generateJob?.isActive == true },
+            onDelta = { text -> coroutineScope.launch(Dispatchers.Main) { etPromptInput.setText(text) } }
+        )
+        if (reply.isNotEmpty()) {
+            OpenRouterManager.incrementUsage(this@TagPromptEditorActivity, apiKey)
+        }
+        return reply
+    }
+
+    private suspend fun streamGrokOrLegacy(
+        prefs: android.content.SharedPreferences,
+        instruction: String,
+        useTagName: Boolean,
+        useExisting: Boolean,
+        originalPrompt: String,
+        systemPrompt: String,
+        userText: String,
+        imageDataUrl: String?
+    ): String {
+        var xaiApiKey = prefs.getString("xai_api_key", "")?.trim().orEmpty()
+        if (xaiApiKey.isNotEmpty() && !xaiApiKey.startsWith("xai-")) xaiApiKey = "xai-$xaiApiKey"
+        if (xaiApiKey.isNotEmpty()) {
+            return TagPromptStreamClient.stream(
+                TagPromptStreamClient.Endpoint(
+                    url = "https://api.x.ai/v1/chat/completions",
+                    apiKey = xaiApiKey,
+                    model = "grok-4-1-fast-non-reasoning"
+                ),
+                systemPrompt,
+                userText,
+                imageDataUrl,
+                isActive = { generateJob?.isActive == true },
+                onDelta = { text -> coroutineScope.launch(Dispatchers.Main) { etPromptInput.setText(text) } }
+            )
+        }
+        val baseUrl = prefs.getString("remote_server_url", "") ?: ""
+        if (baseUrl.isEmpty()) throw IllegalStateException("生成先がない")
+        val url = URL("$baseUrl/api/generate-prompt")
+        val conn = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            setRequestProperty("Content-Type", "application/json")
+            val agentKey = prefs.getString("generation_agent_api_key", "")?.trim().orEmpty()
+            if (agentKey.isNotEmpty()) setRequestProperty("Authorization", "Bearer $agentKey")
+            connectTimeout = 30_000
+            readTimeout = 180_000
+            doOutput = true
+        }
+        val requestBody = JSONObject().apply {
+            put("tagName", if (useTagName) etTagName.text.toString().trim() else "")
+            put("instruction", instruction)
+            put("existingPrompt", if (useExisting) originalPrompt.trim() else "")
+            put("systemPrompt", systemPrompt)
+            if (!imageDataUrl.isNullOrBlank()) put("image", imageDataUrl)
+        }
+        OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(requestBody.toString()) }
+        val reply = if (conn.responseCode == 200) {
+            JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).optString("prompt")
+        } else {
+            ""
+        }
+        conn.disconnect()
+        if (reply.isNotEmpty()) {
+            withContext(Dispatchers.Main) { etPromptInput.setText(reply) }
+        }
+        return reply
+    }
+
+    private fun startGenerateMotion() {
+        stopGenerateMotion()
+        btnAiGenerate.isEnabled = false
+        btnAiGenerate.contentDescription = "置き換え中"
+        val spin = ObjectAnimator.ofFloat(btnAiGenerate, View.ROTATION, 0f, 360f).apply {
+            duration = 1100
+            interpolator = LinearInterpolator()
+            repeatCount = ObjectAnimator.INFINITE
+        }
+        val pulse = ObjectAnimator.ofFloat(btnAiGenerate, View.ALPHA, 1f, 0.4f, 1f).apply {
+            duration = 700
+            interpolator = AccelerateDecelerateInterpolator()
+            repeatCount = ObjectAnimator.INFINITE
+        }
+        generateMotion = AnimatorSet().apply {
+            playTogether(spin, pulse)
+            start()
+        }
+    }
+
+    private fun stopGenerateMotion() {
+        generateMotion?.cancel()
+        generateMotion = null
+        if (::btnAiGenerate.isInitialized) {
+            btnAiGenerate.animate().cancel()
+            btnAiGenerate.rotation = 0f
+            btnAiGenerate.alpha = 1f
+            btnAiGenerate.isEnabled = true
+            btnAiGenerate.contentDescription = "AIで置き換える"
         }
     }
 
