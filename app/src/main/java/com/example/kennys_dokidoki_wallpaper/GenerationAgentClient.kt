@@ -57,6 +57,7 @@ data class AgentJobState(
     val total: Int,
     val completed: Int,
     val failed: Int,
+    val pending: Int = 0,
     val progress: Float,
     val previewUrl: String?,
     val imageUrls: List<String>,
@@ -130,6 +131,40 @@ object GenerationAgentClient {
 
     fun hasPendingJob(context: Context): Boolean =
         !settings(context).getString(ACTIVE_JOB_KEY, null).isNullOrBlank()
+
+    fun activeJobId(context: Context): String? =
+        settings(context).getString(ACTIVE_JOB_KEY, null)?.takeIf { it.isNotBlank() }
+
+    fun persistPrepared(context: Context, prepared: List<GeneratedImageTagBinding.PreparedImage>) {
+        settings(context).edit()
+            .putString(ACTIVE_JOB_TAGS_KEY, GeneratedImageTagBinding.encodeTagLists(prepared.map { it.tags }))
+            .putString(ACTIVE_JOB_CARDS_KEY, GeneratedImageTagBinding.encodeCardStateLists(prepared.map { it.cardStates }))
+            .putString(
+                ACTIVE_JOB_RANDOM_KEY,
+                GeneratedImageTagBinding.encodeRandomMetaLists(
+                    prepared.map { it.randomPickedIds },
+                    prepared.map { it.randomEnabledCategories }
+                )
+            )
+            .commit()
+    }
+
+    fun persistedPrepared(context: Context): List<GeneratedImageTagBinding.PreparedImage> {
+        val tagLists = GeneratedImageTagBinding.decodeTagLists(settings(context).getString(ACTIVE_JOB_TAGS_KEY, null))
+        val cardLists = GeneratedImageTagBinding.decodeCardStateLists(settings(context).getString(ACTIVE_JOB_CARDS_KEY, null))
+        val randomLists = GeneratedImageTagBinding.decodeRandomMetaLists(settings(context).getString(ACTIVE_JOB_RANDOM_KEY, null))
+        return tagLists.mapIndexed { index, tags ->
+            val random = randomLists.getOrNull(index)
+            GeneratedImageTagBinding.PreparedImage(
+                prompt = "",
+                negativePrompt = "",
+                tags = tags,
+                cardStates = cardLists.getOrNull(index).orEmpty(),
+                randomPickedIds = random?.first.orEmpty(),
+                randomEnabledCategories = random?.second.orEmpty()
+            )
+        }
+    }
 
     fun isThumbnailJob(context: Context): Boolean =
         settings(context).getString(ACTIVE_JOB_KIND_KEY, ThumbnailBindPolicy.JOB_KIND_IMAGE) ==
@@ -207,35 +242,9 @@ object GenerationAgentClient {
         thumbnailTargets: List<ThumbnailBindPolicy.Target> = emptyList()
     ): AgentJobState = withContext(Dispatchers.IO) {
         require(requests.isNotEmpty()) { "生成リクエストが空です" }
-        val tasks = JSONArray()
-        requests.forEach { request ->
-            tasks.put(JSONObject().apply {
-                put("prompt", request.prompt)
-                put("negative_prompt", request.negativePrompt)
-                put("width", request.width)
-                put("height", request.height)
-                put("steps", request.steps)
-                put("cfg_scale", 7)
-                put("sampler_name", request.samplerName)
-                put("purpose", request.purpose)
-                request.seed?.takeIf { it >= 0L }?.let { put("seed", it) }
-                val tags = JSONArray()
-                request.tags.forEach { tag ->
-                    if (tag.isNotBlank()) tags.put(tag)
-                }
-                put("tags", tags)
-                put("card_states", JSONObject().also { states ->
-                    request.cardStates.forEach { (id, level) ->
-                        if (id.isNotBlank() && level in 1..3) states.put(id, level)
-                    }
-                })
-                put("random_picked_ids", GeneratedImageTagBinding.encodeStringSet(request.randomPickedIds))
-                put("random_categories", GeneratedImageTagBinding.encodeStringSet(request.randomEnabledCategories))
-            })
-        }
         val body = JSONObject().apply {
             put("client_request_id", UUID.randomUUID().toString())
-            put("tasks", tasks)
+            put("tasks", encodeTasks(requests))
         }
         val state = parseJob(context, requestJson(context, "/api/v1/jobs", "POST", body))
         if (persistForReconnect) {
@@ -347,6 +356,18 @@ object GenerationAgentClient {
 
     suspend fun skip(context: Context, jobId: String) {
         withContext(Dispatchers.IO) { requestJson(context, "/api/v1/jobs/$jobId/skip", "POST", JSONObject()) }
+    }
+
+    suspend fun refreshPending(
+        context: Context,
+        jobId: String,
+        requests: List<AgentGenerationRequest>
+    ): AgentJobState = withContext(Dispatchers.IO) {
+        require(requests.isNotEmpty()) { "更新する生成リクエストが空です" }
+        val body = JSONObject().apply {
+            put("tasks", encodeTasks(requests))
+        }
+        parseJob(context, requestJson(context, "/api/v1/jobs/$jobId/refresh-pending", "POST", body))
     }
 
     /** Monitors only while Android is alive. PC execution itself is independent of this loop. */
@@ -479,26 +500,43 @@ object GenerationAgentClient {
         }
     }
 
+    private fun encodeTasks(requests: List<AgentGenerationRequest>): JSONArray {
+        val tasks = JSONArray()
+        requests.forEach { request ->
+            tasks.put(JSONObject().apply {
+                put("prompt", request.prompt)
+                put("negative_prompt", request.negativePrompt)
+                put("width", request.width)
+                put("height", request.height)
+                put("steps", request.steps)
+                put("cfg_scale", 7)
+                put("sampler_name", request.samplerName)
+                put("purpose", request.purpose)
+                request.seed?.takeIf { it >= 0L }?.let { put("seed", it) }
+                val tags = JSONArray()
+                request.tags.forEach { tag ->
+                    if (tag.isNotBlank()) tags.put(tag)
+                }
+                put("tags", tags)
+                put("card_states", JSONObject().also { states ->
+                    request.cardStates.forEach { (id, level) ->
+                        if (id.isNotBlank() && level in 1..3) states.put(id, level)
+                    }
+                })
+                put("random_picked_ids", GeneratedImageTagBinding.encodeStringSet(request.randomPickedIds))
+                put("random_categories", GeneratedImageTagBinding.encodeStringSet(request.randomEnabledCategories))
+            })
+        }
+        return tasks
+    }
+
     private fun seedCompletedUrls(context: Context, urls: List<String>) {
         if (urls.isEmpty()) return
         if (isThumbnailJob(context)) {
             ThumbnailBinder.applyCompleted(context, urls, pendingThumbnailTargets(context))
             return
         }
-        val tagLists = GeneratedImageTagBinding.decodeTagLists(settings(context).getString(ACTIVE_JOB_TAGS_KEY, null))
-        val cardLists = GeneratedImageTagBinding.decodeCardStateLists(settings(context).getString(ACTIVE_JOB_CARDS_KEY, null))
-        val randomLists = GeneratedImageTagBinding.decodeRandomMetaLists(settings(context).getString(ACTIVE_JOB_RANDOM_KEY, null))
-        val prepared = tagLists.mapIndexed { index, tags ->
-            val random = randomLists.getOrNull(index)
-            GeneratedImageTagBinding.PreparedImage(
-                prompt = "",
-                negativePrompt = "",
-                tags = tags,
-                cardStates = cardLists.getOrNull(index).orEmpty(),
-                randomPickedIds = random?.first.orEmpty(),
-                randomEnabledCategories = random?.second.orEmpty()
-            )
-        }
+        val prepared = LiveBatchCoordinator.currentPrepared().ifEmpty { persistedPrepared(context) }
         if (prepared.isEmpty()) return
         val tagsByUrl = GeneratedImageTagBinding.tagsForCompletedUrls(urls, prepared).toMap()
         val cardsByUrl = GeneratedImageTagBinding.cardStatesForCompletedUrls(urls, prepared).toMap()
@@ -519,6 +557,7 @@ object GenerationAgentClient {
     }
 
     private fun clearReconnectState(context: Context) {
+        LiveBatchCoordinator.clear(settings(context).getString(ACTIVE_JOB_KEY, null))
         settings(context).edit()
             .remove(ACTIVE_JOB_KEY)
             .remove(ACTIVE_JOB_TAGS_KEY)
@@ -537,12 +576,21 @@ object GenerationAgentClient {
                 if (path.isNotBlank()) add(absoluteUrl(context, path))
             }
         }
+        val total = json.optInt("total", 1)
+        val completed = json.optInt("completed")
+        val failed = json.optInt("failed")
+        val pending = if (json.has("pending")) {
+            json.optInt("pending").coerceAtLeast(0)
+        } else {
+            0
+        }
         return AgentJobState(
             id = json.getString("id"),
             status = json.getString("status"),
-            total = json.optInt("total", 1),
-            completed = json.optInt("completed"),
-            failed = json.optInt("failed"),
+            total = total,
+            completed = completed,
+            failed = failed,
+            pending = pending,
             progress = json.optDouble("progress", 0.0).toFloat().coerceIn(0f, 1f),
             previewUrl = json.optString("preview_url").takeIf { it.isNotBlank() },
             imageUrls = imageUrls,

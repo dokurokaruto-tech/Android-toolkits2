@@ -60,6 +60,10 @@ class GeneratedImageTagBindingTest {
         assertEquals(mapOf("c1" to 1, "c2" to 2), prepared[0].cardStates)
         assertEquals(prepared[0].cardStates, prepared[1].cardStates)
         assertTrue(prepared[0].prompt.contains("(dress:1.2)"))
+        assertEquals(720, prepared[0].width)
+        assertEquals(1280, prepared[0].height)
+        assertEquals(20, prepared[0].steps)
+        assertEquals("Euler a", prepared[0].sampler)
     }
 
     @Test

@@ -96,11 +96,52 @@ class JobDatabase:
                 "SELECT * FROM tasks WHERE job_id=? AND status='pending' ORDER BY task_index LIMIT 1",
                 (job_id,),
             ).fetchone()
-            if not row:
-                return None
-            result = dict(row)
-            result["payload"] = json.loads(result["payload"])
-            return result
+            return self._task_from_row(row)
+
+    def pending_tasks(self, job_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM tasks WHERE job_id=? AND status='pending' ORDER BY task_index",
+                (job_id,),
+            ).fetchall()
+            return [self._task_from_row(row) for row in rows if row is not None]
+
+    def pending_count(self, job_id: str) -> int:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT COUNT(*) AS n FROM tasks WHERE job_id=? AND status='pending'",
+                (job_id,),
+            ).fetchone()
+            return int(row["n"]) if row else 0
+
+    def get_task(self, job_id: str, index: int) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM tasks WHERE job_id=? AND task_index=?",
+                (job_id, index),
+            ).fetchone()
+            return self._task_from_row(row)
+
+    def update_task_payload(self, job_id: str, index: int, payload: dict[str, Any]) -> bool:
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "UPDATE tasks SET payload=? WHERE job_id=? AND task_index=? AND status='pending'",
+                (json.dumps(payload, ensure_ascii=False), job_id, index),
+            )
+            if cursor.rowcount > 0:
+                self._connection.execute(
+                    "UPDATE jobs SET updated_at=? WHERE id=?",
+                    (utc_now(), job_id),
+                )
+            return cursor.rowcount > 0
+
+    @staticmethod
+    def _task_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        result = dict(row)
+        result["payload"] = json.loads(result["payload"])
+        return result
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:

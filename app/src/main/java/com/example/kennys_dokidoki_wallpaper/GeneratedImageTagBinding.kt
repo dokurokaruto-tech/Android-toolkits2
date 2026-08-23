@@ -35,7 +35,11 @@ object GeneratedImageTagBinding {
         val tags: List<String>,
         val cardStates: Map<String, Int> = emptyMap(),
         val randomPickedIds: Set<String> = emptySet(),
-        val randomEnabledCategories: Set<String> = emptySet()
+        val randomEnabledCategories: Set<String> = emptySet(),
+        val width: Int = 0,
+        val height: Int = 0,
+        val steps: Int = 0,
+        val sampler: String = ""
     )
 
     fun collect(cardTagSets: Iterable<Iterable<String>>): Set<String> {

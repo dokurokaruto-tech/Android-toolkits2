@@ -18,6 +18,7 @@ _JOB = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})$")
 _CANCEL = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/cancel$")
 _SKIP = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/skip$")
 _STOP_AFTER_CURRENT = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/stop-after-current$")
+_REFRESH_PENDING = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/refresh-pending$")
 _PREVIEW = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/preview$")
 _FILE = re.compile(r"^/api/v1/files/([^/]+)/([^/]+)$")
 _MOBILE_THUMBNAIL = re.compile(r"^/api/v1/mobile-thumbnails/([^/]+)/([^/]+)$")
@@ -197,6 +198,19 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.ACCEPTED, {"accepted": self.server.service.skip(match.group(1))})
             except Exception as error:
                 self._error(HTTPStatus.BAD_GATEWAY, str(error))
+            return
+        match = _REFRESH_PENDING.fullmatch(path)
+        if match:
+            try:
+                job = self.server.service.refresh_pending(match.group(1), self._read_json())
+                if not job:
+                    self._error(HTTPStatus.NOT_FOUND, "job not found")
+                else:
+                    self._json(HTTPStatus.ACCEPTED, job)
+            except ValueError as error:
+                self._error(HTTPStatus.BAD_REQUEST, str(error))
+            except Exception as error:
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
             return
         if path == "/api/generate-prompt" and self.server.config.legacy_api_url:
             self._proxy_legacy(path)

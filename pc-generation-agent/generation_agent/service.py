@@ -404,11 +404,37 @@ class GenerationService:
             "total": int(job["total"]),
             "completed": int(job["completed"]),
             "failed": int(job["failed"]),
+            "pending": self.database.pending_count(str(job["id"])),
             "progress": min(1.0, progress),
             "cancel_requested": bool(job["cancel_requested"]),
             "error": job["error"],
             "images": images,
         }
+
+    def refresh_pending(self, job_id: str, body: dict[str, Any]) -> dict[str, Any] | None:
+        job = self.database.get_job(job_id)
+        if not job:
+            return None
+        if job["status"] not in {"queued", "running"}:
+            raise ValueError("job is not refreshable")
+        raw_tasks = body.get("tasks")
+        if not isinstance(raw_tasks, list) or not raw_tasks:
+            raise ValueError("tasks must be a non-empty array")
+        if len(raw_tasks) > 1000:
+            raise ValueError("a job may contain at most 1000 images")
+        pending = self.database.pending_tasks(job_id)
+        if not pending:
+            return self.get_job(job_id) or self.public_job(job)
+        validated = [self._validate_task(task) for task in raw_tasks]
+        for old, new in zip(pending, validated):
+            old_payload = old["payload"] if isinstance(old.get("payload"), dict) else {}
+            if old_payload.get("_agent_output_date"):
+                new["_agent_output_date"] = old_payload["_agent_output_date"]
+            if old_payload.get("_agent_output_base"):
+                new["_agent_output_base"] = old_payload["_agent_output_base"]
+            new["_agent_collection"] = old_payload.get("_agent_collection", new.get("_agent_collection", "image"))
+            self.database.update_task_payload(job_id, int(old["task_index"]), new)
+        return self.get_job(job_id) or self.public_job(self.database.get_job(job_id) or job)
 
     def _worker_loop(self) -> None:
         while not self._stop.is_set():

@@ -1013,8 +1013,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 return@setOnClickListener
             }
 
-            // 生成ボタンを押した瞬間の選択と「自動付与するタグ」を凍結する。
-            // 生成中に次の依頼用へカードを変えても、今キューに入る枚数には影響しない。
+            // 押した瞬間の枚数でPCへ載せる。未着手の枚は、あとからビルダーを変えたら差し替える。
             val startSnapshot = GeneratedImageTagBinding.snapshotAtStart(
                 selected = promptCardAdapter.getSelectedCardsWithLevels(),
                 roster = PromptCardManager.promptCards.toList(),
@@ -1073,17 +1072,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }
                     try {
                         val accepted = GenerationAgentClient.submit(this@MainActivity, requests)
+                        LiveBatchCoordinator.recordInitial(
+                            accepted.id,
+                            preparedImages,
+                            LiveBatchPromptPolicy.fingerprint(startSnapshot)
+                        )
+                        notifyLiveBatchBuilderChanged()
                         val completed = GenerationAgentClient.monitor(this@MainActivity, accepted)
-                        val preparedForUrls = requests.map {
-                            GeneratedImageTagBinding.PreparedImage(
-                                it.prompt,
-                                it.negativePrompt,
-                                it.tags,
-                                it.cardStates,
-                                it.randomPickedIds,
-                                it.randomEnabledCategories
-                            )
-                        }
+                        val preparedForUrls = LiveBatchCoordinator.currentPrepared().ifEmpty { preparedImages }
                         val tagsByUrl = GeneratedImageTagBinding.tagsForCompletedUrls(completed.imageUrls, preparedForUrls).toMap()
                         val cardsByUrl = GeneratedImageTagBinding.cardStatesForCompletedUrls(completed.imageUrls, preparedForUrls).toMap()
                         completed.imageUrls.forEachIndexed { order, url ->
@@ -1095,10 +1091,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                                 Uri.parse(url),
                                 tagsByUrl[url] ?: prepared?.tags.orEmpty(),
                                 cardsByUrl[url] ?: prepared?.cardStates.orEmpty(),
-                                startSnapshot.width,
-                                startSnapshot.height,
-                                startSnapshot.steps,
-                                startSnapshot.sampler,
+                                prepared?.width?.takeIf { it > 0 } ?: startSnapshot.width,
+                                prepared?.height?.takeIf { it > 0 } ?: startSnapshot.height,
+                                prepared?.steps?.takeIf { it > 0 } ?: startSnapshot.steps,
+                                prepared?.sampler?.takeIf { it.isNotBlank() } ?: startSnapshot.sampler,
                                 prepared?.prompt,
                                 prepared?.randomPickedIds.orEmpty(),
                                 prepared?.randomEnabledCategories.orEmpty()
@@ -1422,6 +1418,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         updateUndoRedoButtons()
         refreshPresetMatchHighlight()
+        notifyLiveBatchBuilderChanged()
     }
 
     /** スナップショットの状態をビルダーに復元する（履歴への追記はしない）。 */
@@ -1448,6 +1445,30 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         updateUndoRedoButtons()
         refreshPresetMatchHighlight()
+        notifyLiveBatchBuilderChanged()
+    }
+
+    private fun liveBuilderSnapshot(batchCount: Int): GeneratedImageTagBinding.Snapshot {
+        val selected = if (::promptCardAdapter.isInitialized) {
+            promptCardAdapter.getSelectedCardsWithLevels()
+        } else {
+            emptyList()
+        }
+        return GeneratedImageTagBinding.snapshotAtStart(
+            selected = selected,
+            roster = PromptCardManager.promptCards.toList(),
+            randomEnabledCategories = PromptCardManager.randomEnabledCategories.toSet(),
+            randomizerIncludedIds = PromptCardManager.randomizerIncludedIds.toSet(),
+            width = genWidth,
+            height = genHeight,
+            steps = genSteps,
+            sampler = genSampler,
+            batchCount = batchCount
+        )
+    }
+
+    private fun notifyLiveBatchBuilderChanged() {
+        LiveBatchCoordinator.scheduleFromBuilder(this) { pending -> liveBuilderSnapshot(pending) }
     }
 
     private fun undoBuilder() {
@@ -1675,10 +1696,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             onSave = { newName ->
                 PromptCardManager.renameCategory(this, category, newName)
                 promptCardAdapter.updateList(PromptCardManager.promptCards)
+                notifyLiveBatchBuilderChanged()
             },
             onDelete = {
                 PromptCardManager.deleteCategory(this, category)
                 promptCardAdapter.updateList(PromptCardManager.promptCards)
+                notifyLiveBatchBuilderChanged()
             },
             onBulkThumbnails = { showBulkThumbnailGenerationDialog(category) }
         )
@@ -1997,6 +2020,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (card != null) {
                 PromptCardManager.deleteCard(this, card)
                 promptCardAdapter.updateList(PromptCardManager.promptCards)
+                notifyLiveBatchBuilderChanged()
                 dialog.dismiss()
             }
         }
@@ -2047,6 +2071,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 PromptCardManager.saveCards(this)
             }
             promptCardAdapter.updateList(PromptCardManager.promptCards)
+            notifyLiveBatchBuilderChanged()
             dialog.dismiss()
         }
     }
@@ -2932,4 +2957,3 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         updateActiveImageHighlight()
     }
 }
-

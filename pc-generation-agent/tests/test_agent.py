@@ -283,6 +283,74 @@ class AgentIntegrationTest(unittest.TestCase):
         self.assertIsNone(self.service.resolve_file("../../etc", "passwd"))
         self.assertIsNone(self.service.resolve_file("2026-08-22", "../secret.png"))
 
+    def test_refresh_pending_rewrites_unstarted_payloads_only(self) -> None:
+        root = Path(self.temp.name) / "refresh-pending"
+        config = AgentConfig(
+            root=root,
+            listen_host="127.0.0.1",
+            listen_port=0,
+            sd_base_url=self.config.sd_base_url,
+            output_dir=root / "generated",
+            thumbnail_dir=root / "thumbnails",
+            mobile_thumbnail_dir=root / "data" / "mobile-thumbnails",
+            progressive_tile_dir=root / "data" / "progressive-tiles",
+            database_path=root / "data" / "agent.sqlite3",
+            api_key="secret",
+            request_timeout_seconds=30,
+            retry_count=0,
+            legacy_api_url="",
+        )
+        service = GenerationService(config)
+        server = AgentServer(config, service)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            job = service.submit({
+                "tasks": [
+                    {"prompt": "first", "width": 512, "height": 512, "steps": 10, "tags": ["old-a"]},
+                    {"prompt": "second", "width": 512, "height": 512, "steps": 10, "tags": ["old-b"]},
+                    {"prompt": "third", "width": 512, "height": 512, "steps": 10, "tags": ["old-c"]},
+                ]
+            })
+            self.assertEqual(3, job["pending"])
+            first_base = service.database.get_task(job["id"], 0)["payload"]["_agent_output_base"]
+            second_base = service.database.get_task(job["id"], 1)["payload"]["_agent_output_base"]
+            third_base = service.database.get_task(job["id"], 2)["payload"]["_agent_output_base"]
+            service.database.start_job(job["id"])
+            service.database.start_task(job["id"], 0)
+
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/api/v1/jobs/{job['id']}/refresh-pending",
+                data=json.dumps({
+                    "tasks": [
+                        {"prompt": "new-second", "width": 640, "height": 960, "steps": 15, "tags": ["new-b"]},
+                        {"prompt": "new-third", "width": 640, "height": 960, "steps": 15, "tags": ["new-c"]},
+                    ]
+                }).encode(),
+                method="POST",
+                headers={"Authorization": "Bearer secret", "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                self.assertEqual(202, response.status)
+                refreshed = json.loads(response.read())
+            self.assertEqual(2, refreshed["pending"])
+            self.assertEqual("first", service.database.get_task(job["id"], 0)["payload"]["prompt"])
+            self.assertEqual(first_base, service.database.get_task(job["id"], 0)["payload"]["_agent_output_base"])
+            second = service.database.get_task(job["id"], 1)["payload"]
+            third = service.database.get_task(job["id"], 2)["payload"]
+            self.assertEqual("new-second", second["prompt"])
+            self.assertEqual("new-third", third["prompt"])
+            self.assertEqual(640, second["width"])
+            self.assertEqual(15, third["steps"])
+            self.assertEqual(second_base, second["_agent_output_base"])
+            self.assertEqual(third_base, third["_agent_output_base"])
+            self.assertEqual(["new-b"], second["_agent_tags"])
+            self.assertEqual(["new-c"], third["_agent_tags"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            service.database.close()
+
     def test_database_requeues_interrupted_process_state(self) -> None:
         path = Path(self.temp.name) / "recovery.sqlite3"
         database = JobDatabase(path)
