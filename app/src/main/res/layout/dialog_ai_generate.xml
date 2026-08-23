@@ -87,14 +87,37 @@
         </com.google.android.material.card.MaterialCardView>
 
         <!-- 指示プロファイル選択 -->
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="指示プロファイル"
-            android:textColor="#8892B0"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="指示プロファイル"
+                android:textColor="#8892B0"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_edit_instruction_profiles"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:contentDescription="指示書を編集"
+                android:minWidth="40dp"
+                android:minHeight="40dp"
+                android:padding="0dp"
+                app:icon="@drawable/ic_md3_tune"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="22dp"
+                app:iconTint="#00F0FF" />
+        </LinearLayout>
 
         <HorizontalScrollView
             android:layout_width="match_parent"

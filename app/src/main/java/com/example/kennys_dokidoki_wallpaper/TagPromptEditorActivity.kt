@@ -73,12 +73,6 @@ class TagPromptEditorActivity : AppCompatActivity() {
     private var openRouterModels: List<RemoteModel> = emptyList()
     private var openRouterSortByDate: Boolean = true
 
-    private val defaultSystemPrompt = """
-        あなたはAIキャラクターチャットのコンテキスト設計におけるスペシャリストです。
-        このアプリは、複数の独立した『タグ』をパズルのように組み合わせることで一人のキャラクターを完成させる『非破壊的・プロシージャル・コンテキスト・システム』を採用しています。
-        ターゲットタグの内容を300文字から500文字以内で、純粋な設定文として出力してください。
-    """.trimIndent()
-
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val uri = result.data?.data
@@ -175,12 +169,15 @@ class TagPromptEditorActivity : AppCompatActivity() {
         tvCounter = findViewById(R.id.tv_counter)
         tvLocalCardStatus = findViewById(R.id.tv_local_card_status)
         btnLinkLocalCard = findViewById(R.id.btn_link_local_card)
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar_tag_editor)
         val btnEditImplied = findViewById<Button>(R.id.btn_edit_implied_tags)
         val btnGenerate = findViewById<Button>(R.id.btn_ai_generate)
+        val btnInstructionSettings = findViewById<Button>(R.id.btn_ai_instruction_settings)
         val btnMigrate = findViewById<Button>(R.id.btn_migrate)
         val btnDelete = findViewById<Button>(R.id.btn_delete)
         val btnSave = findViewById<Button>(R.id.btn_save)
 
+        toolbar.setNavigationOnClickListener { finish() }
         tvTitle.text = "タグの編集"
         etTagName.setText(originalTag)
         
@@ -237,6 +234,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
         btnEditImplied.setOnClickListener { showImpliedTagsPickerDialog() }
         btnLinkLocalCard.setOnClickListener { showLocalCardPickerDialog() }
         btnGenerate.setOnClickListener { showHybridGenerateDialog() }
+        btnInstructionSettings.setOnClickListener { TagInstructionEditor.show(this) }
         btnSave.setOnClickListener {
             val newTagName = etTagName.text.toString().trim()
             val newPrompt = etPromptInput.text.toString().trim()
@@ -415,31 +413,23 @@ class TagPromptEditorActivity : AppCompatActivity() {
 
         val cgProfiles = dialogView.findViewById<ChipGroup>(R.id.cg_prompt_profiles)
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val profilesJson = prefs.getString("ai_system_prompt_profiles", null)
-        val profiles = mutableListOf<JSONObject>()
-        if (profilesJson != null) {
-            val arr = JSONArray(profilesJson)
-            for (i in 0 until arr.length()) profiles.add(arr.getJSONObject(i))
-        } else {
-            // 旧設定の引き継ぎ
-            val old = prefs.getString("ai_system_prompt", null)
-            profiles.add(JSONObject().apply { put("name", "メイン"); put("content", old ?: defaultSystemPrompt) })
-        }
-
-        var selectedSystemPrompt = profiles.first().getString("content")
+        val profiles = TagInstructionPolicy.parse(
+            prefs.getString(TagInstructionPolicy.PROFILES_KEY, null),
+            prefs.getString(TagInstructionPolicy.LEGACY_KEY, null)
+        )
+        var selectedSystemPrompt = profiles.first().content
 
         profiles.forEachIndexed { index, profile ->
             val chip = Chip(this).apply {
-                text = profile.getString("name")
+                text = profile.name
                 isCheckable = true
                 if (index == 0) isChecked = true
                 setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) selectedSystemPrompt = profile.getString("content")
+                    if (isChecked) selectedSystemPrompt = profile.content
                 }
                 setTextColor(Color.WHITE)
                 setChipBackgroundColorResource(android.R.color.transparent)
                 setChipStrokeColorResource(if (isChecked) android.R.color.white else android.R.color.darker_gray)
-                // Material3のチップはスタイル設定がちょっと面倒だけど、とりあえず基本機能で動かすわ
             }
             cgProfiles.addView(chip)
         }
