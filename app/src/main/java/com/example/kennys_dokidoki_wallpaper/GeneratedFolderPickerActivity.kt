@@ -73,6 +73,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                 )
             )
         } else {
+            showInstantFolders()
             loadFolders(reportRemoteFailure = true)
         }
         observeLiveFolders()
@@ -92,7 +93,6 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         super.onResume()
         if (awaitingAlbumReturn) {
             awaitingAlbumReturn = false
-            setLoading(false)
             loadFolders(reportRemoteFailure = false)
         }
     }
@@ -107,20 +107,58 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
     }
 
     private fun applyRemoteFolders(remote: List<AgentGeneratedFolder>) {
-        val items = remote.map {
-            FolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date)
-        }
-        val remoteNames = remote.map { it.date }.toSet()
-        val local = loadLocalFolders().map {
-            if (it.name in remoteNames) it.copy(name = "${it.name} (端末)") else it
-        }
-        val combined = items + local
+        persistRemoteCache(remote)
+        val combined = combineFolders(
+            remote.map { FolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date) },
+            loadLocalFolders()
+        )
         recyclerView.adapter = FolderAdapter(combined, ::onFolderSelected)
         emptyState.visibility = if (combined.isEmpty()) View.VISIBLE else View.GONE
     }
 
+    private fun showInstantFolders() {
+        val items = instantFolderItems()
+        if (items.isEmpty()) return
+        recyclerView.adapter = FolderAdapter(items, ::onFolderSelected)
+        emptyState.visibility = View.GONE
+    }
+
+    private fun instantFolderItems(): List<FolderItem> {
+        val live = GeneratedLibraryLiveUpdate.snapshot.value.folders
+        val cached = if (live.isNotEmpty()) {
+            live.map { GeneratedFolderCachePolicy.Entry(it.date, it.count, it.thumbnailUrl) }
+        } else {
+            GeneratedFolderCachePolicy.decode(
+                getSharedPreferences("settings", Context.MODE_PRIVATE)
+                    .getString(GeneratedFolderCachePolicy.KEY, null)
+            )
+        }
+        return combineFolders(
+            cached.map { FolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date) },
+            loadLocalFolders()
+        )
+    }
+
+    private fun combineFolders(remote: List<FolderItem>, local: List<FolderItem>): List<FolderItem> {
+        val remoteNames = remote.map { it.name }.toSet()
+        val taggedLocal = local.map {
+            if (it.name in remoteNames) it.copy(name = "${it.name} (端末)") else it
+        }
+        return remote + taggedLocal
+    }
+
+    private fun persistRemoteCache(remote: List<AgentGeneratedFolder>) {
+        getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
+            .putString(
+                GeneratedFolderCachePolicy.KEY,
+                GeneratedFolderCachePolicy.encode(
+                    remote.map { GeneratedFolderCachePolicy.Entry(it.date, it.count, it.thumbnailUrl) }
+                )
+            )
+            .apply()
+    }
+
     private fun loadFolders(reportRemoteFailure: Boolean) {
-        setLoading(true)
         lifecycleScope.launch {
             var remoteFailure: AgentConnectionDiagnosis? = null
             val items = try {
@@ -129,14 +167,12 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                     probe.code == AgentConnectionClassifier.SD_DOWN
                 ) {
                     try {
-                        val remote = GenerationAgentClient.fetchFolders(this@GeneratedFolderPickerActivity).map {
-                            FolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date)
-                        }
-                        val remoteNames = remote.map { it.name }.toSet()
-                        val local = loadLocalFolders().map {
-                            if (it.name in remoteNames) it.copy(name = "${it.name} (端末)") else it
-                        }
-                        remote + local
+                        val fetched = GenerationAgentClient.fetchFolders(this@GeneratedFolderPickerActivity)
+                        persistRemoteCache(fetched)
+                        combineFolders(
+                            fetched.map { FolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date) },
+                            loadLocalFolders()
+                        )
                     } catch (error: Exception) {
                         remoteFailure = AgentConnectionLog.last
                             ?: AgentConnectionClassifier.fromException(error)
@@ -152,18 +188,20 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                 loadLocalFolders()
             }
 
-            recyclerView.adapter = FolderAdapter(items, ::onFolderSelected)
-            if (items.isEmpty()) {
-                emptyState.visibility = View.VISIBLE
-                emptyMessage.text = if (remoteFailure != null) {
-                    "PCから日付フォルダを取れなかった。\n[${remoteFailure.code}] ${remoteFailure.title}"
+            val keepCurrent = items.isEmpty() && (recyclerView.adapter?.itemCount ?: 0) > 0
+            if (!keepCurrent) {
+                recyclerView.adapter = FolderAdapter(items, ::onFolderSelected)
+                if (items.isEmpty()) {
+                    emptyState.visibility = View.VISIBLE
+                    emptyMessage.text = if (remoteFailure != null) {
+                        "PCから日付フォルダを取れなかった。\n[${remoteFailure.code}] ${remoteFailure.title}"
+                    } else {
+                        "まだ画像が生成されていません。\nPC生成エージェントの接続を確認してください。"
+                    }
                 } else {
-                    "まだ画像が生成されていません。\nPC生成エージェントの接続を確認してください。"
+                    emptyState.visibility = View.GONE
                 }
-            } else {
-                emptyState.visibility = View.GONE
             }
-            setLoading(false)
             if (reportRemoteFailure && remoteFailure != null) {
                 AgentConnectionUi.showDiagnosis(
                     this@GeneratedFolderPickerActivity,
@@ -260,6 +298,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         thenShowLivePreview: Boolean = false
     ) {
         awaitingAlbumReturn = true
+        setLoading(false)
         startActivity(Intent(this, AlbumDetailActivity::class.java).apply {
             putExtra("ALBUM_NAME", albumName)
             putExtra("FROM_GENERATED_FOLDER_PICKER", true)
