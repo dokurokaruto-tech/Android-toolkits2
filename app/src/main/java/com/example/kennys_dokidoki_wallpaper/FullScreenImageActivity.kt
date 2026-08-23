@@ -1,5 +1,6 @@
 package com.example.kennys_dokidoki_wallpaper
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
@@ -10,9 +11,9 @@ import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.animation.LinearInterpolator
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
@@ -50,7 +51,9 @@ class FullScreenImageActivity : AppCompatActivity() {
     private var remoteDate: String = ""
     private lateinit var viewerChromeBar: View
     private lateinit var btnStartTempChat: View
+    private lateinit var deleteHoldHost: View
     private lateinit var btnDeleteImage: View
+    private lateinit var deleteHoldRing: HoldConfirmRingView
     private lateinit var btnCreatePreset: View
     private lateinit var btnReplayGeneration: View
     private val deletedUris = arrayListOf<String>()
@@ -58,6 +61,11 @@ class FullScreenImageActivity : AppCompatActivity() {
     private var chromeVisible = true
     private var lastChromeInteractionMs = 0L
     private val hideChromeRunnable = Runnable { hideViewerChrome() }
+    private var deleteHoldAnimator: ValueAnimator? = null
+    private var deleteHoldActive = false
+    private var deleteHoldDownX = 0f
+    private var deleteHoldDownY = 0f
+    private val confirmDeleteHoldRunnable = Runnable { completeDeleteHold() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,7 +83,9 @@ class FullScreenImageActivity : AppCompatActivity() {
         tvCounter = findViewById(R.id.tv_image_counter)
         viewerChromeBar = findViewById(R.id.viewer_chrome_bar)
         btnStartTempChat = findViewById(R.id.btn_start_temp_chat)
+        deleteHoldHost = findViewById(R.id.delete_hold_host)
         btnDeleteImage = findViewById(R.id.btn_delete_image)
+        deleteHoldRing = findViewById(R.id.delete_hold_ring)
         btnCreatePreset = findViewById(R.id.btn_create_preset_from_image)
         btnReplayGeneration = findViewById(R.id.btn_replay_generation)
         albumName = intent.getStringExtra("ALBUM_NAME") ?: ""
@@ -174,17 +184,17 @@ class FullScreenImageActivity : AppCompatActivity() {
     private fun setupViewerActions() {
         if (!isGeneratedViewer) {
             btnStartTempChat.visibility = View.GONE
-            btnDeleteImage.visibility = View.GONE
+            deleteHoldHost.visibility = View.GONE
             btnCreatePreset.visibility = View.GONE
             btnReplayGeneration.visibility = View.GONE
             return
         }
         btnStartTempChat.visibility = View.VISIBLE
-        btnDeleteImage.visibility = View.VISIBLE
+        deleteHoldHost.visibility = View.VISIBLE
         btnCreatePreset.visibility = View.VISIBLE
         btnReplayGeneration.visibility = View.VISIBLE
         btnStartTempChat.alpha = 1f
-        btnDeleteImage.alpha = 1f
+        deleteHoldHost.alpha = 1f
         btnCreatePreset.alpha = 1f
         btnReplayGeneration.alpha = 1f
         btnCreatePreset.setOnClickListener {
@@ -206,12 +216,40 @@ class FullScreenImageActivity : AppCompatActivity() {
                 putExtra("GENERATED_TEMP_CHAT", true)
             })
         }
-        btnDeleteImage.setOnClickListener {
+        val slop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+        btnDeleteImage.setOnTouchListener { _, event ->
             if (!chromeVisible) {
-                revealViewerChrome()
-                return@setOnClickListener
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) revealViewerChrome()
+                return@setOnTouchListener true
             }
-            confirmDeleteCurrentImage()
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    deleteHoldDownX = event.rawX
+                    deleteHoldDownY = event.rawY
+                    (btnDeleteImage.parent as? View)?.requestDisallowInterceptTouchEvent(true)
+                    beginDeleteHold()
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (deleteHoldActive &&
+                        ViewerDeleteHoldPolicy.movedBeyondSlop(
+                            deleteHoldDownX,
+                            deleteHoldDownY,
+                            event.rawX,
+                            event.rawY,
+                            slop
+                        )
+                    ) {
+                        cancelDeleteHold()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    cancelDeleteHold()
+                    true
+                }
+                else -> false
+            }
         }
         btnReplayGeneration.setOnClickListener {
             if (!chromeVisible) {
@@ -310,19 +348,52 @@ class FullScreenImageActivity : AppCompatActivity() {
         ImageGenerationCoordinator.start(this, listOf(GeneratedImageReplayPolicy.request(recipe, steps)))
     }
 
-    private fun confirmDeleteCurrentImage() {
-        val entry = currentEntries.getOrNull(currentIndex) ?: return
-        val message = if (isRemoteGenerated || ImageStoragePolicy.isRemote(entry.uri)) {
-            "この画像をPCからも削除します。紐づいた仮チャットも消えます。"
-        } else {
-            "この生成画像を削除します。紐づいた仮チャットも消えます。"
+    private fun beginDeleteHold() {
+        cancelDeleteHold()
+        if (currentEntries.getOrNull(currentIndex) == null) return
+        deleteHoldActive = true
+        lastChromeInteractionMs = System.currentTimeMillis()
+        chromeHandler.removeCallbacks(hideChromeRunnable)
+        deleteHoldRing.visibility = View.VISIBLE
+        deleteHoldRing.setProgress(0f)
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = ViewerDeleteHoldPolicy.HOLD_MS
+            interpolator = LinearInterpolator()
+            addUpdateListener { animation ->
+                deleteHoldRing.setProgress(animation.animatedValue as Float)
+            }
         }
-        AlertDialog.Builder(this)
-            .setTitle("画像の削除")
-            .setMessage(message)
-            .setNeutralButton("削除する") { _, _ -> deleteCurrentImage(entry) }
-            .setNegativeButton("キャンセル", null)
-            .show()
+        deleteHoldAnimator = animator
+        animator.start()
+        chromeHandler.postDelayed(confirmDeleteHoldRunnable, ViewerDeleteHoldPolicy.HOLD_MS)
+    }
+
+    private fun cancelDeleteHold() {
+        if (!deleteHoldActive && deleteHoldAnimator == null) {
+            deleteHoldRing.visibility = View.INVISIBLE
+            deleteHoldRing.setProgress(0f)
+            return
+        }
+        deleteHoldActive = false
+        chromeHandler.removeCallbacks(confirmDeleteHoldRunnable)
+        deleteHoldAnimator?.cancel()
+        deleteHoldAnimator = null
+        deleteHoldRing.setProgress(0f)
+        deleteHoldRing.visibility = View.INVISIBLE
+        if (isGeneratedViewer && !isClosing && !isFinishing) revealViewerChrome()
+    }
+
+    private fun completeDeleteHold() {
+        if (!deleteHoldActive) return
+        deleteHoldActive = false
+        deleteHoldAnimator?.end()
+        deleteHoldAnimator = null
+        deleteHoldRing.setProgress(1f)
+        val entry = currentEntries.getOrNull(currentIndex)
+        deleteHoldRing.visibility = View.INVISIBLE
+        deleteHoldRing.setProgress(0f)
+        if (entry != null) deleteCurrentImage(entry)
+        if (isGeneratedViewer && !isClosing) revealViewerChrome()
     }
 
     private fun deleteCurrentImage(entry: ImageEntry) {
@@ -370,8 +441,8 @@ class FullScreenImageActivity : AppCompatActivity() {
         } else if (isGeneratedViewer) {
             btnStartTempChat.visibility = View.VISIBLE
             btnStartTempChat.alpha = 1f
-            btnDeleteImage.visibility = View.VISIBLE
-            btnDeleteImage.alpha = 1f
+            deleteHoldHost.visibility = View.VISIBLE
+            deleteHoldHost.alpha = 1f
             btnCreatePreset.visibility = View.VISIBLE
             btnCreatePreset.alpha = 1f
             btnReplayGeneration.visibility = View.VISIBLE
@@ -383,7 +454,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     }
 
     private fun hideViewerChrome() {
-        if (!isGeneratedViewer || isClosing) return
+        if (!isGeneratedViewer || isClosing || deleteHoldActive) return
         if (!ViewerChromePolicy.shouldHide(System.currentTimeMillis(), lastChromeInteractionMs)) {
             val remaining = ViewerChromePolicy.HIDE_AFTER_MS - (System.currentTimeMillis() - lastChromeInteractionMs)
             chromeHandler.postDelayed(hideChromeRunnable, remaining.coerceAtLeast(50L))
@@ -419,6 +490,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     private fun closeViewerImmediately() {
         if (isClosing) return
         isClosing = true
+        cancelDeleteHold()
         requestSerial++
         progressiveJob?.cancel()
         progressiveJob = null
@@ -440,6 +512,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        cancelDeleteHold()
         progressiveJob?.cancel()
         prefetchJob?.cancel()
         activeTarget?.let { Glide.with(this).clear(it) }

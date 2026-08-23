@@ -83,18 +83,31 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <ImageView
-            android:id="@+id/btn_delete_image"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="@drawable/bg_counter_bubble"
-            android:clickable="true"
-            android:contentDescription="削除"
-            android:focusable="true"
-            android:padding="10dp"
-            android:src="@drawable/ic_md3_delete"
-            android:visibility="gone"
-            app:tint="#E6E1E5" />
+        <FrameLayout
+            android:id="@+id/delete_hold_host"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/btn_delete_image"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_counter_bubble"
+                android:clickable="true"
+                android:contentDescription="長押しで削除"
+                android:focusable="true"
+                android:padding="10dp"
+                android:src="@drawable/ic_md3_delete"
+                app:tint="#E6E1E5" />
+
+            <com.example.kennys_dokidoki_wallpaper.HoldConfirmRingView
+                android:id="@+id/delete_hold_ring"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="invisible" />
+        </FrameLayout>
 
         <TextView
             android:id="@+id/tv_image_counter"

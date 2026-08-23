@@ -369,39 +369,45 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
     private fun confirmDeleteGeneratedOrLibrary(targets: List<ImageEntry>) {
         if (targets.isEmpty()) return
-        val message = when {
-            isGeneratedViewer && isRemoteGenerated ->
-                "${targets.size}件をPCからも削除します。紐づいた仮チャットも消えます。"
-            isGeneratedViewer ->
-                "${targets.size}件の生成画像を削除します。紐づいた仮チャットも消えます。"
-            else -> "このファイルを完全に削除しますか？"
+        if (isGeneratedViewer) {
+            val md3 = Md3PopupDialog.wrap(this)
+            val dialog = MaterialAlertDialogBuilder(
+                md3,
+                com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog
+            )
+                .setTitle(GeneratedImageDeletePolicy.title(targets.size))
+                .setMessage(GeneratedImageDeletePolicy.message(targets.size, isRemoteGenerated))
+                .setNegativeButton(GeneratedImageDeletePolicy.CANCEL, null)
+                .setPositiveButton(GeneratedImageDeletePolicy.DELETE) { _, _ ->
+                    deleteGeneratedImages(targets)
+                }
+                .create()
+            dialog.show()
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(0xFFFF3366.toInt())
+            return
         }
         AlertDialog.Builder(this)
             .setTitle("画像の削除")
-            .setMessage(message)
-            .setNeutralButton("削除する") { _, _ ->
-                if (isGeneratedViewer) {
-                    deleteGeneratedImages(targets)
-                } else {
-                    var successCount = 0
-                    targets.forEach { entry ->
-                        if (DataManager.deleteImageFile(this, entry.uri)) {
-                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
-                            DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
-                            successCount++
-                        }
-                    }
-                    DataManager.saveData(this)
-                    loadImages()
-                    imageAdapter.notifyDataSetChanged()
-                    if (successCount > 0) {
-                        Toast.makeText(this, "${successCount}件のファイルを削除しました。", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this, "削除に失敗しました。", Toast.LENGTH_LONG).show()
+            .setMessage("このファイルを完全に削除しますか？")
+            .setNegativeButton("キャンセル", null)
+            .setPositiveButton("削除する") { _, _ ->
+                var successCount = 0
+                targets.forEach { entry ->
+                    if (DataManager.deleteImageFile(this, entry.uri)) {
+                        GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
+                        DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
+                        successCount++
                     }
                 }
+                DataManager.saveData(this)
+                loadImages()
+                imageAdapter.notifyDataSetChanged()
+                if (successCount > 0) {
+                    Toast.makeText(this, "${successCount}件のファイルを削除しました。", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "削除に失敗しました。", Toast.LENGTH_LONG).show()
+                }
             }
-            .setNegativeButton("キャンセル", null)
             .show()
     }
 
