@@ -26,6 +26,7 @@ object AgentConnectionClassifier {
     const val OK = "OK"
     const val URL_UNSET = "URL_UNSET"
     const val TIMEOUT = "TIMEOUT"
+    const val CONNECT_TIMEOUT = "CONNECT_TIMEOUT"
     const val REFUSED = "REFUSED"
     const val UNREACHABLE = "UNREACHABLE"
     const val DNS = "DNS"
@@ -156,14 +157,24 @@ object AgentConnectionClassifier {
         return parts.joinToString(" | ")
     }
 
+    private fun isConnectTimeout(error: Throwable, text: String): Boolean {
+        if (!isTimeout(error, text)) return false
+        return text.contains("failed to connect") ||
+            text.contains("failed to connect to") ||
+            (text.contains("connect") && text.contains("after") && text.contains("ms"))
+    }
+
     private fun isTimeout(error: Throwable, text: String): Boolean {
-        if (nameContains(error, "SocketTimeout") || nameContains(error, "Timeout")) return true
+        if (nameContains(error, "SocketTimeout")) return true
         return listOf("timeout", "timed out", "etimedout", "10060").any { it in text }
     }
 
+    fun shouldTryNextEndpoint(code: String): Boolean =
+        code == CONNECT_TIMEOUT || code == UNREACHABLE || code == REFUSED || code == TIMEOUT || code == DNS
+
     private fun isRefused(error: Throwable, text: String): Boolean {
-        if (nameContains(error, "ConnectException")) return true
-        return listOf("connection refused", "econnrefused", "failed to connect", "接続を拒否").any { it in text }
+        if (nameContains(error, "ConnectException") && !isTimeout(error, text)) return true
+        return listOf("connection refused", "econnrefused", "接続を拒否").any { it in text }
     }
 
     private fun isDns(error: Throwable, text: String): Boolean {

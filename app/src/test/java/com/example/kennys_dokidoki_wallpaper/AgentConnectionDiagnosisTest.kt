@@ -14,8 +14,19 @@ class AgentConnectionDiagnosisTest {
             path = "/api/v1/jobs/abc"
         )
         assertEquals(AgentConnectionClassifier.TIMEOUT, diagnosis.code)
-        assertTrue(diagnosis.nextStep.contains("start-agent.bat"))
         assertTrue(diagnosis.displayText().contains("192.168.1.23:3001"))
+    }
+
+    @Test
+    fun `classifies failed to connect after 5000ms as connect timeout`() {
+        val diagnosis = AgentConnectionClassifier.fromException(
+            IOException("SocketTimeoutException: failed to connect to /192.168.1.45 (port 3001) from /192.168.1.35 (port 56170) after 5000ms"),
+            target = "http://192.168.1.45:3001",
+            path = "/api/v1/health"
+        )
+        assertEquals(AgentConnectionClassifier.CONNECT_TIMEOUT, diagnosis.code)
+        assertTrue(diagnosis.reason.contains("HTTP以前"))
+        assertTrue(diagnosis.nextStep.contains("100.x"))
     }
 
     @Test

@@ -59,12 +59,40 @@ data class AgentJobState(
 object GenerationAgentClient {
     private const val ACTIVE_JOB_KEY = "generation_agent_active_job_id"
     private const val ACTIVE_JOB_TAGS_KEY = "generation_agent_active_job_tags"
+    private const val LAST_GOOD_URL_KEY = "remote_server_url_last_good"
+    private const val ALT_URL_KEY = "remote_server_url_alts"
     private const val TAG = "GenerationAgent"
 
     private fun settings(context: Context) = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
+    private fun normalizeBase(raw: String): String {
+        var url = raw.trim().removeSuffix("/")
+        if (url.isNotEmpty() && !url.startsWith("http")) url = "http://$url"
+        return url
+    }
+
+    private fun primaryUrl(context: Context): String =
+        normalizeBase(settings(context).getString("remote_server_url", "") ?: "")
+
+    fun candidateBases(context: Context): List<String> {
+        val prefs = settings(context)
+        val ordered = mutableListOf<String>()
+        ordered.add(normalizeBase(prefs.getString(LAST_GOOD_URL_KEY, "") ?: ""))
+        ordered.add(primaryUrl(context))
+        (prefs.getString(ALT_URL_KEY, "") ?: "")
+            .split(',', '\n', ' ', ';')
+            .map { normalizeBase(it) }
+            .forEach { ordered.add(it) }
+        return ordered.filter { it.isNotBlank() }.distinct()
+    }
+
+    private fun rememberGoodBase(context: Context, base: String) {
+        if (base.isBlank()) return
+        settings(context).edit().putString(LAST_GOOD_URL_KEY, base).apply()
+    }
+
     private fun baseUrl(context: Context): String =
-        (settings(context).getString("remote_server_url", "") ?: "").trim().removeSuffix("/")
+        candidateBases(context).firstOrNull() ?: ""
 
     private fun apiKey(context: Context): String =
         (settings(context).getString("generation_agent_api_key", "") ?: "").trim()
@@ -91,32 +119,59 @@ object GenerationAgentClient {
             diagnosis.code == AgentConnectionClassifier.SD_DOWN
     }
 
-    /** 接続先へ /health を叩き、成功でも失敗でも原因を残す。 */
+    /** 接続先へ /health を叩き、成功でも失敗でも原因を残す。予備URLがあれば順に試す。 */
     suspend fun probe(context: Context): AgentConnectionDiagnosis = withContext(Dispatchers.IO) {
-        val target = AgentConnectionClassifier.redactUrl(baseUrl(context))
-        if (baseUrl(context).isBlank()) {
+        val bases = candidateBases(context)
+        if (bases.isEmpty()) {
             val diagnosis = AgentConnectionClassifier.fromException(
                 IOException("PC生成エージェントのURLが未設定です"),
-                target,
+                "(未設定)",
                 "/api/v1/health"
             )
             AgentConnectionLog.record(context, "接続テスト", diagnosis)
             return@withContext diagnosis
         }
-        try {
-            val json = requestJson(context, "/api/v1/health", recordFailure = false)
-            val diagnosis = AgentConnectionClassifier.fromHealth(
-                service = json.optString("service"),
-                sdReachable = if (json.has("sd_reachable")) json.optBoolean("sd_reachable") else null,
-                target = target
-            )
-            AgentConnectionLog.record(context, "接続テスト", diagnosis)
-            diagnosis
-        } catch (error: Exception) {
-            val diagnosis = AgentConnectionClassifier.fromException(error, target, "/api/v1/health")
-            AgentConnectionLog.record(context, "接続テスト", diagnosis)
-            diagnosis
+        val reports = mutableListOf<String>()
+        var lastFail: AgentConnectionDiagnosis? = null
+        for (base in bases) {
+            try {
+                val json = requestOnce(context, base, "/api/v1/health", "GET", null)
+                rememberGoodBase(context, base)
+                val diagnosis = AgentConnectionClassifier.fromHealth(
+                    service = json.optString("service"),
+                    sdReachable = if (json.has("sd_reachable")) json.optBoolean("sd_reachable") else null,
+                    target = AgentConnectionClassifier.redactUrl(base)
+                ).let { result ->
+                    if (base != primaryUrl(context) && primaryUrl(context).isNotBlank()) {
+                        result.copy(
+                            nextStep = "通ったのは $base 。主URL ${primaryUrl(context)} は届いていない。PC画面の Alternative network URL を主URLにするか、予備URLに 100.x を入れておく。"
+                        )
+                    } else result
+                }
+                AgentConnectionLog.record(context, "接続テスト", diagnosis)
+                return@withContext diagnosis
+            } catch (error: Exception) {
+                val diagnosis = AgentConnectionClassifier.fromException(
+                    error,
+                    AgentConnectionClassifier.redactUrl(base),
+                    "/api/v1/health"
+                )
+                reports.add("${AgentConnectionClassifier.redactUrl(base)} → ${diagnosis.code}")
+                lastFail = diagnosis
+                AgentConnectionLog.record(context, "接続テスト ${diagnosis.code}", diagnosis)
+            }
         }
+        val failed = lastFail ?: AgentConnectionClassifier.fromException(
+            IOException("接続先が空です"),
+            "(未設定)",
+            "/api/v1/health"
+        )
+        val combined = failed.copy(
+            reason = failed.reason + " 試した接続先: " + reports.joinToString(" / "),
+            nextStep = failed.nextStep
+        )
+        AgentConnectionLog.record(context, "接続テスト", combined)
+        combined
     }
 
     suspend fun submit(
@@ -408,8 +463,8 @@ object GenerationAgentClient {
         body: JSONObject? = null,
         recordFailure: Boolean = true
     ): JSONObject {
-        val configured = baseUrl(context)
-        if (configured.isBlank()) {
+        val bases = candidateBases(context)
+        if (bases.isEmpty()) {
             val error = IOException("PC生成エージェントのURLが未設定です")
             if (recordFailure) {
                 AgentConnectionLog.record(
@@ -420,7 +475,37 @@ object GenerationAgentClient {
             }
             throw error
         }
-        val target = if (path.startsWith("http")) path else "$configured${if (path.startsWith('/')) path else "/$path"}"
+        var lastError: Exception? = null
+        for (base in bases) {
+            try {
+                val json = requestOnce(context, base, path, method, body)
+                rememberGoodBase(context, base)
+                return json
+            } catch (error: Exception) {
+                lastError = error
+                if (error is CancellationException) throw error
+                val diagnosis = AgentConnectionClassifier.fromException(
+                    error,
+                    AgentConnectionClassifier.redactUrl(base),
+                    path
+                )
+                if (recordFailure) {
+                    AgentConnectionLog.record(context, "$method $path", diagnosis)
+                }
+                if (!AgentConnectionClassifier.shouldTryNextEndpoint(diagnosis.code)) throw error
+            }
+        }
+        throw lastError ?: IOException("PC生成エージェントとの通信に失敗しました")
+    }
+
+    private fun requestOnce(
+        context: Context,
+        base: String,
+        path: String,
+        method: String,
+        body: JSONObject?
+    ): JSONObject {
+        val target = if (path.startsWith("http")) path else "$base${if (path.startsWith('/')) path else "/$path"}"
         val connection = (URL(target).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 5000
@@ -443,19 +528,6 @@ object GenerationAgentClient {
                 throw IOException("PC生成エージェント HTTP $status: $detail")
             }
             return if (text.isBlank()) JSONObject() else JSONObject(text)
-        } catch (error: Exception) {
-            if (recordFailure && error !is CancellationException) {
-                AgentConnectionLog.record(
-                    context,
-                    "$method $path",
-                    AgentConnectionClassifier.fromException(
-                        error,
-                        AgentConnectionClassifier.redactUrl(configured),
-                        path
-                    )
-                )
-            }
-            throw error
         } finally {
             connection.disconnect()
         }

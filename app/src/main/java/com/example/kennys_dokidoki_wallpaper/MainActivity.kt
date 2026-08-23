@@ -2672,25 +2672,33 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
         }
+        val altInput = EditText(this).apply {
+            setText(prefs.getString("remote_server_url_alts", "") ?: "")
+            hint = "例: http://100.x.x.x:3001"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+        }
         val keyInput = EditText(this).apply {
             setText(prefs.getString("generation_agent_api_key", "") ?: "")
             hint = "APIキー（config.jsonで設定した場合のみ）"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
         }
-        container.addView(TextView(this).apply { text = "PC生成エージェントURL"; setTextColor(Color.LTGRAY) })
+        container.addView(TextView(this).apply { text = "主URL（LANの 192.168...）"; setTextColor(Color.LTGRAY) })
         container.addView(urlInput)
+        container.addView(TextView(this).apply { text = "予備URL（黒い画面の Alternative / Tailscale 100.x）"; setTextColor(Color.LTGRAY) })
+        container.addView(altInput)
         container.addView(TextView(this).apply { text = "APIキー（任意）"; setTextColor(Color.LTGRAY) })
         container.addView(keyInput)
         AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
             .setTitle("PC生成エージェント接続設定")
             .setView(container)
             .setPositiveButton("保存") { _, _ ->
-                saveAgentConnection(prefs, urlInput.text.toString(), keyInput.text.toString())
+                saveAgentConnection(prefs, urlInput.text.toString(), altInput.text.toString(), keyInput.text.toString())
                 Toast.makeText(this, "PC生成エージェントの接続設定を保存しました。", Toast.LENGTH_SHORT).show()
             }
             .setNeutralButton("接続テスト") { _, _ ->
-                saveAgentConnection(prefs, urlInput.text.toString(), keyInput.text.toString())
+                saveAgentConnection(prefs, urlInput.text.toString(), altInput.text.toString(), keyInput.text.toString())
                 lifecycleScope.launch {
                     val diagnosis = GenerationAgentClient.probe(this@MainActivity)
                     AgentConnectionUi.showDiagnosis(
@@ -2704,11 +2712,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .show()
     }
 
-    private fun saveAgentConnection(prefs: SharedPreferences, rawUrl: String, rawKey: String) {
+    private fun saveAgentConnection(prefs: SharedPreferences, rawUrl: String, rawAlt: String, rawKey: String) {
         var url = rawUrl.trim()
         if (url.isNotEmpty() && !url.startsWith("http")) url = "http://$url"
+        var alt = rawAlt.trim()
+        if (alt.isNotEmpty() && !alt.startsWith("http")) alt = "http://$alt"
         prefs.edit()
             .putString("remote_server_url", url.removeSuffix("/"))
+            .putString("remote_server_url_alts", alt.removeSuffix("/"))
             .putString("generation_agent_api_key", rawKey.trim())
             .apply()
     }
