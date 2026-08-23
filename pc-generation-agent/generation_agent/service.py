@@ -157,15 +157,7 @@ class GenerationService:
         if not folder.is_dir():
             return []
         return [
-            {
-                "name": image.name,
-                "date": date,
-                "size": image.stat().st_size,
-                "created_at": datetime.fromtimestamp(image.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
-                "url": self.file_url(date, image.name),
-                "thumbnail_url": self.mobile_thumbnail_url(date, image.name),
-                "tags": self._read_image_tags(date, image.name),
-            }
+            self._public_library_image(date, image)
             for image in self._folder_images(folder)
         ]
 
@@ -548,7 +540,9 @@ class GenerationService:
         result.pop("batch_size", None)
         result.pop("n_iter", None)
         result.pop("tags", None)
+        result.pop("card_states", None)
         result["_agent_tags"] = self._normalize_tags(task.get("tags"))
+        result["_agent_card_states"] = self._normalize_card_states(task.get("card_states"))
         return result
 
     @staticmethod
@@ -569,18 +563,38 @@ class GenerationService:
     def _metadata_path(self, date: str, name: str) -> Path:
         return self.config.database_path.parent / "metadata" / date / f"{name}.json"
 
-    def _read_image_tags(self, date: str, name: str) -> list[str]:
+    def _read_image_metadata(self, date: str, name: str) -> dict[str, Any]:
         path = self._metadata_path(date, name)
         if not path.is_file():
-            return []
+            return {}
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
-            return []
-        tags = data.get("tags")
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _read_image_tags(self, date: str, name: str) -> list[str]:
+        tags = self._read_image_metadata(date, name).get("tags")
         if not isinstance(tags, list):
             return []
         return [str(tag).strip() for tag in tags if str(tag).strip()]
+
+    def _public_library_image(self, date: str, image: Path) -> dict[str, Any]:
+        metadata = self._read_image_metadata(date, image.name)
+        tags = metadata.get("tags")
+        card_states = metadata.get("card_states")
+        parameters = metadata.get("parameters")
+        return {
+            "name": image.name,
+            "date": date,
+            "size": image.stat().st_size,
+            "created_at": datetime.fromtimestamp(image.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
+            "url": self.file_url(date, image.name),
+            "thumbnail_url": self.mobile_thumbnail_url(date, image.name),
+            "tags": [str(tag).strip() for tag in tags if str(tag).strip()] if isinstance(tags, list) else [],
+            "card_states": card_states if isinstance(card_states, dict) else {},
+            "parameters": parameters if isinstance(parameters, dict) else {},
+        }
 
     def _write_metadata(
         self,
@@ -609,6 +623,7 @@ class GenerationService:
             except Exception:
                 existing = {}
         tags = stored_payload.get("_agent_tags") or existing.get("tags") or []
+        card_states = stored_payload.get("_agent_card_states") or existing.get("card_states") or {}
         metadata = {
             "job_id": job_id,
             "task_index": index,
@@ -616,5 +631,6 @@ class GenerationService:
             "file": relative_path if relative_path.count("/") == 2 else f"image/{relative_path}",
             "parameters": sd_payload if sd_payload is not None else existing.get("parameters", {}),
             "tags": tags if isinstance(tags, list) else [],
+            "card_states": card_states if isinstance(card_states, dict) else {},
         }
         path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")

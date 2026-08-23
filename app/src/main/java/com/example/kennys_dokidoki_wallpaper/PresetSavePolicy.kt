@@ -5,7 +5,9 @@ package com.example.kennys_dokidoki_wallpaper
  */
 object PresetSavePolicy {
     const val QUICK_CATEGORY = "クイックプリセット"
-    const val OVERWRITE_BUTTON_LABEL = "選択を反映"
+    const val OVERWRITE_BUTTON_LABEL = "選択中のカードで上書き"
+    const val ADD_CATEGORY_LABEL = "分類を追加"
+    const val FROM_IMAGE_MENU_LABEL = "この構成をプリセットに"
 
     fun defaultName(width: Int, height: Int): String = "$width x $height"
 

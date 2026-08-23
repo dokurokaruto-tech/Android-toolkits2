@@ -157,10 +157,15 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                     return@launch
                 }
                 images.forEach { image ->
-                    GeneratedImageDraftStore.seedGeneratedTags(
+                    GeneratedImageDraftStore.seedGeneratedSource(
                         this@GeneratedFolderPickerActivity,
                         Uri.parse(image.url),
-                        image.tags
+                        image.tags,
+                        image.cardStates,
+                        image.width,
+                        image.height,
+                        image.steps,
+                        image.sampler
                     )
                 }
                 openAlbum(

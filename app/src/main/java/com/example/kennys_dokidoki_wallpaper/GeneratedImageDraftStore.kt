@@ -37,21 +37,40 @@ object GeneratedImageDraftStore {
     }
 
     fun seedGeneratedTags(context: Context, uri: Uri, generatedTags: Collection<String>) {
+        seedGeneratedSource(context, uri, generatedTags)
+    }
+
+    fun seedGeneratedSource(
+        context: Context,
+        uri: Uri,
+        generatedTags: Collection<String> = emptyList(),
+        cardStates: Map<String, Int> = emptyMap(),
+        width: Int? = null,
+        height: Int? = null,
+        steps: Int? = null,
+        sampler: String? = null
+    ) {
         val incoming = GeneratedImageTagBinding.collect(listOf(generatedTags))
-        if (incoming.isEmpty()) return
         val key = keyFor(uri)
         val existing = get(context, key)
-        val merged = GeneratedImageTagBinding.mergeForBrowse(existing?.tags ?: emptySet(), incoming)
-        if (existing != null && existing.tags == merged) return
-        upsert(
-            context,
-            key,
-            GeneratedImageLifecycle.Draft(
-                tags = merged,
-                description = existing?.description,
-                linkedChatId = existing?.linkedChatId
-            )
+        val mergedTags = if (incoming.isEmpty()) {
+            existing?.tags ?: emptySet()
+        } else {
+            GeneratedImageTagBinding.mergeForBrowse(existing?.tags ?: emptySet(), incoming)
+        }
+        val mergedCards = if (cardStates.isNotEmpty()) cardStates else existing?.cardStates.orEmpty()
+        val next = GeneratedImageLifecycle.Draft(
+            tags = mergedTags,
+            description = existing?.description,
+            linkedChatId = existing?.linkedChatId,
+            cardStates = mergedCards,
+            width = width ?: existing?.width,
+            height = height ?: existing?.height,
+            steps = steps ?: existing?.steps,
+            sampler = sampler ?: existing?.sampler
         )
+        if (existing == next) return
+        upsert(context, key, next)
     }
 
     fun get(context: Context, key: String): GeneratedImageLifecycle.Draft? {
@@ -62,13 +81,19 @@ object GeneratedImageDraftStore {
     }
 
     fun save(context: Context, uri: Uri, entry: ImageEntry) {
+        val existing = get(context, keyFor(uri))
         upsert(
             context,
             keyFor(uri),
             GeneratedImageLifecycle.Draft(
                 tags = entry.tags.toSet(),
                 description = entry.description,
-                linkedChatId = entry.linkedChatId
+                linkedChatId = entry.linkedChatId,
+                cardStates = existing?.cardStates.orEmpty(),
+                width = existing?.width,
+                height = existing?.height,
+                steps = existing?.steps,
+                sampler = existing?.sampler
             )
         )
         val chatId = entry.linkedChatId
@@ -113,6 +138,18 @@ object GeneratedImageDraftStore {
             linkedChatId = plan.chatId,
             description = plan.description
         )
+        if (draft.cardStates.isNotEmpty() || draft.width != null) {
+            seedGeneratedSource(
+                context,
+                destUri,
+                draft.tags,
+                draft.cardStates,
+                draft.width,
+                draft.height,
+                draft.steps,
+                draft.sampler
+            )
+        }
         if (!plan.chatId.isNullOrBlank()) {
             ChatSessionManager.setLinkedChatId(context, destKey, plan.chatId)
             ChatSessionManager.setLinkedChatId(context, destUri.toString(), plan.chatId)
@@ -187,7 +224,12 @@ object GeneratedImageDraftStore {
                     map[key] = GeneratedImageLifecycle.Draft(
                         tags = tags,
                         description = item.optString("description").takeIf { it.isNotBlank() && it != "null" },
-                        linkedChatId = item.optString("linkedChatId").takeIf { it.isNotBlank() && it != "null" }
+                        linkedChatId = item.optString("linkedChatId").takeIf { it.isNotBlank() && it != "null" },
+                        cardStates = GeneratedImageTagBinding.parseCardStates(item.optJSONObject("cardStates")),
+                        width = item.optInt("width", 0).takeIf { it > 0 },
+                        height = item.optInt("height", 0).takeIf { it > 0 },
+                        steps = item.optInt("steps", 0).takeIf { it > 0 },
+                        sampler = item.optString("sampler").takeIf { it.isNotBlank() && it != "null" }
                     )
                 }
             }

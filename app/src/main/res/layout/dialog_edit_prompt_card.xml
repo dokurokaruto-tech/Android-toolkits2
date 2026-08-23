@@ -250,7 +250,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="20dp"
-            android:text="選択を反映"
+            android:text="選択中のカードで上書き"
             android:visibility="gone"
             tools:ignore="HardcodedText"
             tools:visibility="visible" />

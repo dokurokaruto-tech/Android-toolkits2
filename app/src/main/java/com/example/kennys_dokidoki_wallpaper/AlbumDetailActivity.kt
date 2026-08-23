@@ -127,6 +127,9 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                 }
                 startActivity(intent)
             },
+            onCreatePresetClick = { entry ->
+                GeneratedImagePresetFactory.saveFromImage(this, entry.uri, entry.uri)
+            },
             onSelectionModeChanged = { isSelectionMode ->
                 if (isSelectionMode) {
                     selectionActionBar.visibility = View.VISIBLE
@@ -165,6 +168,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             val importItem = menu.add(0, 101, 0, importTitle)
             importItem.setIcon(android.R.drawable.ic_menu_add)
             importItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+            menu.add(0, 102, 1, PresetSavePolicy.FROM_IMAGE_MENU_LABEL)
         } else {
             val sortItem = menu.add(0, 100, 0, "並び替え順")
             sortItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
@@ -187,6 +191,19 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             val selected = imageAdapter.getSelectedEntries()
             val targets = if (imageAdapter.isSelectionMode && selected.isNotEmpty()) selected else images.toList()
             confirmAddToAllImages(targets)
+            return true
+        }
+        if (item.itemId == 102) {
+            val selected = imageAdapter.getSelectedEntries()
+            val target = when {
+                imageAdapter.isSelectionMode && selected.isNotEmpty() -> selected.first()
+                else -> images.firstOrNull()
+            }
+            if (target == null) {
+                Toast.makeText(this, "対象の画像がありません。", Toast.LENGTH_SHORT).show()
+            } else {
+                GeneratedImagePresetFactory.saveFromImage(this, target.uri, target.uri)
+            }
             return true
         }
         if (item.itemId == 100) {

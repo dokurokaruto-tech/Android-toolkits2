@@ -50,6 +50,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     private lateinit var viewerChromeBar: View
     private lateinit var btnStartTempChat: View
     private lateinit var btnDeleteImage: View
+    private lateinit var btnCreatePreset: View
     private val deletedUris = arrayListOf<String>()
     private val chromeHandler = Handler(Looper.getMainLooper())
     private var chromeVisible = true
@@ -73,6 +74,7 @@ class FullScreenImageActivity : AppCompatActivity() {
         viewerChromeBar = findViewById(R.id.viewer_chrome_bar)
         btnStartTempChat = findViewById(R.id.btn_start_temp_chat)
         btnDeleteImage = findViewById(R.id.btn_delete_image)
+        btnCreatePreset = findViewById(R.id.btn_create_preset_from_image)
         albumName = intent.getStringExtra("ALBUM_NAME") ?: ""
         currentIndex = intent.getIntExtra("START_INDEX", 0)
         isGeneratedViewer = intent.getBooleanExtra("FROM_GENERATED_VIEWER", false) ||
@@ -116,12 +118,23 @@ class FullScreenImageActivity : AppCompatActivity() {
         if (!isGeneratedViewer) {
             btnStartTempChat.visibility = View.GONE
             btnDeleteImage.visibility = View.GONE
+            btnCreatePreset.visibility = View.GONE
             return
         }
         btnStartTempChat.visibility = View.VISIBLE
         btnDeleteImage.visibility = View.VISIBLE
+        btnCreatePreset.visibility = View.VISIBLE
         btnStartTempChat.alpha = 1f
         btnDeleteImage.alpha = 1f
+        btnCreatePreset.alpha = 1f
+        btnCreatePreset.setOnClickListener {
+            if (!chromeVisible) {
+                revealViewerChrome()
+                return@setOnClickListener
+            }
+            val entry = currentEntries.getOrNull(currentIndex) ?: return@setOnClickListener
+            GeneratedImagePresetFactory.saveFromImage(this, entry.uri, entry.uri)
+        }
         btnStartTempChat.setOnClickListener {
             if (!chromeVisible) {
                 revealViewerChrome()
@@ -205,6 +218,8 @@ class FullScreenImageActivity : AppCompatActivity() {
             btnStartTempChat.alpha = 1f
             btnDeleteImage.visibility = View.VISIBLE
             btnDeleteImage.alpha = 1f
+            btnCreatePreset.visibility = View.VISIBLE
+            btnCreatePreset.alpha = 1f
         }
         if (isGeneratedViewer) {
             chromeHandler.postDelayed(hideChromeRunnable, ViewerChromePolicy.HIDE_AFTER_MS)

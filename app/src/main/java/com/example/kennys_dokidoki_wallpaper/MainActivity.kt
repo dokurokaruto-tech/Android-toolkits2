@@ -1033,7 +1033,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         height = startSnapshot.height,
                         steps = startSnapshot.steps,
                         samplerName = startSnapshot.sampler,
-                        tags = TagManager.minimizeTags(prepared.tags.toSet()).toList()
+                        tags = TagManager.minimizeTags(prepared.tags.toSet()).toList(),
+                        cardStates = prepared.cardStates
                     )
                 }
 
@@ -1062,16 +1063,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                             Toast.LENGTH_LONG
                         ).show()
                         val completed = GenerationAgentClient.monitor(this@MainActivity, accepted)
-                        GeneratedImageTagBinding.tagsForCompletedUrls(
-                            completed.imageUrls,
-                            requests.map {
-                                GeneratedImageTagBinding.PreparedImage(it.prompt, it.negativePrompt, it.tags)
-                            }
-                        ).forEach { (url, tags) ->
-                            GeneratedImageDraftStore.seedGeneratedTags(
+                        val preparedForUrls = requests.map {
+                            GeneratedImageTagBinding.PreparedImage(
+                                it.prompt, it.negativePrompt, it.tags, it.cardStates
+                            )
+                        }
+                        val tagsByUrl = GeneratedImageTagBinding.tagsForCompletedUrls(completed.imageUrls, preparedForUrls).toMap()
+                        val cardsByUrl = GeneratedImageTagBinding.cardStatesForCompletedUrls(completed.imageUrls, preparedForUrls).toMap()
+                        completed.imageUrls.forEach { url ->
+                            GeneratedImageDraftStore.seedGeneratedSource(
                                 this@MainActivity,
                                 Uri.parse(url),
-                                tags
+                                tagsByUrl[url].orEmpty(),
+                                cardsByUrl[url].orEmpty(),
+                                startSnapshot.width,
+                                startSnapshot.height,
+                                startSnapshot.steps,
+                                startSnapshot.sampler
                             )
                         }
                         Toast.makeText(
@@ -1103,7 +1111,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_add_preset_inline).setOnClickListener {
-            showAddPresetDialog()
+            showAddPresetCategoryDialog()
         }
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_add_category_inline).setOnClickListener {
             showAddPromptCategoryDialog()
@@ -1634,6 +1642,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         refreshPresetMatchHighlight(forceRebind = true)
         recyclerViewPresets.post { refreshPresetMatchHighlight(forceRebind = true) }
         Toast.makeText(this, "プリセット『${preset.name}』を適用しました。", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showAddPresetCategoryDialog() {
+        val input = EditText(this).apply { hint = "例：ポートレート、夜"; setTextColor(Color.WHITE) }
+        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
+            .setTitle(PresetSavePolicy.ADD_CATEGORY_LABEL)
+            .setView(input)
+            .setPositiveButton("追加") { _, _ ->
+                val text = input.text.toString().trim()
+                if (text.isNotEmpty()) {
+                    PresetManager.addCategory(this, text)
+                    presetAdapter.updateList(PresetManager.presets)
+                }
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
     }
 
     private fun showAddPromptCategoryDialog() {

@@ -25,7 +25,8 @@ data class AgentGenerationRequest(
     val steps: Int,
     val samplerName: String,
     val purpose: String = "image",
-    val tags: List<String> = emptyList()
+    val tags: List<String> = emptyList(),
+    val cardStates: Map<String, Int> = emptyMap()
 )
 
 data class AgentGeneratedFolder(val date: String, val count: Int, val thumbnailUrl: String?)
@@ -34,7 +35,12 @@ data class AgentGeneratedImage(
     val url: String,
     val thumbnailUrl: String,
     val createdAt: String,
-    val tags: List<String> = emptyList()
+    val tags: List<String> = emptyList(),
+    val cardStates: Map<String, Int> = emptyMap(),
+    val width: Int? = null,
+    val height: Int? = null,
+    val steps: Int? = null,
+    val sampler: String? = null
 )
 
 data class AgentJobState(
@@ -196,6 +202,11 @@ object GenerationAgentClient {
                     if (tag.isNotBlank()) tags.put(tag)
                 }
                 put("tags", tags)
+                put("card_states", JSONObject().also { states ->
+                    request.cardStates.forEach { (id, level) ->
+                        if (id.isNotBlank() && level in 1..3) states.put(id, level)
+                    }
+                })
             })
         }
         val body = JSONObject().apply {
@@ -209,6 +220,7 @@ object GenerationAgentClient {
             settings(context).edit()
                 .putString(ACTIVE_JOB_KEY, state.id)
                 .putString(ACTIVE_JOB_TAGS_KEY, GeneratedImageTagBinding.encodeTagLists(requests.map { it.tags }))
+                .putString(ACTIVE_JOB_CARDS_KEY, GeneratedImageTagBinding.encodeCardStateLists(requests.map { it.cardStates }))
                 .commit()
         }
         seedCompletedUrls(context, state.imageUrls)
@@ -259,6 +271,7 @@ object GenerationAgentClient {
                         if (tag.isNotEmpty()) add(tag)
                     }
                 }
+                val parameters = item.optJSONObject("parameters")
                 add(
                     AgentGeneratedImage(
                         name = item.getString("name"),
@@ -268,7 +281,12 @@ object GenerationAgentClient {
                             item.optString("thumbnail_url", item.getString("url"))
                         ),
                         createdAt = item.optString("created_at"),
-                        tags = tags
+                        tags = tags,
+                        cardStates = GeneratedImageTagBinding.parseCardStates(item.optJSONObject("card_states")),
+                        width = parameters?.optInt("width", 0)?.takeIf { it > 0 },
+                        height = parameters?.optInt("height", 0)?.takeIf { it > 0 },
+                        steps = parameters?.optInt("steps", 0)?.takeIf { it > 0 },
+                        sampler = parameters?.optString("sampler_name")?.takeIf { it.isNotBlank() }
                     )
                 )
             }
@@ -419,12 +437,26 @@ object GenerationAgentClient {
 
     private fun seedCompletedUrls(context: Context, urls: List<String>) {
         if (urls.isEmpty()) return
-        val prepared = GeneratedImageTagBinding.preparedFromTagLists(
-            GeneratedImageTagBinding.decodeTagLists(settings(context).getString(ACTIVE_JOB_TAGS_KEY, null))
-        )
+        val tagLists = GeneratedImageTagBinding.decodeTagLists(settings(context).getString(ACTIVE_JOB_TAGS_KEY, null))
+        val cardLists = GeneratedImageTagBinding.decodeCardStateLists(settings(context).getString(ACTIVE_JOB_CARDS_KEY, null))
+        val prepared = tagLists.mapIndexed { index, tags ->
+            GeneratedImageTagBinding.PreparedImage(
+                prompt = "",
+                negativePrompt = "",
+                tags = tags,
+                cardStates = cardLists.getOrNull(index).orEmpty()
+            )
+        }
         if (prepared.isEmpty()) return
-        GeneratedImageTagBinding.tagsForCompletedUrls(urls, prepared).forEach { (url, tags) ->
-            GeneratedImageDraftStore.seedGeneratedTags(context, android.net.Uri.parse(url), tags)
+        val tagsByUrl = GeneratedImageTagBinding.tagsForCompletedUrls(urls, prepared).toMap()
+        val cardsByUrl = GeneratedImageTagBinding.cardStatesForCompletedUrls(urls, prepared).toMap()
+        urls.forEach { url ->
+            GeneratedImageDraftStore.seedGeneratedSource(
+                context,
+                android.net.Uri.parse(url),
+                tagsByUrl[url].orEmpty(),
+                cardsByUrl[url].orEmpty()
+            )
         }
     }
 

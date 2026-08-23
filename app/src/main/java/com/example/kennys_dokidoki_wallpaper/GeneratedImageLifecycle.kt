@@ -7,7 +7,12 @@ object GeneratedImageLifecycle {
     data class Draft(
         val tags: Set<String> = emptySet(),
         val description: String? = null,
-        val linkedChatId: String? = null
+        val linkedChatId: String? = null,
+        val cardStates: Map<String, Int> = emptyMap(),
+        val width: Int? = null,
+        val height: Int? = null,
+        val steps: Int? = null,
+        val sampler: String? = null
     )
 
     data class ImportPlan(

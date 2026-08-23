@@ -18,6 +18,7 @@ class ImageAdapter(
     private val onDeleteClick: (ImageEntry, Int) -> Unit,
     private val onStartWallpaperClick: (ImageEntry) -> Unit,
     private val onEditTagsClick: (ImageEntry) -> Unit,
+    private val onCreatePresetClick: ((ImageEntry) -> Unit)? = null,
     private val onSelectionModeChanged: (Boolean) -> Unit,
     private val onSelectionCountChanged: (Int) -> Unit
 ) : RecyclerView.Adapter<ImageAdapter.ImageViewHolder>() {
@@ -172,6 +173,7 @@ class ImageAdapter(
             val popup = PopupMenu(view.context, view)
             popup.menu.add("画像属性（タグ）の編集")
             if (isGeneratedViewerMode) {
+                popup.menu.add(PresetSavePolicy.FROM_IMAGE_MENU_LABEL)
                 popup.menu.add("削除")
             } else {
                 popup.menu.add("壁紙をスタート")

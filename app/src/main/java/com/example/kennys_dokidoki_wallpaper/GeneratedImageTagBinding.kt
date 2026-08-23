@@ -1,6 +1,7 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * 生成開始時点のカード選択と「自動付与するタグ」を凍結し、完成画像へ載せる。
@@ -31,7 +32,8 @@ object GeneratedImageTagBinding {
     data class PreparedImage(
         val prompt: String,
         val negativePrompt: String,
-        val tags: List<String>
+        val tags: List<String>,
+        val cardStates: Map<String, Int> = emptyMap()
     )
 
     fun collect(cardTagSets: Iterable<Iterable<String>>): Set<String> {
@@ -153,6 +155,53 @@ object GeneratedImageTagBinding {
 
     fun preparedFromTagLists(tagLists: List<List<String>>): List<PreparedImage> =
         tagLists.map { PreparedImage("", "", it) }
+
+    fun cardStatesForCompletedUrls(
+        urls: List<String>,
+        prepared: List<PreparedImage>
+    ): List<Pair<String, Map<String, Int>>> {
+        return urls.mapIndexed { order, url ->
+            val fromName = taskIndexFromUrl(url)?.let { index ->
+                prepared.getOrNull(index - 1)?.cardStates
+            }
+            url to (fromName ?: prepared.getOrNull(order)?.cardStates.orEmpty())
+        }
+    }
+
+    fun encodeCardStateLists(lists: List<Map<String, Int>>): String {
+        val array = JSONArray()
+        lists.forEach { states ->
+            array.put(JSONObject().also { item ->
+                states.forEach { (id, level) ->
+                    if (id.isNotBlank()) item.put(id, level)
+                }
+            })
+        }
+        return array.toString()
+    }
+
+    fun decodeCardStateLists(raw: String?): List<Map<String, Int>> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    add(parseCardStates(array.optJSONObject(index)))
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun parseCardStates(raw: org.json.JSONObject?): Map<String, Int> {
+        if (raw == null) return emptyMap()
+        val result = linkedMapOf<String, Int>()
+        raw.keys().forEach { id ->
+            val key = id.trim()
+            val level = raw.optInt(id, 0)
+            if (key.isNotEmpty() && level in 1..3) result[key] = level
+        }
+        return result
+    }
 
     fun encodeTagLists(lists: List<Collection<String>>): String {
         val array = JSONArray()
