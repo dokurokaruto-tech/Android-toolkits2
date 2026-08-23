@@ -216,6 +216,7 @@ class FullScreenImageActivity : AppCompatActivity() {
             val entry = currentEntries.getOrNull(currentIndex) ?: return@setOnClickListener
             startActivity(Intent(this, ChatOverlayActivity::class.java).apply {
                 putExtra("IMAGE_URI", entry.uri.toString())
+                entry.thumbnailUri?.toString()?.let { putExtra("THUMBNAIL_URI", it) }
                 putExtra("GENERATED_TEMP_CHAT", true)
             })
         }

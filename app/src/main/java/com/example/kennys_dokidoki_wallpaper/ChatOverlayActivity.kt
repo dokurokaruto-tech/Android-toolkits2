@@ -15,6 +15,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
@@ -56,6 +57,7 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -851,8 +853,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        window.decorView.setBackgroundColor(Color.TRANSPARENT)
+        applyPinnedChatWindowCover()
         setContentView(R.layout.activity_chat_overlay)
+        applyPinnedChatWindowCover()
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.root_layout)) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -1214,12 +1217,31 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        applyPinnedChatWindowCover()
         try {
             loadCurrentSession()
         } catch (e: Exception) {
             Log.e("ChatOverlay", "onNewIntent loadCurrentSession failed", e)
         }
         applyVisualConfigs()
+    }
+
+    private fun applyPinnedChatWindowCover() {
+        val pinned = ChatPinnedBackgroundPolicy.shouldCoverLiveWallpaper(intent.getStringExtra("IMAGE_URI"))
+        if (pinned) {
+            window.setBackgroundDrawableResource(android.R.color.black)
+            window.decorView.setBackgroundColor(Color.BLACK)
+            findViewById<View>(R.id.root_layout)?.setBackgroundColor(Color.BLACK)
+            findViewById<ImageView>(R.id.chat_background_image)?.apply {
+                visibility = View.VISIBLE
+                setBackgroundColor(Color.BLACK)
+                if (drawable == null) setImageDrawable(ColorDrawable(Color.BLACK))
+            }
+        } else {
+            window.setBackgroundDrawableResource(android.R.color.transparent)
+            window.decorView.setBackgroundColor(Color.TRANSPARENT)
+            findViewById<View>(R.id.root_layout)?.setBackgroundColor(Color.TRANSPARENT)
+        }
     }
 
     // --- Remote Model Data ---
@@ -2092,12 +2114,28 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             val bgView = findViewById<ImageView>(R.id.chat_background_image)
             if (intentUri != null) {
                 bgView.visibility = View.VISIBLE
-                Glide.with(this)
-                    .load(entry.uri)
-                    .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(entry.uri))
-                    .into(bgView)
+                bgView.setBackgroundColor(Color.BLACK)
+                val cached = OriginalImageMemoryCache.getIfPresent(entry.uri)
+                val thumbnail = ChatPinnedBackgroundPolicy.thumbnailUri(
+                    intent.getStringExtra("THUMBNAIL_URI"),
+                    entry.thumbnailUri?.toString()
+                )
+                val request = Glide.with(this)
+                    .load(ChatPinnedBackgroundPolicy.loadModel(cached, entryUri))
+                    .diskCacheStrategy(
+                        if (cached != null) DiskCacheStrategy.NONE
+                        else ImageStoragePolicy.glideDiskCache(entry.uri)
+                    )
+                    .placeholder(ColorDrawable(Color.BLACK))
+                    .error(ColorDrawable(Color.BLACK))
+                    .dontAnimate()
+                if (cached == null && thumbnail != null) {
+                    request.thumbnail(Glide.with(this).load(android.net.Uri.parse(thumbnail)))
+                }
+                request.into(bgView)
             } else {
                 bgView.visibility = View.GONE
+                bgView.setImageDrawable(null)
             }
             applyChatBackgroundDim()
 
