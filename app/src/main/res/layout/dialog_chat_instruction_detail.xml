@@ -35,32 +35,56 @@
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="1 / 2" />
 
-        <androidx.core.widget.NestedScrollView
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_marginTop="16dp"
             android:layout_weight="1"
-            android:fillViewport="true"
-            android:overScrollMode="ifContentScrolls">
+            android:hint="指示"
+            app:boxCornerRadiusBottomEnd="16dp"
+            app:boxCornerRadiusBottomStart="16dp"
+            app:boxCornerRadiusTopEnd="16dp"
+            app:boxCornerRadiusTopStart="16dp"
+            app:hintTextColor="?attr/colorPrimary">
 
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/tv_instruction_detail_body"
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_instruction_detail_body"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:lineSpacingMultiplier="1.25"
+                android:layout_height="match_parent"
+                android:gravity="top"
+                android:inputType="textMultiLine|textCapSentences"
+                android:overScrollMode="ifContentScrolls"
+                android:scrollbars="vertical"
                 android:textAppearance="?attr/textAppearanceBodyLarge"
                 android:textColor="?attr/colorOnSurface"
-                android:textIsSelectable="true"
+                tools:ignore="HardcodedText"
                 tools:text="甘える口調で話す。" />
-        </androidx.core.widget.NestedScrollView>
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_instruction_detail_back"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:text="戻る"
-            tools:ignore="HardcodedText" />
+            android:gravity="end"
+            android:orientation="horizontal"
+            android:paddingTop="8dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_instruction_detail_back"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="戻る"
+                tools:ignore="HardcodedText" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_instruction_detail_save"
+                style="@style/Widget.Material3.Button.FilledTonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="保存"
+                tools:ignore="HardcodedText" />
+        </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

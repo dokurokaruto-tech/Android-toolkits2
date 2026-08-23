@@ -1467,7 +1467,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             Triple("User", R.drawable.ic_md3_person, { showPersonaDialog() }),
             Triple("Character", R.drawable.ic_md3_photo_library, { showEditActiveImageSetDialog() }),
             Triple("Model", R.drawable.ic_md3_smart_toy, { showModelMenu() }),
-            Triple("指示書", R.drawable.ic_md3_description, { showAllPromptsDialog() }),
+            Triple("Instruction", R.drawable.ic_md3_description, { showAllPromptsDialog() }),
             Triple("Keys", R.drawable.ic_md3_key, { showApiKeysMenu() }),
             Triple("Visuals", R.drawable.ic_md3_tune, { showVisualConfigDialog() }),
             Triple("Suggest", R.drawable.ic_md3_lightbulb, { showSuggestSettingsDialog() })
@@ -1844,7 +1844,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val engine = prefs.getString("chat_llm_engine", "CLOUD") ?: "CLOUD"
         
         val userNode = chatTree.nodes[parentId] ?: return
-        var systemPrompt = "あなたはAIキャラクターです。\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
+        var systemPrompt = ChatInstructionPolicy.roleText(prefs.getString(ChatInstructionPolicy.ROLE_KEY, null)) + "\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
         val sessionId = currentChatId ?: ""
         
         ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, newAiNode)
@@ -2771,7 +2771,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val engine = prefs.getString("chat_llm_engine", "CLOUD") ?: "CLOUD"
 
-        var systemPrompt = "あなたはAIキャラクターです。\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
+        var systemPrompt = ChatInstructionPolicy.roleText(prefs.getString(ChatInstructionPolicy.ROLE_KEY, null)) + "\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
 
         val isSuggestEnabled = prefs.getBoolean("chat_suggest_reply", true)
         if (isSuggestEnabled) {
@@ -3245,6 +3245,41 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun showAllPromptsDialog() {
+        val snapshot = buildInstructionSnapshot()
+        val categories = ChatInstructionPolicy.categories(snapshot)
+        val expanded = mutableSetOf<ChatInstructionPolicy.Kind>()
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_chat_instructions)
+        view.findViewById<TextView>(R.id.tv_instruction_title).text = ChatInstructionCopy.TITLE
+        val countView = view.findViewById<TextView>(R.id.tv_instruction_count)
+        countView.text = ChatInstructionPolicy.countLine(categories)
+        val rv = view.findViewById<RecyclerView>(R.id.rv_instruction_sections)
+        rv.layoutManager = LinearLayoutManager(view.context)
+        val dialog = Md3PopupDialog.show(this, view)
+        lateinit var adapter: ChatInstructionAdapter
+        fun paint() {
+            val latest = ChatInstructionPolicy.categories(buildInstructionSnapshot())
+            countView.text = ChatInstructionPolicy.countLine(latest)
+            adapter.submit(ChatInstructionPolicy.visibleRows(latest, expanded))
+        }
+        adapter = ChatInstructionAdapter(
+            onCategory = { category ->
+                val next = if (category.kind in expanded) {
+                    emptySet()
+                } else {
+                    setOf(category.kind)
+                }
+                expanded.clear()
+                expanded.addAll(next)
+                paint()
+            },
+            onLeaf = { leaf -> showInstructionDetail(leaf) { paint() } }
+        )
+        rv.adapter = adapter
+        paint()
+        view.findViewById<View>(R.id.btn_instruction_close).setOnClickListener { dialog.dismiss() }
+    }
+
+    private fun buildInstructionSnapshot(): ChatInstructionPolicy.Snapshot {
         UserPersonaManager.loadPersonas(this)
         MemoryManager.loadMemories(this)
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -3256,42 +3291,112 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             TagManager.getEffectiveTags(entry.tags).map { tag -> tag to TagManager.getTagPrompt(tag) }
         }
         val personaItems = persona?.items
-            ?.filter { it.isEnabled }
-            ?.map { it.content }
-            ?.filter { it.isNotBlank() }
+            ?.filter { it.isEnabled && it.content.isNotBlank() }
+            ?.map { it.id to it.content }
             .orEmpty()
-            .ifEmpty { listOfNotNull(persona?.mergedPrompt?.takeIf { it.isNotBlank() }) }
-        val sections = ChatInstructionPolicy.sections(
-            ChatInstructionPolicy.Snapshot(
-                personaName = persona?.name,
-                personaItems = personaItems,
-                imageDescription = entry?.let { TavernCardParser.cleanDescriptionText(it.description) },
-                tags = tags,
-                memories = MemoryManager.memories.toList(),
-                suggestEnabled = prefs.getBoolean("chat_suggest_reply", true),
-                suggestExtra = prefs.getString("chat_suggest_custom_instructions", "") ?: ""
-            )
+            .ifEmpty { listOfNotNull(persona?.mergedPrompt?.takeIf { it.isNotBlank() }?.let { (persona?.id ?: "") to it }) }
+        return ChatInstructionPolicy.Snapshot(
+            roleText = ChatInstructionPolicy.roleText(prefs.getString(ChatInstructionPolicy.ROLE_KEY, null)),
+            personaName = persona?.name,
+            personaItems = personaItems,
+            imageDescription = entry?.let { TavernCardParser.cleanDescriptionText(it.description) },
+            tags = tags,
+            memories = MemoryManager.memories.toList(),
+            suggestEnabled = prefs.getBoolean("chat_suggest_reply", true),
+            suggestBody = ChatInstructionPolicy.suggestText(prefs.getString(ChatInstructionPolicy.SUGGEST_KEY, null)),
+            suggestExtra = prefs.getString("chat_suggest_custom_instructions", "") ?: ""
         )
-        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_chat_instructions)
-        view.findViewById<TextView>(R.id.tv_instruction_title).text = ChatInstructionCopy.TITLE
-        view.findViewById<TextView>(R.id.tv_instruction_count).text = ChatInstructionPolicy.countLine(sections)
-        val rv = view.findViewById<RecyclerView>(R.id.rv_instruction_sections)
-        rv.layoutManager = LinearLayoutManager(view.context)
-        val dialog = Md3PopupDialog.show(this, view)
-        rv.adapter = ChatInstructionAdapter(sections) { section ->
-            showInstructionDetail(section)
-        }
-        view.findViewById<View>(R.id.btn_instruction_close).setOnClickListener { dialog.dismiss() }
     }
 
-    private fun showInstructionDetail(section: ChatInstructionPolicy.Section) {
+    private fun showInstructionDetail(leaf: ChatInstructionPolicy.Leaf, onSaved: () -> Unit) {
         val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_chat_instruction_detail)
-        view.findViewById<TextView>(R.id.tv_instruction_detail_title).text = section.title
-        view.findViewById<TextView>(R.id.tv_instruction_detail_sub).text = section.subtitle
-        view.findViewById<TextView>(R.id.tv_instruction_detail_body).text =
-            if (section.empty) ChatInstructionCopy.EMPTY else section.body
+        view.findViewById<TextView>(R.id.tv_instruction_detail_title).text = leaf.title
+        view.findViewById<TextView>(R.id.tv_instruction_detail_sub).text = leaf.subtitle
+        val editor = view.findViewById<EditText>(R.id.et_instruction_detail_body)
+        editor.setText(if (leaf.empty) "" else leaf.body)
+        editor.setSelection(editor.text?.length ?: 0)
         val dialog = Md3PopupDialog.show(this, view)
         view.findViewById<View>(R.id.btn_instruction_detail_back).setOnClickListener { dialog.dismiss() }
+        view.findViewById<View>(R.id.btn_instruction_detail_save).setOnClickListener {
+            if (saveInstructionLeaf(leaf.target, editor.text?.toString().orEmpty())) {
+                Toast.makeText(this, ChatInstructionCopy.SAVED, Toast.LENGTH_SHORT).show()
+                onSaved()
+                dialog.dismiss()
+            } else {
+                Toast.makeText(this, "保存できなかった。", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun saveInstructionLeaf(target: ChatInstructionPolicy.Target, raw: String): Boolean {
+        val body = raw.trim()
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        return when (target.kind) {
+            ChatInstructionPolicy.Kind.ROLE -> {
+                prefs.edit().putString(ChatInstructionPolicy.ROLE_KEY, body).apply()
+                true
+            }
+            ChatInstructionPolicy.Kind.USER -> saveUserInstruction(target.key, body)
+            ChatInstructionPolicy.Kind.IMAGE -> saveImageInstruction(body)
+            ChatInstructionPolicy.Kind.TAG -> {
+                if (target.key.isBlank()) return false
+                TagManager.setTagPrompt(this, target.key, body)
+                true
+            }
+            ChatInstructionPolicy.Kind.MEMORY -> {
+                MemoryManager.loadMemories(this)
+                val index = target.key.toIntOrNull() ?: return false
+                if (index in MemoryManager.memories.indices) {
+                    if (body.isEmpty()) MemoryManager.removeMemory(this, index)
+                    else MemoryManager.editMemory(this, index, body)
+                } else if (body.isNotEmpty()) {
+                    MemoryManager.addMemory(this, body)
+                }
+                true
+            }
+            ChatInstructionPolicy.Kind.SUGGEST -> {
+                prefs.edit().putString(ChatInstructionPolicy.SUGGEST_KEY, body).apply()
+                true
+            }
+            ChatInstructionPolicy.Kind.SUGGEST_EXTRA -> {
+                prefs.edit().putString("chat_suggest_custom_instructions", body).apply()
+                true
+            }
+        }
+    }
+
+    private fun saveUserInstruction(key: String, body: String): Boolean {
+        UserPersonaManager.loadPersonas(this)
+        val persona = UserPersonaManager.activePersona
+        if (persona == null) {
+            if (body.isEmpty()) return false
+            UserPersonaManager.addPersona(this, "メイン", "", listOf(PersonaItem(content = body)))
+            return true
+        }
+        val items = persona.items.map { it.copy() }.toMutableList()
+        val index = items.indexOfFirst { it.id == key }
+        if (index >= 0) {
+            if (body.isEmpty()) items.removeAt(index) else items[index].content = body
+        } else if (body.isNotEmpty()) {
+            items.add(PersonaItem(content = body))
+        }
+        UserPersonaManager.editPersona(this, persona.id, persona.name, persona.description, items)
+        return true
+    }
+
+    private fun saveImageInstruction(body: String): Boolean {
+        val entry = currentImageEntry ?: return false
+        val live = DataManager.findImageByUri(entry.uri.toString()) ?: entry
+        val meta = TavernCardParser.getTavernMeta(live.description)
+        live.description = when {
+            body.isEmpty() && meta != null -> "\n\n<TavernMeta>\n$meta\n</TavernMeta>"
+            body.isEmpty() -> null
+            meta != null -> "$body\n\n<TavernMeta>\n$meta\n</TavernMeta>"
+            else -> body
+        }
+        currentImageEntry = live
+        persistImageBinding(live, saveLibrary = true)
+        return true
     }
 
     private fun showChatSettingsDialog() {

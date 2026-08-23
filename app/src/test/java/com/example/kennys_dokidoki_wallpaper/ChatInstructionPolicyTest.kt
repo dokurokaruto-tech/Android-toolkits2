@@ -7,11 +7,11 @@ import org.junit.Test
 
 class ChatInstructionPolicyTest {
     @Test
-    fun splitsEverySourceInsteadOfJoining() {
-        val sections = ChatInstructionPolicy.sections(
+    fun groupsLeavesUnderCategories() {
+        val categories = ChatInstructionPolicy.categories(
             ChatInstructionPolicy.Snapshot(
                 personaName = "ケニー",
-                personaItems = listOf("甘える", "短く話す"),
+                personaItems = listOf("p1" to "甘える", "p2" to "短く話す"),
                 imageDescription = "白いワンピース",
                 tags = listOf("金髪" to "髪は金色。", "幼女" to "幼い見た目。"),
                 memories = listOf("ドーナツが好き"),
@@ -19,38 +19,66 @@ class ChatInstructionPolicyTest {
                 suggestExtra = "語尾をにゃ"
             )
         )
-        assertEquals(ChatInstructionPolicy.Kind.ROLE, sections.first().kind)
-        assertEquals(ChatInstructionPolicy.ROLE_TEXT, sections.first().body)
-        assertEquals(2, sections.count { it.kind == ChatInstructionPolicy.Kind.USER })
-        assertEquals("甘える", sections.first { it.kind == ChatInstructionPolicy.Kind.USER }.body)
-        assertEquals("白いワンピース", sections.first { it.kind == ChatInstructionPolicy.Kind.IMAGE }.body)
-        assertEquals(listOf("金髪", "幼女"), sections.filter { it.kind == ChatInstructionPolicy.Kind.TAG }.map { it.title })
-        assertEquals("ドーナツが好き", sections.first { it.kind == ChatInstructionPolicy.Kind.MEMORY }.body)
-        assertTrue(sections.any { it.kind == ChatInstructionPolicy.Kind.SUGGEST && !it.empty })
-        assertEquals("語尾をにゃ", sections.first { it.kind == ChatInstructionPolicy.Kind.SUGGEST_EXTRA }.body)
-        assertFalse(sections.joinToString { it.body }.contains("甘える\n短く話す"))
+        assertEquals(
+            listOf(
+                ChatInstructionPolicy.Kind.ROLE,
+                ChatInstructionPolicy.Kind.USER,
+                ChatInstructionPolicy.Kind.IMAGE,
+                ChatInstructionPolicy.Kind.TAG,
+                ChatInstructionPolicy.Kind.MEMORY,
+                ChatInstructionPolicy.Kind.SUGGEST
+            ),
+            categories.map { it.kind }
+        )
+        val user = categories.first { it.kind == ChatInstructionPolicy.Kind.USER }
+        assertEquals(listOf("甘える", "短く話す"), user.leaves.map { it.body })
+        assertEquals("p1", user.leaves.first().target.key)
+        assertEquals(listOf("金髪", "幼女"), categories.first { it.kind == ChatInstructionPolicy.Kind.TAG }.leaves.map { it.title })
+    }
+
+    @Test
+    fun collapsedListHidesLeavesUntilToggled() {
+        val categories = ChatInstructionPolicy.categories(
+            ChatInstructionPolicy.Snapshot(personaItems = listOf("p1" to "甘える", "p2" to "短く話す"))
+        )
+        val closed = ChatInstructionPolicy.visibleRows(categories, emptySet())
+        assertEquals(6, closed.size)
+        assertTrue(closed.all { it is ChatInstructionPolicy.Row.Group })
+        val opened = ChatInstructionPolicy.visibleRows(
+            categories,
+            ChatInstructionPolicy.toggleExpanded(emptySet(), ChatInstructionPolicy.Kind.USER)
+        )
+        assertEquals(8, opened.size)
+        assertEquals(
+            listOf("甘える", "短く話す"),
+            opened.filterIsInstance<ChatInstructionPolicy.Row.Item>().map { it.leaf.body }
+        )
+        val closedAgain = ChatInstructionPolicy.visibleRows(
+            categories,
+            ChatInstructionPolicy.toggleExpanded(setOf(ChatInstructionPolicy.Kind.USER), ChatInstructionPolicy.Kind.USER)
+        )
+        assertEquals(6, closedAgain.size)
     }
 
     @Test
     fun emptyPiecesStayVisibleAsUnset() {
-        val sections = ChatInstructionPolicy.sections(ChatInstructionPolicy.Snapshot())
-        assertTrue(sections.any { it.kind == ChatInstructionPolicy.Kind.USER && it.empty })
-        assertTrue(sections.any { it.kind == ChatInstructionPolicy.Kind.IMAGE && it.empty })
-        assertTrue(sections.any { it.kind == ChatInstructionPolicy.Kind.TAG && it.empty })
-        assertTrue(sections.any { it.kind == ChatInstructionPolicy.Kind.MEMORY && it.empty })
-        assertTrue(sections.any { it.kind == ChatInstructionPolicy.Kind.SUGGEST && it.empty })
-        assertEquals(ChatInstructionCopy.EMPTY, ChatInstructionPolicy.preview(sections.first { it.empty }))
-        assertEquals("使っている 1 / 6", ChatInstructionPolicy.countLine(sections))
+        val categories = ChatInstructionPolicy.categories(ChatInstructionPolicy.Snapshot())
+        assertTrue(categories.first { it.kind == ChatInstructionPolicy.Kind.USER }.leaves.single().empty)
+        assertTrue(categories.first { it.kind == ChatInstructionPolicy.Kind.IMAGE }.leaves.single().empty)
+        assertTrue(categories.first { it.kind == ChatInstructionPolicy.Kind.TAG }.leaves.single().empty)
+        assertTrue(categories.first { it.kind == ChatInstructionPolicy.Kind.MEMORY }.leaves.single().empty)
+        assertTrue(categories.first { it.kind == ChatInstructionPolicy.Kind.SUGGEST }.leaves.single().empty)
+        assertEquals(
+            ChatInstructionCopy.EMPTY,
+            ChatInstructionPolicy.preview(categories.first { it.kind == ChatInstructionPolicy.Kind.USER }.leaves.single())
+        )
+        assertEquals("使っている 1 / 6", ChatInstructionPolicy.countLine(categories))
     }
 
     @Test
-    fun previewUsesTheFirstLine() {
-        val section = ChatInstructionPolicy.Section(
-            ChatInstructionPolicy.Kind.TAG,
-            "ドヤ顔",
-            "タグ",
-            "胸を張る。\n鼻高々。"
-        )
-        assertEquals("胸を張る。", ChatInstructionPolicy.preview(section))
+    fun storedRoleAndSuggestFallBackToDefaults() {
+        assertEquals(ChatInstructionPolicy.ROLE_TEXT, ChatInstructionPolicy.roleText("  "))
+        assertEquals("役割を変える", ChatInstructionPolicy.roleText("役割を変える"))
+        assertEquals(ChatInstructionPolicy.SUGGEST_BODY, ChatInstructionPolicy.suggestText(null))
     }
 }

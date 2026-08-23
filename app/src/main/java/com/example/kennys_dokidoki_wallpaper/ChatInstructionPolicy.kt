@@ -1,10 +1,12 @@
 package com.example.kennys_dokidoki_wallpaper
 
 /**
- * キャラチャットへ渡している指示を、一塊にせず要素ごとに分ける。
+ * キャラチャットの指示を、分類→個別の二段にする。
  */
 object ChatInstructionPolicy {
     const val ROLE_TEXT = "あなたはAIキャラクターです。"
+    const val ROLE_KEY = "chat_role_instruction"
+    const val SUGGEST_KEY = "chat_suggest_instruction"
 
     val SUGGEST_BODY = """
         ユーザーが次に返信しやすくなるような、ユーザーの返信のサジェスト（選択肢）を3パターン生成する。
@@ -18,118 +20,182 @@ object ChatInstructionPolicy {
 
     enum class Kind { ROLE, USER, IMAGE, TAG, MEMORY, SUGGEST, SUGGEST_EXTRA }
 
-    data class Section(
-        val kind: Kind,
+    data class Target(val kind: Kind, val key: String)
+
+    data class Leaf(
         val title: String,
         val subtitle: String,
         val body: String,
+        val target: Target,
         val empty: Boolean = false
     )
 
+    data class Category(
+        val kind: Kind,
+        val title: String,
+        val subtitle: String,
+        val leaves: List<Leaf>
+    )
+
+    sealed class Row {
+        data class Group(val category: Category, val expanded: Boolean) : Row()
+        data class Item(val leaf: Leaf) : Row()
+    }
+
     data class Snapshot(
+        val roleText: String = ROLE_TEXT,
         val personaName: String? = null,
-        val personaItems: List<String> = emptyList(),
+        val personaItems: List<Pair<String, String>> = emptyList(),
         val imageDescription: String? = null,
         val tags: List<Pair<String, String>> = emptyList(),
         val memories: List<String> = emptyList(),
         val suggestEnabled: Boolean = false,
+        val suggestBody: String = SUGGEST_BODY,
         val suggestExtra: String = ""
     )
 
-    fun sections(snapshot: Snapshot): List<Section> {
-        val out = mutableListOf<Section>()
-        out += Section(
-            Kind.ROLE,
-            ChatInstructionCopy.ROLE,
-            ChatInstructionCopy.ROLE_SUB,
-            ROLE_TEXT
-        )
+    fun roleText(stored: String?): String = stored?.trim().orEmpty().ifEmpty { ROLE_TEXT }
+
+    fun suggestText(stored: String?): String = stored?.trim().orEmpty().ifEmpty { SUGGEST_BODY }
+
+    fun categories(snapshot: Snapshot): List<Category> {
+        val role = roleText(snapshot.roleText)
         val persona = snapshot.personaName?.trim().orEmpty()
-        val items = snapshot.personaItems.map { it.trim() }.filter { it.isNotEmpty() }
-        if (items.isEmpty()) {
-            out += Section(
-                Kind.USER,
-                ChatInstructionCopy.USER,
-                persona.ifEmpty { ChatInstructionCopy.EMPTY },
-                "",
-                empty = true
-            )
-        } else {
-            items.forEachIndexed { index, content ->
-                out += Section(
-                    Kind.USER,
-                    if (persona.isEmpty()) ChatInstructionCopy.USER else "${ChatInstructionCopy.USER} · $persona",
-                    ChatInstructionCopy.part(index + 1, items.size),
-                    content
+        val userLeaves = snapshot.personaItems
+            .map { (id, content) -> id.trim() to content.trim() }
+            .filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
+            .mapIndexed { index, (id, content) ->
+                Leaf(
+                    title = if (persona.isEmpty()) ChatInstructionCopy.USER else "${ChatInstructionCopy.USER} · $persona",
+                    subtitle = ChatInstructionCopy.part(index + 1, snapshot.personaItems.count { it.second.trim().isNotEmpty() }),
+                    body = content,
+                    target = Target(Kind.USER, id)
                 )
             }
-        }
+            .ifEmpty {
+                listOf(
+                    Leaf(
+                        ChatInstructionCopy.USER,
+                        persona.ifEmpty { ChatInstructionCopy.EMPTY },
+                        "",
+                        Target(Kind.USER, ""),
+                        empty = true
+                    )
+                )
+            }
         val image = snapshot.imageDescription?.trim().orEmpty()
-        out += Section(
-            Kind.IMAGE,
-            ChatInstructionCopy.IMAGE,
-            if (image.isEmpty()) ChatInstructionCopy.EMPTY else ChatInstructionCopy.IMAGE_SUB,
-            image,
-            empty = image.isEmpty()
-        )
-        if (snapshot.tags.isEmpty()) {
-            out += Section(Kind.TAG, ChatInstructionCopy.TAG, ChatInstructionCopy.EMPTY, "", empty = true)
+        val tagLeaves = if (snapshot.tags.isEmpty()) {
+            listOf(Leaf(ChatInstructionCopy.TAG, ChatInstructionCopy.EMPTY, "", Target(Kind.TAG, ""), empty = true))
         } else {
-            snapshot.tags.forEach { (name, prompt) ->
+            snapshot.tags.map { (name, prompt) ->
                 val body = prompt.trim()
-                out += Section(
-                    Kind.TAG,
-                    name.trim().ifEmpty { ChatInstructionCopy.TAG },
-                    ChatInstructionCopy.TAG,
-                    body,
+                Leaf(
+                    title = name.trim().ifEmpty { ChatInstructionCopy.TAG },
+                    subtitle = ChatInstructionCopy.TAG,
+                    body = body,
+                    target = Target(Kind.TAG, name.trim()),
                     empty = body.isEmpty()
                 )
             }
         }
-        val memories = snapshot.memories.map { it.trim() }.filter { it.isNotEmpty() }
-        if (memories.isEmpty()) {
-            out += Section(Kind.MEMORY, ChatInstructionCopy.MEMORY, ChatInstructionCopy.EMPTY, "", empty = true)
+        val memories = snapshot.memories.map { it.trim() }
+        val memoryLeaves = if (memories.none { it.isNotEmpty() }) {
+            listOf(Leaf(ChatInstructionCopy.MEMORY, ChatInstructionCopy.EMPTY, "", Target(Kind.MEMORY, "0"), empty = true))
         } else {
-            memories.forEachIndexed { index, memory ->
-                out += Section(
-                    Kind.MEMORY,
+            memories.mapIndexed { index, memory ->
+                Leaf(
                     ChatInstructionCopy.MEMORY,
                     ChatInstructionCopy.part(index + 1, memories.size),
-                    memory
+                    memory,
+                    Target(Kind.MEMORY, index.toString()),
+                    empty = memory.isEmpty()
                 )
             }
         }
-        if (snapshot.suggestEnabled) {
-            out += Section(Kind.SUGGEST, ChatInstructionCopy.SUGGEST, ChatInstructionCopy.SUGGEST_ON, SUGGEST_BODY)
+        val suggestLeaves = if (snapshot.suggestEnabled) {
             val extra = snapshot.suggestExtra.trim()
-            out += Section(
-                Kind.SUGGEST_EXTRA,
-                ChatInstructionCopy.SUGGEST_EXTRA,
-                if (extra.isEmpty()) ChatInstructionCopy.EMPTY else ChatInstructionCopy.SUGGEST_EXTRA_SUB,
-                extra,
-                empty = extra.isEmpty()
+            listOf(
+                Leaf(
+                    ChatInstructionCopy.SUGGEST,
+                    ChatInstructionCopy.SUGGEST_ON,
+                    suggestText(snapshot.suggestBody),
+                    Target(Kind.SUGGEST, "body")
+                ),
+                Leaf(
+                    ChatInstructionCopy.SUGGEST_EXTRA,
+                    if (extra.isEmpty()) ChatInstructionCopy.EMPTY else ChatInstructionCopy.SUGGEST_EXTRA_SUB,
+                    extra,
+                    Target(Kind.SUGGEST_EXTRA, "extra"),
+                    empty = extra.isEmpty()
+                )
             )
         } else {
-            out += Section(
-                Kind.SUGGEST,
-                ChatInstructionCopy.SUGGEST,
-                ChatInstructionCopy.SUGGEST_OFF,
-                "",
-                empty = true
+            listOf(
+                Leaf(
+                    ChatInstructionCopy.SUGGEST,
+                    ChatInstructionCopy.SUGGEST_OFF,
+                    "",
+                    Target(Kind.SUGGEST, "body"),
+                    empty = true
+                )
             )
         }
-        return out
+        return listOf(
+            Category(
+                Kind.ROLE,
+                ChatInstructionCopy.ROLE,
+                ChatInstructionCopy.ROLE_SUB,
+                listOf(Leaf(ChatInstructionCopy.ROLE, ChatInstructionCopy.ROLE_SUB, role, Target(Kind.ROLE, "role")))
+            ),
+            Category(Kind.USER, ChatInstructionCopy.USER, categoryCount(userLeaves), userLeaves),
+            Category(
+                Kind.IMAGE,
+                ChatInstructionCopy.IMAGE,
+                if (image.isEmpty()) ChatInstructionCopy.EMPTY else ChatInstructionCopy.IMAGE_SUB,
+                listOf(
+                    Leaf(
+                        ChatInstructionCopy.IMAGE,
+                        if (image.isEmpty()) ChatInstructionCopy.EMPTY else ChatInstructionCopy.IMAGE_SUB,
+                        image,
+                        Target(Kind.IMAGE, "image"),
+                        empty = image.isEmpty()
+                    )
+                )
+            ),
+            Category(Kind.TAG, ChatInstructionCopy.TAG, categoryCount(tagLeaves), tagLeaves),
+            Category(Kind.MEMORY, ChatInstructionCopy.MEMORY, categoryCount(memoryLeaves), memoryLeaves),
+            Category(Kind.SUGGEST, ChatInstructionCopy.SUGGEST, categoryCount(suggestLeaves), suggestLeaves)
+        )
     }
 
-    fun preview(section: Section): String {
-        if (section.empty) return ChatInstructionCopy.EMPTY
-        return section.body.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+    fun visibleRows(categories: List<Category>, expanded: Set<Kind>): List<Row> {
+        val rows = mutableListOf<Row>()
+        categories.forEach { category ->
+            val open = category.kind in expanded
+            rows += Row.Group(category, open)
+            if (open) category.leaves.forEach { rows += Row.Item(it) }
+        }
+        return rows
+    }
+
+    fun toggleExpanded(expanded: Set<Kind>, kind: Kind): Set<Kind> {
+        return if (kind in expanded) expanded - kind else expanded + kind
+    }
+
+    fun preview(leaf: Leaf): String {
+        if (leaf.empty) return ChatInstructionCopy.EMPTY
+        return leaf.body.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
             .ifEmpty { ChatInstructionCopy.EMPTY }
     }
 
-    fun countLine(sections: List<Section>): String {
-        val filled = sections.count { !it.empty }
-        return ChatInstructionCopy.count(filled, sections.size)
+    fun countLine(categories: List<Category>): String {
+        val leaves = categories.flatMap { it.leaves }
+        return ChatInstructionCopy.count(leaves.count { !it.empty }, leaves.size)
+    }
+
+    private fun categoryCount(leaves: List<Leaf>): String {
+        val filled = leaves.count { !it.empty }
+        return ChatInstructionCopy.categoryCount(filled, leaves.size)
     }
 }
 
@@ -150,8 +216,12 @@ object ChatInstructionCopy {
     const val EMPTY = "未設定"
     const val CLOSE = "閉じる"
     const val BACK = "戻る"
+    const val SAVE = "保存"
+    const val SAVED = "保存した。"
 
     fun part(index: Int, total: Int): String = "$index / $total"
 
     fun count(filled: Int, total: Int): String = "使っている $filled / $total"
+
+    fun categoryCount(filled: Int, total: Int): String = "$filled / $total"
 }
