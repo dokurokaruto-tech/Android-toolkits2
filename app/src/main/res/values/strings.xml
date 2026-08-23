@@ -18,4 +18,16 @@
     <string name="pip_action_skip">スキップ</string>
     <string name="pip_action_live_preview">生成中の画像を全画面で見る</string>
     <string name="pip_action_restore">PiPに戻して元の画面へ</string>
+    <string name="tag_ai_title">文章を置き換える</string>
+    <string name="tag_ai_model_label">モデル</string>
+    <string name="tag_ai_change_model">選び直す</string>
+    <string name="tag_ai_preset_label">指示プリセット</string>
+    <string name="tag_ai_edit_preset">指示を編集</string>
+    <string name="tag_ai_delete_preset">プリセットを削除</string>
+    <string name="tag_ai_extra_hint">今回だけの補足</string>
+    <string name="tag_ai_use_tag_name">タグ名を含める</string>
+    <string name="tag_ai_use_existing">今の文を下書きにする</string>
+    <string name="tag_ai_pick_image">画像を添える</string>
+    <string name="tag_ai_cancel">閉じる</string>
+    <string name="tag_ai_generate">置き換える</string>
 </resources>

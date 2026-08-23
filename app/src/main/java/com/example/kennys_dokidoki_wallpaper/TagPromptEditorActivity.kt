@@ -172,7 +172,6 @@ class TagPromptEditorActivity : AppCompatActivity() {
         val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar_tag_editor)
         val btnEditImplied = findViewById<Button>(R.id.btn_edit_implied_tags)
         val btnGenerate = findViewById<Button>(R.id.btn_ai_generate)
-        val btnInstructionSettings = findViewById<Button>(R.id.btn_ai_instruction_settings)
         val btnMigrate = findViewById<Button>(R.id.btn_migrate)
         val btnDelete = findViewById<Button>(R.id.btn_delete)
         val btnSave = findViewById<Button>(R.id.btn_save)
@@ -234,7 +233,6 @@ class TagPromptEditorActivity : AppCompatActivity() {
         btnEditImplied.setOnClickListener { showImpliedTagsPickerDialog() }
         btnLinkLocalCard.setOnClickListener { showLocalCardPickerDialog() }
         btnGenerate.setOnClickListener { showHybridGenerateDialog() }
-        btnInstructionSettings.setOnClickListener { TagInstructionEditor.show(this) }
         btnSave.setOnClickListener {
             val newTagName = etTagName.text.toString().trim()
             val newPrompt = etPromptInput.text.toString().trim()
@@ -397,41 +395,57 @@ class TagPromptEditorActivity : AppCompatActivity() {
     private fun showHybridGenerateDialog() {
         loadCachedOpenRouterModels()
         selectedImageUri = null
-        val dialogView = layoutInflater.inflate(R.layout.dialog_ai_generate, null)
+        val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_ai_generate)
         val etInstruction = dialogView.findViewById<EditText>(R.id.et_instruction)
-        val cbUseTagName = dialogView.findViewById<CheckBox>(R.id.cb_use_tag_name)
-        val cbUseExisting = dialogView.findViewById<CheckBox>(R.id.cb_use_existing)
+        val cbUseTagName = dialogView.findViewById<android.widget.CompoundButton>(R.id.cb_use_tag_name)
+        val cbUseExisting = dialogView.findViewById<android.widget.CompoundButton>(R.id.cb_use_existing)
         val btnPickImage = dialogView.findViewById<Button>(R.id.btn_pick_image)
-        ivDialogImage = dialogView.findViewById<ImageView>(R.id.iv_selected_image)
+        ivDialogImage = dialogView.findViewById(R.id.iv_selected_image)
         val cardSelectedImage = dialogView.findViewById<View>(R.id.card_selected_image)
         val btnCancel = dialogView.findViewById<Button>(R.id.btn_cancel)
         val btnGenerate = dialogView.findViewById<Button>(R.id.btn_generate)
-        
         val tvModelInfo = dialogView.findViewById<TextView>(R.id.tv_model_info)
         val tvUsageCounter = dialogView.findViewById<TextView>(R.id.tv_usage_counter)
         val btnChangeModel = dialogView.findViewById<Button>(R.id.btn_change_model)
-
         val cgProfiles = dialogView.findViewById<ChipGroup>(R.id.cg_prompt_profiles)
+        val btnEditPresets = dialogView.findViewById<Button>(R.id.btn_edit_instruction_profiles)
+        val btnDeletePreset = dialogView.findViewById<Button>(R.id.btn_delete_instruction_preset)
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val profiles = TagInstructionPolicy.parse(
-            prefs.getString(TagInstructionPolicy.PROFILES_KEY, null),
-            prefs.getString(TagInstructionPolicy.LEGACY_KEY, null)
-        )
-        var selectedSystemPrompt = profiles.first().content
+        var selectedPresetName: String? = null
+        var selectedSystemPrompt = TagInstructionPolicy.DEFAULT_PROMPT
 
-        profiles.forEachIndexed { index, profile ->
-            val chip = Chip(this).apply {
-                text = profile.name
-                isCheckable = true
-                if (index == 0) isChecked = true
-                setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) selectedSystemPrompt = profile.content
+        fun bindPresets() {
+            val profiles = TagInstructionPolicy.parse(
+                prefs.getString(TagInstructionPolicy.PROFILES_KEY, null),
+                prefs.getString(TagInstructionPolicy.LEGACY_KEY, null)
+            )
+            val selected = TagInstructionPolicy.selectedIndex(profiles, selectedPresetName)
+            selectedPresetName = profiles[selected].name
+            selectedSystemPrompt = profiles[selected].content
+            cgProfiles.removeAllViews()
+            profiles.forEachIndexed { index, profile ->
+                val chip = Chip(dialogView.context).apply {
+                    text = profile.name
+                    isCheckable = true
+                    isChecked = index == selected
+                    setOnCheckedChangeListener { _, isChecked ->
+                        if (isChecked) {
+                            selectedPresetName = profile.name
+                            selectedSystemPrompt = profile.content
+                            btnDeletePreset.isEnabled = TagInstructionPolicy.canDelete(profiles)
+                        }
+                    }
                 }
-                setTextColor(Color.WHITE)
-                setChipBackgroundColorResource(android.R.color.transparent)
-                setChipStrokeColorResource(if (isChecked) android.R.color.white else android.R.color.darker_gray)
+                cgProfiles.addView(chip)
             }
-            cgProfiles.addView(chip)
+            btnDeletePreset.isEnabled = TagInstructionPolicy.canDelete(profiles)
+        }
+        bindPresets()
+        btnEditPresets.setOnClickListener {
+            TagInstructionEditor.show(this) { bindPresets() }
+        }
+        btnDeletePreset.setOnClickListener {
+            TagInstructionEditor.delete(this, selectedPresetName) { bindPresets() }
         }
 
         fun updateDialogModelStatus() {
@@ -441,53 +455,49 @@ class TagPromptEditorActivity : AppCompatActivity() {
             } else {
                 "grok-4-1-fast-non-reasoning"
             }
-            tvModelInfo.text = "Model: $provider / $model"
-            
+            tvModelInfo.text = TagAiGenerateCopy.modelLine(provider, model.orEmpty())
             if (provider == "OPENROUTER") {
-                val total = OpenRouterManager.getTotalUsage(this)
                 val keys = OpenRouterManager.getApiKeys(this)
-                tvUsageCounter.text = "OR: $total/${keys.size * 50}"
+                val limit = keys.size * 50
+                tvUsageCounter.text = TagAiGenerateCopy.usageLine(OpenRouterManager.getTotalUsage(this), limit)
                 tvUsageCounter.visibility = View.VISIBLE
             } else {
                 tvUsageCounter.visibility = View.GONE
             }
         }
         updateDialogModelStatus()
-
         btnChangeModel.setOnClickListener {
             showProviderSelectionDialog { updateDialogModelStatus() }
         }
 
         cbUseTagName.isChecked = etTagName.text.toString().trim().isNotEmpty()
         cbUseExisting.isChecked = etPromptInput.text.toString().trim().isNotEmpty()
-        
-        hybridDialog = AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setView(dialogView)
-            .create()
-        
-        hybridDialog?.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        hybridDialog = Md3PopupDialog.show(this, dialogView)
 
         btnPickImage.setOnClickListener {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+            }
             pickImageLauncher.launch(intent)
         }
-        
-        // 画像が選択されたらカードを表示するようにするわ
         coroutineScope.launch {
-            while(hybridDialog?.isShowing == true) {
-                if (selectedImageUri != null) {
-                    cardSelectedImage?.visibility = View.VISIBLE
-                }
+            while (hybridDialog?.isShowing == true) {
+                if (selectedImageUri != null) cardSelectedImage.visibility = View.VISIBLE
                 kotlinx.coroutines.delay(500)
             }
         }
-
         btnCancel.setOnClickListener { hybridDialog?.dismiss() }
         btnGenerate.setOnClickListener {
-            generatePromptHybrid(etInstruction.text.toString().trim(), cbUseTagName.isChecked, cbUseExisting.isChecked, selectedImageUri, selectedSystemPrompt)
+            generatePromptHybrid(
+                etInstruction.text.toString().trim(),
+                cbUseTagName.isChecked,
+                cbUseExisting.isChecked,
+                selectedImageUri,
+                selectedSystemPrompt
+            )
             hybridDialog?.dismiss()
         }
-        hybridDialog?.show()
     }
 
     private fun showProviderSelectionDialog(onUpdated: () -> Unit) {

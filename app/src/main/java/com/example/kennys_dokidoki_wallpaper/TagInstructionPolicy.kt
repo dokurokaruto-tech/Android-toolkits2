@@ -75,4 +75,15 @@ object TagInstructionPolicy {
     }
 
     fun canDelete(profiles: List<Profile>): Boolean = profiles.size > 1
+
+    fun removeAt(profiles: List<Profile>, index: Int): List<Profile> {
+        if (!canDelete(profiles) || index !in profiles.indices) return ensureNonEmpty(profiles)
+        return ensureNonEmpty(profiles.filterIndexed { i, _ -> i != index })
+    }
+
+    fun selectedIndex(profiles: List<Profile>, selectedName: String?): Int {
+        if (profiles.isEmpty()) return 0
+        val match = profiles.indexOfFirst { it.name == selectedName }
+        return if (match >= 0) match else 0
+    }
 }

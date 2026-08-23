@@ -40,22 +40,6 @@
                 app:iconPadding="0dp"
                 app:iconSize="26dp"
                 tools:ignore="HardcodedText" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_ai_instruction_settings"
-                style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="4dp"
-                android:contentDescription="タグ文章の指示書を編集"
-                android:minWidth="48dp"
-                android:minHeight="48dp"
-                android:padding="0dp"
-                app:icon="@drawable/ic_md3_tune"
-                app:iconGravity="textStart"
-                app:iconPadding="0dp"
-                app:iconSize="26dp"
-                tools:ignore="HardcodedText" />
         </LinearLayout>
     </com.google.android.material.appbar.MaterialToolbar>
 

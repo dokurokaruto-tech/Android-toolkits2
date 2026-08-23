@@ -1,255 +1,260 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="#121212">
+    android:layout_height="match_parent"
+    app:cardBackgroundColor="?attr/colorSurface"
+    app:cardCornerRadius="28dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="24dp"
+        android:paddingTop="24dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="8dp">
 
-        <TextView
+        <com.google.android.material.textview.MaterialTextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="AI生成の設定"
-            android:textColor="#00F0FF"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="24dp"/>
+            android:layout_marginBottom="16dp"
+            android:text="@string/tag_ai_title"
+            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="文章を置き換える" />
 
-        <!-- モデル選択セクション -->
-        <com.google.android.material.card.MaterialCardView
+        <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="16dp"
-            app:cardBackgroundColor="#1A2235"
-            app:strokeWidth="1dp"
-            app:strokeColor="#3300F0FF"
-            android:layout_marginBottom="16dp">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true"
+            android:overScrollMode="ifContentScrolls">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:orientation="vertical">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/colorOutlineVariant"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/tag_ai_model_label"
+                                android:textAppearance="?attr/textAppearanceLabelLarge"
+                                android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/tv_usage_counter"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="?attr/textAppearanceLabelMedium"
+                                android:textColor="?attr/colorPrimary"
+                                android:visibility="gone"
+                                tools:text="残り 12 回"
+                                tools:visibility="visible" />
+                        </LinearLayout>
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/tv_model_info"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:textAppearance="?attr/textAppearanceTitleMedium"
+                            android:textColor="?attr/colorOnSurface"
+                            tools:text="xAI · grok-4-1-fast-non-reasoning" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_change_model"
+                            style="@style/Widget.Material3.Button.TonalButton.Icon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="@string/tag_ai_change_model"
+                            app:icon="@drawable/ic_md3_tune" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp">
+                    android:orientation="horizontal">
 
-                    <TextView
+                    <com.google.android.material.textview.MaterialTextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="推論エンジン"
-                        android:textColor="#8892B0"
-                        android:textSize="12sp"
-                        android:textStyle="bold" />
+                        android:text="@string/tag_ai_preset_label"
+                        android:textAppearance="?attr/textAppearanceLabelLarge"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
 
-                    <TextView
-                        android:id="@+id/tv_usage_counter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="OR: 0/0"
-                        android:textColor="#FFCC00"
-                        android:textSize="11sp"
-                        android:visibility="gone" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_edit_instruction_profiles"
+                        style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:contentDescription="@string/tag_ai_edit_preset"
+                        android:minWidth="40dp"
+                        android:minHeight="40dp"
+                        android:padding="0dp"
+                        app:icon="@drawable/ic_md3_edit"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp"
+                        app:iconSize="20dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_delete_instruction_preset"
+                        style="@style/Widget.Material3.Button.IconButton"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:contentDescription="@string/tag_ai_delete_preset"
+                        android:minWidth="40dp"
+                        android:minHeight="40dp"
+                        android:padding="0dp"
+                        app:icon="@drawable/ic_md3_delete"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp"
+                        app:iconSize="20dp"
+                        app:iconTint="?attr/colorError" />
                 </LinearLayout>
 
-                <TextView
-                    android:id="@+id/tv_model_info"
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/cg_prompt_profiles"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Model: GROK / grok-4-1"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="16dp" />
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="16dp"
+                    app:selectionRequired="true"
+                    app:singleSelection="true" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_change_model"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:text="🤖 生成モデルを変更する"
-                    android:textColor="#00F0FF"
-                    app:strokeColor="#00F0FF"
-                    app:cornerRadius="12dp"
-                    app:icon="@android:drawable/ic_menu_manage"
-                    app:iconTint="#00F0FF" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    android:hint="@string/tag_ai_extra_hint"
+                    app:boxCornerRadiusBottomEnd="16dp"
+                    app:boxCornerRadiusBottomStart="16dp"
+                    app:boxCornerRadiusTopEnd="16dp"
+                    app:boxCornerRadiusTopStart="16dp"
+                    app:hintTextColor="?attr/colorPrimary">
 
-        <!-- 指示プロファイル選択 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_instruction"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="top"
+                        android:inputType="textMultiLine"
+                        android:minLines="2"
+                        android:textColor="?attr/colorOnSurface" />
+                </com.google.android.material.textfield.TextInputLayout>
 
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="指示プロファイル"
-                android:textColor="#8892B0"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_edit_instruction_profiles"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:contentDescription="指示書を編集"
-                android:minWidth="40dp"
-                android:minHeight="40dp"
-                android:padding="0dp"
-                app:icon="@drawable/ic_md3_tune"
-                app:iconGravity="textStart"
-                app:iconPadding="0dp"
-                app:iconSize="22dp"
-                app:iconTint="#00F0FF" />
-        </LinearLayout>
-
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:scrollbars="none"
-            android:layout_marginBottom="16dp">
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/cg_prompt_profiles"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                app:singleSelection="true"
-                app:selectionRequired="true" />
-        </HorizontalScrollView>
-
-        <!-- 指示入力セクション -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="追加の指示（例: 活発な感じで）"
-            android:textColorHint="#8892B0"
-            app:boxStrokeColor="#00F0FF"
-            app:hintTextColor="#00F0FF"
-            app:boxBackgroundColor="#1A2235"
-            app:boxCornerRadiusTopStart="12dp"
-            app:boxCornerRadiusTopEnd="12dp"
-            app:boxCornerRadiusBottomStart="12dp"
-            app:boxCornerRadiusBottomEnd="12dp"
-            android:layout_marginBottom="16dp"
-            style="@style/Widget.MaterialComponents.TextInputLayout.FilledBox">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_instruction"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
-                android:inputType="textMultiLine"
-                android:minLines="2" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- オプションセクション -->
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="16dp"
-            app:cardBackgroundColor="#1A2235"
-            android:layout_marginBottom="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <com.google.android.material.checkbox.MaterialCheckBox
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/cb_use_tag_name"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="入力中の「タグ名」を対象にする"
                     android:checked="true"
-                    android:textColor="#FFFFFF"
-                    app:buttonTint="#00F0FF" />
+                    android:text="@string/tag_ai_use_tag_name"
+                    android:textColor="?attr/colorOnSurface" />
 
-                <com.google.android.material.checkbox.MaterialCheckBox
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/cb_use_existing"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="既存のプロンプト設定をベースにする"
-                    android:textColor="#FFFFFF"
-                    app:buttonTint="#00F0FF" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                    android:layout_marginBottom="12dp"
+                    android:text="@string/tag_ai_use_existing"
+                    android:textColor="?attr/colorOnSurface" />
 
-        <!-- 画像選択セクション -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="24dp">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_pick_image"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="🖼️ 画像を選ぶ（任意）"
-                android:textColor="#8892B0" />
-
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_selected_image"
-                android:layout_width="60dp"
-                android:layout_height="60dp"
-                app:cardCornerRadius="8dp"
-                android:visibility="gone">
-                <ImageView
-                    android:id="@+id/iv_selected_image"
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:scaleType="centerCrop" />
-            </com.google.android.material.card.MaterialCardView>
-        </LinearLayout>
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-        <!-- アクションボタン -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_pick_image"
+                        style="@style/Widget.Material3.Button.TonalButton.Icon"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/tag_ai_pick_image"
+                        app:icon="@drawable/ic_md3_photo_library" />
+
+                    <Space
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1" />
+
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/card_selected_image"
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:visibility="gone"
+                        app:cardCornerRadius="12dp"
+                        app:cardElevation="0dp"
+                        app:strokeColor="?attr/colorOutlineVariant"
+                        app:strokeWidth="1dp"
+                        tools:visibility="visible">
+
+                        <ImageView
+                            android:id="@+id/iv_selected_image"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:scaleType="centerCrop"
+                            tools:ignore="ContentDescription" />
+                    </com.google.android.material.card.MaterialCardView>
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="end"
             android:orientation="horizontal"
-            android:gravity="end">
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_cancel"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
-                android:layout_height="60dp"
-                android:text="キャンセル"
-                android:textColor="#8892B0"
-                android:layout_marginEnd="8dp"/>
+                android:layout_height="wrap_content"
+                android:text="@string/tag_ai_cancel" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_generate"
-                android:layout_width="140dp"
-                android:layout_height="60dp"
-                android:text="✨ 錬成開始"
-                android:textColor="#121212"
-                android:textStyle="bold"
-                app:backgroundTint="#00F0FF"
-                app:cornerRadius="30dp" />
+                style="@style/Widget.Material3.Button.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/tag_ai_generate"
+                app:icon="@drawable/ic_md3_auto_awesome" />
         </LinearLayout>
     </LinearLayout>
-</androidx.core.widget.NestedScrollView>
+</com.google.android.material.card.MaterialCardView>

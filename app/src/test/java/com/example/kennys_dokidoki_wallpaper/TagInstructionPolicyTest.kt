@@ -46,4 +46,24 @@ class TagInstructionPolicyTest {
         assertEquals(1, ensured.size)
         assertEquals(TagInstructionPolicy.DEFAULT_PROMPT, ensured.first().content)
     }
+
+    @Test
+    fun removeKeepsAtLeastOnePreset() {
+        val two = listOf(
+            TagInstructionPolicy.Profile("A", "a"),
+            TagInstructionPolicy.Profile("B", "b")
+        )
+        assertEquals(listOf(TagInstructionPolicy.Profile("B", "b")), TagInstructionPolicy.removeAt(two, 0))
+        assertEquals(two, TagInstructionPolicy.removeAt(listOf(TagInstructionPolicy.Profile("A", "a")), 0))
+    }
+
+    @Test
+    fun selectedIndexFallsBackToFirst() {
+        val list = listOf(
+            TagInstructionPolicy.Profile("A", "a"),
+            TagInstructionPolicy.Profile("B", "b")
+        )
+        assertEquals(1, TagInstructionPolicy.selectedIndex(list, "B"))
+        assertEquals(0, TagInstructionPolicy.selectedIndex(list, "missing"))
+    }
 }
