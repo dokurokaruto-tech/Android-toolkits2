@@ -15,6 +15,7 @@ import kotlin.math.abs
  * - 下から上にスワイプ or タップ → 展開（指の動きに追従）
  * - 折りたたみ中のタップは「展開」のみ（選択解除しない）
  * - 展開中のカードタップ → 選択解除（子RecyclerViewが処理）
+ * - 履歴ボタンは中に置くので、畳むと一緒に下へ行く。
  */
 class CollapsibleCardStrip @JvmOverloads constructor(
     context: Context,
@@ -25,12 +26,19 @@ class CollapsibleCardStrip @JvmOverloads constructor(
     var isCollapsed = false
         private set
 
+    var onCollapsedChanged: ((Boolean) -> Unit)? = null
+
     private val peekHeightPx: Int = (24 * resources.displayMetrics.density).toInt()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     private var downRawY = 0f
     private var startTranslationY = 0f
     private var isDragging = false
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (isCollapsed) translationY = collapsedOffset()
+    }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         if (isCollapsed) return true
@@ -63,17 +71,15 @@ class CollapsibleCardStrip @JvmOverloads constructor(
                 val dy = event.rawY - downRawY
                 if (abs(dy) > touchSlop) isDragging = true
                 if (isDragging) {
-                    // 指の動きに追従：開始時のtranslationY + ドラッグ量
-                    val maxT = (height - peekHeightPx).toFloat().coerceAtLeast(1f)
-                    translationY = (startTranslationY + dy).coerceIn(0f, maxT)
+                    translationY = (startTranslationY + dy).coerceIn(0f, collapsedOffset().coerceAtLeast(1f))
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (isDragging) {
-                    val maxT = (height - peekHeightPx).toFloat().coerceAtLeast(1f)
+                    val maxT = collapsedOffset().coerceAtLeast(1f)
                     if (translationY > maxT / 2f) collapse() else expand()
-                } else {
-                    if (isCollapsed) expand()
+                } else if (isCollapsed) {
+                    expand()
                 }
                 isDragging = false
             }
@@ -81,14 +87,39 @@ class CollapsibleCardStrip @JvmOverloads constructor(
         return true
     }
 
+    fun applyCollapsed(collapsed: Boolean, animate: Boolean) {
+        setCollapsed(collapsed, notify = false)
+        moveToState(animate)
+    }
+
     fun collapse() {
-        isCollapsed = true
-        val target = (height - peekHeightPx).toFloat().coerceAtLeast(0f)
-        animate().translationY(target).setDuration(250).start()
+        setCollapsed(true, notify = true)
+        moveToState(animate = true)
     }
 
     fun expand() {
-        isCollapsed = false
-        animate().translationY(0f).setDuration(250).start()
+        setCollapsed(false, notify = true)
+        moveToState(animate = true)
     }
+
+    private fun setCollapsed(collapsed: Boolean, notify: Boolean) {
+        if (isCollapsed == collapsed) return
+        isCollapsed = collapsed
+        if (notify) onCollapsedChanged?.invoke(collapsed)
+    }
+
+    private fun moveToState(animate: Boolean) {
+        val target = if (isCollapsed) collapsedOffset() else 0f
+        val apply = {
+            if (animate) {
+                animate().translationY(target).setDuration(250).start()
+            } else {
+                animate().cancel()
+                translationY = target
+            }
+        }
+        if (height == 0) post(apply) else apply()
+    }
+
+    private fun collapsedOffset(): Float = (height - peekHeightPx).toFloat().coerceAtLeast(0f)
 }
