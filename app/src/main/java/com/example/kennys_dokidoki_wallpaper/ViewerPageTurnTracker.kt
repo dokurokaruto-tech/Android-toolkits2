@@ -13,6 +13,7 @@ class ViewerPageTurnTracker(
     private var downX = 0f
     private var downY = 0f
     private var downInLeft = false
+    private var maxTravelPx = 0f
 
     fun listenerForLeftZone(): View.OnTouchListener = listener(fixedLeft = true)
 
@@ -26,10 +27,21 @@ class ViewerPageTurnTracker(
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.rawX
                     downY = event.rawY
+                    maxTravelPx = 0f
                     downInLeft = fixedLeft ?: ViewerTapPolicy.isLeftHalf(event.x, view.width.toFloat())
                 }
+                MotionEvent.ACTION_MOVE -> {
+                    maxTravelPx = maxOf(
+                        maxTravelPx,
+                        ViewerTapPolicy.distance(event.rawX - downX, event.rawY - downY)
+                    )
+                }
                 MotionEvent.ACTION_UP -> {
-                    if (ViewerTapPolicy.isTap(event.rawX - downX, event.rawY - downY, slopPx)) {
+                    maxTravelPx = maxOf(
+                        maxTravelPx,
+                        ViewerTapPolicy.distance(event.rawX - downX, event.rawY - downY)
+                    )
+                    if (ViewerTapPolicy.isTapAfterTravel(maxTravelPx, slopPx)) {
                         onTap(downInLeft)
                     }
                 }

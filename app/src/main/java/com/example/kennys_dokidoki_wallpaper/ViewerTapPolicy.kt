@@ -7,9 +7,18 @@ import kotlin.math.hypot
  * スワイプなら前後の画像へ進まない。
  */
 object ViewerTapPolicy {
-    fun isTap(deltaX: Float, deltaY: Float, slopPx: Float): Boolean {
-        if (slopPx <= 0f) return deltaX == 0f && deltaY == 0f
-        return hypot(deltaX.toDouble(), deltaY.toDouble()) <= slopPx
+    fun distance(deltaX: Float, deltaY: Float): Float =
+        hypot(deltaX.toDouble(), deltaY.toDouble()).toFloat()
+
+    fun isTap(deltaX: Float, deltaY: Float, slopPx: Float): Boolean =
+        isTapAfterTravel(distance(deltaX, deltaY), slopPx)
+
+    /**
+     * 始点と終点が近くても、途中で slop を超えて動いていればスワイプ。
+     */
+    fun isTapAfterTravel(maxTravelPx: Float, slopPx: Float): Boolean {
+        if (slopPx <= 0f) return maxTravelPx <= 0f
+        return maxTravelPx <= slopPx
     }
 
     fun isLeftHalf(x: Float, width: Float): Boolean {

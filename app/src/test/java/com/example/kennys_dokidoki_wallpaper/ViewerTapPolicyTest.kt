@@ -20,6 +20,12 @@ class ViewerTapPolicyTest {
     }
 
     @Test
+    fun `returning to the start after a swipe is still a swipe`() {
+        assertFalse(ViewerTapPolicy.isTapAfterTravel(40f, 16f))
+        assertTrue(ViewerTapPolicy.isTapAfterTravel(8f, 16f))
+    }
+
+    @Test
     fun `left half uses the down position`() {
         assertTrue(ViewerTapPolicy.isLeftHalf(10f, 100f))
         assertFalse(ViewerTapPolicy.isLeftHalf(50f, 100f))
