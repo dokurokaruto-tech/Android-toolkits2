@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from .config import AgentConfig
+from .network import is_client_disconnect, is_idle_timeout_log
 from .service import GenerationService
 
 _JOB = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})$")
@@ -39,6 +40,22 @@ class AgentServer(ThreadingHTTPServer):
 class AgentRequestHandler(BaseHTTPRequestHandler):
     server: AgentServer
     protocol_version = "HTTP/1.1"
+    # Idle keep-alive / half-open Wi-Fi sockets must not hang a worker thread.
+    timeout = 20
+
+    def handle_one_request(self) -> None:
+        try:
+            super().handle_one_request()
+        except Exception as error:
+            self.close_connection = True
+            if not is_client_disconnect(error):
+                raise
+
+    def log_error(self, format: str, *args: Any) -> None:
+        message = format % args if args else format
+        if is_idle_timeout_log(message) or is_client_disconnect(TimeoutError(message)):
+            return
+        super().log_error(format, *args)
 
     def do_OPTIONS(self) -> None:
         self.send_response(HTTPStatus.NO_CONTENT)
@@ -297,16 +314,21 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
 
     def _send_file(self, file: Path, content_type: str) -> None:
         size = file.stat().st_size
-        self.send_response(HTTPStatus.OK)
-        self._common_headers()
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(size))
-        # Android browsing is intentionally stream-only until explicit import.
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        with file.open("rb") as stream:
-            while chunk := stream.read(128 * 1024):
-                self.wfile.write(chunk)
+        try:
+            self.send_response(HTTPStatus.OK)
+            self._common_headers()
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(size))
+            # Android browsing is intentionally stream-only until explicit import.
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            with file.open("rb") as stream:
+                while chunk := stream.read(128 * 1024):
+                    self.wfile.write(chunk)
+        except Exception as error:
+            self.close_connection = True
+            if not is_client_disconnect(error):
+                raise
 
     def _json(self, status: int, value: Any) -> None:
         self._bytes(status, json.dumps(value, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", cache="no-store")
@@ -315,17 +337,25 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         self._json(status, {"error": message})
 
     def _bytes(self, status: int, content: bytes, content_type: str, cache: str) -> None:
-        self.send_response(status)
-        self._common_headers()
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(content)))
-        self.send_header("Cache-Control", cache)
-        self.end_headers()
-        self.wfile.write(content)
+        try:
+            self.send_response(status)
+            self._common_headers()
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", cache)
+            self.end_headers()
+            self.wfile.write(content)
+        except Exception as error:
+            self.close_connection = True
+            if not is_client_disconnect(error):
+                raise
 
     def _common_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("X-Content-Type-Options", "nosniff")
+        # Fresh TCP per request. Stale HTTP/1.1 keep-alive is what logs WinError 10060.
+        self.send_header("Connection", "close")
+        self.close_connection = True
 
     @staticmethod
     def _query_int(query: dict[str, list[str]], key: str, default: int) -> int:

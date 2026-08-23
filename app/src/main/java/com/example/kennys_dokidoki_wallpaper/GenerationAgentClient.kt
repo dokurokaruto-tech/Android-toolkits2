@@ -267,8 +267,8 @@ object GenerationAgentClient {
                         true, state.progress, GenerationProgressManager.state.value.currentImage,
                         "PCへ再接続中...（PC側の生成は継続）"
                     )
-                    if (connectionFailures >= 5) throw error
-                    delay(2000)
+                    if (AgentNetworkPolicy.shouldAbortMonitor(error, connectionFailures)) throw error
+                    delay(AgentNetworkPolicy.backoffMs(connectionFailures))
                 }
             }
             seedCompletedUrls(context, state.imageUrls)
@@ -376,31 +376,43 @@ object GenerationAgentClient {
         val configured = baseUrl(context)
         if (configured.isBlank()) throw IOException("PC生成エージェントのURLが未設定です")
         val target = if (path.startsWith("http")) path else "$configured${if (path.startsWith('/')) path else "/$path"}"
-        val connection = (URL(target).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 5000
-            readTimeout = 15000
-            setRequestProperty("Accept", "application/json")
-            val key = apiKey(context)
-            if (key.isNotBlank()) setRequestProperty("Authorization", "Bearer $key")
-            if (body != null) {
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+        var lastError: Exception? = null
+        repeat(3) { attempt ->
+            val connection = (URL(target).openConnection() as HttpURLConnection).apply {
+                requestMethod = method
+                connectTimeout = 8000
+                readTimeout = 20000
+                useCaches = false
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Connection", "close")
+                val key = apiKey(context)
+                if (key.isNotBlank()) setRequestProperty("Authorization", "Bearer $key")
+                if (body != null) {
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                }
+            }
+            try {
+                if (body != null) {
+                    OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+                }
+                val status = connection.responseCode
+                val source = if (status in 200..299) connection.inputStream else connection.errorStream
+                val text = source?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                if (status !in 200..299) {
+                    val detail = runCatching { JSONObject(text).optString("error") }.getOrDefault(text)
+                    throw IOException("PC生成エージェント HTTP $status: $detail")
+                }
+                return if (text.isBlank()) JSONObject() else JSONObject(text)
+            } catch (error: Exception) {
+                lastError = error
+                if (error is CancellationException) throw error
+                if (!AgentNetworkPolicy.isTransient(error) || attempt == 2) throw error
+            } finally {
+                connection.disconnect()
             }
         }
-        try {
-            if (body != null) OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
-            val status = connection.responseCode
-            val source = if (status in 200..299) connection.inputStream else connection.errorStream
-            val text = source?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) {
-                val detail = runCatching { JSONObject(text).optString("error") }.getOrDefault(text)
-                throw IOException("PC生成エージェント HTTP $status: $detail")
-            }
-            return if (text.isBlank()) JSONObject() else JSONObject(text)
-        } finally {
-            connection.disconnect()
-        }
+        throw lastError ?: IOException("PC生成エージェントとの通信に失敗しました")
     }
 
     private suspend fun downloadPreview(context: Context, path: String) = withContext(Dispatchers.IO) {
@@ -409,6 +421,7 @@ object GenerationAgentClient {
                 connectTimeout = 3000
                 readTimeout = 5000
                 useCaches = false
+                setRequestProperty("Connection", "close")
             }
             connection.getInputStream().use { BitmapFactory.decodeStream(it) }
         } catch (_: Exception) {
