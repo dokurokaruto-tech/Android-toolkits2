@@ -131,28 +131,15 @@ object ChatGenerationManager {
             val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
             val isSuggestEnabled = prefs.getBoolean("chat_suggest_reply", true)
             val mappedHistory = if (isSuggestEnabled && history.isNotEmpty() && history.last().isUser) {
-                val customInstructions = prefs.getString("chat_suggest_custom_instructions", "") ?: ""
-                val customBlock = if (customInstructions.isNotEmpty()) {
-                    "\n■ ユーザー指定のサジェスト追加ルール・例文：\n$customInstructions\n"
-                } else {
-                    ""
-                }
                 history.mapIndexed { index, node ->
                     if (index == history.lastIndex) {
                         node.copy(
-                            text = node.text + "\n\n" +
-                                    "⚠️【最重要：システム指令】⚠️\n" +
-                                    "ユーザー（ケニーちゃん）の今回のメッセージに対して、あなたのキャラクター設定（ノアなど）を完璧に維持した魅力的な返答を生成してください。\n" +
-                                    "そして、必ずその「返信文の末尾」に、ケニーちゃんが次回タップして返信できるように、ケニーちゃんになりきった3つの返信候補（サジェスト）を正確に付記してください。\n" +
-                                    "■ サジェスト作成ルール・絶対厳守：\n" +
-                                    "- サジェスト機能は常時ONです。今回の返信がどのような短いセリフや特別な内容であっても、必ず最後の最後に <<<SUGGESTIONS>>> タグで囲んで3つの選択肢を出力してください。\n" +
-                                    "- サジェストの文字数はそれぞれ15文字以内で、短くタップしやすいものにしてください。$customBlock\n" +
-                                    "出力形式（この形式を必ずあなたの返信の最後の最後にそのまま正確に出力してください。余計な説明文やマークダウンは含めないでください）：\n" +
-                                    "<<<SUGGESTIONS>>>\n" +
-                                    "A: <返信案A>\n" +
-                                    "B: <返信案B>\n" +
-                                    "C: <返信案C>\n" +
-                                    "<<</SUGGESTIONS>>>"
+                            text = ChatInstructionPolicy.applySuggestToUserText(
+                                node.text,
+                                true,
+                                prefs.getString(ChatInstructionPolicy.SUGGEST_KEY, null),
+                                prefs.getString("chat_suggest_custom_instructions", "") ?: ""
+                            )
                         )
                     } else {
                         node
@@ -261,34 +248,18 @@ object ChatGenerationManager {
 
             val history = getRecentHistory(chatTree, aiNode.parentId)
             val isSuggestEnabled = prefs.getBoolean("chat_suggest_reply", true)
-            val customInstructions = prefs.getString("chat_suggest_custom_instructions", "") ?: ""
-            val customBlock = if (customInstructions.isNotEmpty()) {
-                "\n■ ユーザー指定のサジェスト追加ルール・例文：\n$customInstructions\n"
-            } else {
-                ""
-            }
             
             val jsonArray = JSONArray().apply {
                 put(JSONObject().put("role", "system").put("content", systemPrompt))
             }
             for (i in history.indices) {
                 val msg = history[i]
-                var contentText = msg.text
-                if (isSuggestEnabled && i == history.lastIndex && msg.isUser) {
-                    contentText += "\n\n" +
-                            "⚠️【最重要：システム指令】⚠️\n" +
-                            "ユーザー（ケニーちゃん）の今回のメッセージに対して、あなたのキャラクター設定（ノアなど）を完璧に維持した魅力的な返答を生成してください。\n" +
-                            "そして、必ずその「返信文の末尾」に、ケニーちゃんが次回タップして返信できるように、ケニーちゃんになりきった3つの返信候補（サジェスト）を正確に付記してください。\n" +
-                            "■ サジェスト作成ルール・絶対厳守：\n" +
-                            "- サジェスト機能は常時ONです。今回の返信がどのような短いセリフや特別な内容であっても、必ず最後の最後に <<<SUGGESTIONS>>> タグで囲んで3つの選択肢を出力してください。\n" +
-                            "- サジェストの文字数はそれぞれ15文字以内で、短くタップしやすいものにしてください。$customBlock\n" +
-                            "出力形式（この形式を必ずあなたの返信の最後の最後にそのまま正確に出力してください。余計な説明文やマークダウンは含めないでください）：\n" +
-                            "<<<SUGGESTIONS>>>\n" +
-                            "A: <返信案A>\n" +
-                            "B: <返信案B>\n" +
-                            "C: <返信案C>\n" +
-                            "<<</SUGGESTIONS>>>"
-                }
+                val contentText = ChatInstructionPolicy.applySuggestToUserText(
+                    msg.text,
+                    isSuggestEnabled && i == history.lastIndex && msg.isUser,
+                    prefs.getString(ChatInstructionPolicy.SUGGEST_KEY, null),
+                    prefs.getString("chat_suggest_custom_instructions", "") ?: ""
+                )
                 jsonArray.put(JSONObject().put("role", if (msg.isUser) "user" else "assistant").put("content", contentText))
             }
 

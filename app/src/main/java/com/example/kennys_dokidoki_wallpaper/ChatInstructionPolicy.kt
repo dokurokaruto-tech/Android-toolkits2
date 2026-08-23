@@ -58,6 +58,48 @@ object ChatInstructionPolicy {
 
     fun suggestText(stored: String?): String = stored?.trim().orEmpty().ifEmpty { SUGGEST_BODY }
 
+    fun extraBlock(extra: String): String {
+        val trimmed = extra.trim()
+        if (trimmed.isEmpty()) return ""
+        return "\n■ ユーザー指定のサジェスト追加ルール・例文：\n$trimmed\n"
+    }
+
+    /**
+     * 画面で直した指示を、生成が本当に読む文にする。
+     * 未保存なら従来の15文字ルール、保存済みならその全文を使う。
+     */
+    fun generationSuggestRules(storedBody: String?, extra: String): String {
+        val extraText = extraBlock(extra)
+        val edited = storedBody?.trim().orEmpty()
+        if (edited.isNotEmpty()) return edited + extraText
+        return DEFAULT_GENERATION_SUGGEST + extraText
+    }
+
+    fun applySuggestToUserText(
+        userText: String,
+        enabled: Boolean,
+        storedBody: String?,
+        extra: String
+    ): String {
+        if (!enabled) return userText
+        return userText + "\n\n" + generationSuggestRules(storedBody, extra)
+    }
+
+    val DEFAULT_GENERATION_SUGGEST = """
+        ⚠️【最重要：システム指令】⚠️
+        ユーザー（ケニーちゃん）の今回のメッセージに対して、あなたのキャラクター設定（ノアなど）を完璧に維持した魅力的な返答を生成してください。
+        そして、必ずその「返信文の末尾」に、ケニーちゃんが次回タップして返信できるように、ケニーちゃんになりきった3つの返信候補（サジェスト）を正確に付記してください。
+        ■ サジェスト作成ルール・絶対厳守：
+        - サジェスト機能は常時ONです。今回の返信がどのような短いセリフや特別な内容であっても、必ず最後の最後に <<<SUGGESTIONS>>> タグで囲んで3つの選択肢を出力してください。
+        - サジェストの文字数はそれぞれ15文字以内で、短くタップしやすいものにしてください。
+        出力形式（この形式を必ずあなたの返信の最後の最後にそのまま正確に出力してください。余計な説明文やマークダウンは含めないでください）：
+        <<<SUGGESTIONS>>>
+        A: <返信案A>
+        B: <返信案B>
+        C: <返信案C>
+        <<</SUGGESTIONS>>>
+    """.trimIndent()
+
     fun categories(snapshot: Snapshot): List<Category> {
         val role = roleText(snapshot.roleText)
         val persona = snapshot.personaName?.trim().orEmpty()

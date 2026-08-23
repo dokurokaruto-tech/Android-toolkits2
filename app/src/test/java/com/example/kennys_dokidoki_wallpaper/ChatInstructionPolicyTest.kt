@@ -81,4 +81,19 @@ class ChatInstructionPolicyTest {
         assertEquals("役割を変える", ChatInstructionPolicy.roleText("役割を変える"))
         assertEquals(ChatInstructionPolicy.SUGGEST_BODY, ChatInstructionPolicy.suggestText(null))
     }
+
+    @Test
+    fun savedSuggestRulesReplaceTheHardcodedFifteenLimit() {
+        val saved = ChatInstructionPolicy.SUGGEST_BODY.replace("15文字以内", "50文字以内")
+        val sent = ChatInstructionPolicy.generationSuggestRules(saved, "語尾をにゃ")
+        assertTrue(sent.contains("50文字以内"))
+        assertFalse(sent.contains("15文字以内"))
+        assertTrue(sent.contains("語尾をにゃ"))
+        val fallback = ChatInstructionPolicy.generationSuggestRules(null, "")
+        assertTrue(fallback.contains("15文字以内"))
+        val applied = ChatInstructionPolicy.applySuggestToUserText("こんにちは", true, saved, "")
+        assertTrue(applied.startsWith("こんにちは"))
+        assertTrue(applied.contains("50文字以内"))
+        assertEquals("こんにちは", ChatInstructionPolicy.applySuggestToUserText("こんにちは", false, saved, ""))
+    }
 }

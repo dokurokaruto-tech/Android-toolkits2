@@ -2775,30 +2775,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         val isSuggestEnabled = prefs.getBoolean("chat_suggest_reply", true)
         if (isSuggestEnabled) {
-            val customInstructions = prefs.getString("chat_suggest_custom_instructions", "") ?: ""
-            val customBlock = if (customInstructions.isNotEmpty()) {
-                "\n\n■ ユーザー指定 of サジェスト追加ルール・例文（この指示を最優先してサジェストを作成してください）：\n$customInstructions\n"
-            } else {
-                ""
-            }
-            systemPrompt += """
-
-                🎁🎁🎁【ユーザーの返信サジェスト機能（ON）】🎁🎁🎁
-                ユーザーが次に返信しやすくなるような、ユーザー（ケニーちゃん）の返信のサジェスト（選択肢）を【3パターン】生成してください。
-                サジェストの文章は、これまでの会話履歴から、ユーザー（ケニーちゃん）の口調、性格、あなたへの態度（甘え、ノリなど）をよく学習・反映させて作ってください。$customBlock
-                必ず以下の形式を、あなたの返信の「一番最後（末尾）」に正確に付記してください。
-                <<<SUGGESTIONS>>>
-                A: <1つ目のサジェスト（短い言葉で、ユーザーらしい返信、15文字以内）>
-                B: <2つ目のサジェスト（違うニュアンスの、ユーザーらしい返信、15文字以内）>
-                C: <3つ目のサジェスト（少し甘えたり、からかったりするような、ユーザーらしい返信、15文字以内）>
-                <<</SUGGESTIONS>>>
-
-                ■ 重要規定：
-                - 必ず <<<SUGGESTIONS>>> と <<</SUGGESTIONS>>> のタグで囲んで出力してください。
-                - サジェストの文字数はそれぞれ15文字以内で、短くタップしやすいものにしてください。
-                - サジェスト以外の余計な文字や改行をタグ内に含めないでください。
-                - このタグ部分はユーザーには表示されず、システムで自動パースしてボタンに変換されます。
-            """.trimIndent()
+            systemPrompt += "\n\n" + ChatInstructionPolicy.generationSuggestRules(
+                prefs.getString(ChatInstructionPolicy.SUGGEST_KEY, null),
+                prefs.getString("chat_suggest_custom_instructions", "") ?: ""
+            )
         }
 
         val sessionId = currentChatId ?: ""
