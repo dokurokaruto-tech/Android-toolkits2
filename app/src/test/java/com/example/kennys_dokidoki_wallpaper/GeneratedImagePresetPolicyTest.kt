@@ -22,6 +22,7 @@ class GeneratedImagePresetPolicyTest {
         assertEquals(PresetSavePolicy.QUICK_CATEGORY, PresetSavePolicy.defaultCategory())
         assertEquals("http://pc/a.png", source.thumbnail)
         assertEquals(30, source.steps)
+        assertEquals("この画像で使われたカードは 1 枚。", GeneratedImagePresetPolicy.dialogSummary(source))
     }
 
     @Test
@@ -105,6 +106,20 @@ class GeneratedImagePresetPolicyTest {
             emptySet<String>(),
             GeneratedImagePresetPolicy.randomCategoriesForMode(source, GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS)
         )
+        assertEquals(
+            "この画像で使われたカードは 2 枚。\n当たったカードは 1 枚。\nオンだったランダマイザー: 髪",
+            GeneratedImagePresetPolicy.dialogSummary(source)
+        )
+        val named = GeneratedImagePresetPolicy.buildPreset(
+            source,
+            GeneratedImagePresetPolicy.FromImageMode.KEEP_RANDOMIZER,
+            name = "夜の屋上",
+            category = "ポートレート"
+        )
+        assertEquals("夜の屋上", named.name)
+        assertEquals("ポートレート", named.category)
+        assertEquals(mapOf("fixed" to 2), named.activePromptStates)
+        assertEquals(setOf("髪"), named.randomEnabledCategories)
     }
 
     @Test

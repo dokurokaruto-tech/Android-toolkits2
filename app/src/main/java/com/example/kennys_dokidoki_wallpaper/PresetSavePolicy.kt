@@ -10,6 +10,8 @@ object PresetSavePolicy {
     const val FROM_IMAGE_MENU_LABEL = "この構成をプリセットに"
     const val FROM_IMAGE_INDIVIDUAL_LABEL = "当たったカードも固定する"
     const val FROM_IMAGE_RANDOMIZER_LABEL = "ランダマイザーを残す"
+    const val FROM_IMAGE_INDIVIDUAL_DETAIL = "この画像どおり全部を個別選択にする。"
+    const val FROM_IMAGE_RANDOMIZER_DETAIL = "当たりを外し、ランダマイザーONだけ残す。"
 
     fun defaultName(width: Int, height: Int): String = "$width x $height"
 

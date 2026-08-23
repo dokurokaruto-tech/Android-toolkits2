@@ -130,15 +130,32 @@ object GeneratedImagePresetPolicy {
     fun randomCategoriesForMode(source: Source, mode: FromImageMode): Set<String> =
         if (mode == FromImageMode.KEEP_RANDOMIZER) source.randomEnabledCategories else emptySet()
 
+    fun dialogSummary(source: Source): String {
+        val cardLine = "この画像で使われたカードは ${source.cardStates.size} 枚。"
+        if (!source.hasRandomizerChoice) return cardLine
+        val randomLine = "当たったカードは ${source.randomPickedIds.size} 枚。"
+        val categories = source.randomEnabledCategories.joinToString("、")
+        val categoryLine = if (categories.isNotEmpty()) {
+            "オンだったランダマイザー: $categories"
+        } else {
+            "個別ランダマイザーで当たったカードがある。"
+        }
+        return "$cardLine\n$randomLine\n$categoryLine"
+    }
+
     fun buildPreset(
         source: Source,
         mode: FromImageMode = FromImageMode.INDIVIDUAL_CARDS,
-        id: String = UUID.randomUUID().toString()
+        id: String = UUID.randomUUID().toString(),
+        name: String? = null,
+        category: String? = null
     ): Preset {
         return Preset(
             id = id,
-            name = PresetSavePolicy.defaultName(source.width, source.height),
-            category = PresetSavePolicy.QUICK_CATEGORY,
+            name = name?.trim()?.takeIf { it.isNotEmpty() }
+                ?: PresetSavePolicy.defaultName(source.width, source.height),
+            category = category?.trim()?.takeIf { it.isNotEmpty() }
+                ?: PresetSavePolicy.QUICK_CATEGORY,
             activePromptStates = cardsForMode(source, mode),
             width = source.width,
             height = source.height,

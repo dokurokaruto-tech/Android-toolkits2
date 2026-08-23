@@ -194,6 +194,7 @@ class ImageAdapter(
                         notifyItemChanged(position)
                     }
                     "削除", "ソフトウェアから削除" -> onDeleteClick(entry, position)
+                    PresetSavePolicy.FROM_IMAGE_MENU_LABEL -> onCreatePresetClick?.invoke(entry)
                 }
                 true
             }
