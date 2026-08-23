@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -92,7 +93,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var btnSortDirection: ImageButton
     private lateinit var btnPrioritySort: ImageButton
     private lateinit var tvFilterCount: TextView
-    private lateinit var btnGenerateConcatenatedTop: Button
+    private lateinit var btnGenerateConcatenatedTop: MaterialButton
     private lateinit var btnViewGenerated: Button
     private lateinit var btnRestorePip: Button
     private lateinit var btnSwitchColumns: Button
@@ -1517,16 +1518,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (!::generationRing.isInitialized) return
         val btn = btnGenerateConcatenatedTop
         if (btn.width == 0 || btn.height == 0) return
-        val matBtn = btn as? com.google.android.material.button.MaterialButton
         val density = resources.displayMetrics.density
         val spec = GenerationRingLayoutPolicy.layout(
             buttonWidth = btn.width,
             buttonHeight = btn.height,
-            insetLeft = matBtn?.insetLeft ?: 0,
-            insetTop = matBtn?.insetTop ?: 0,
-            insetRight = matBtn?.insetRight ?: 0,
-            insetBottom = matBtn?.insetBottom ?: 0,
-            buttonCornerRadius = matBtn?.cornerRadius?.toFloat() ?: 0f,
+            insetLeft = 0,
+            insetTop = btn.insetTop,
+            insetRight = 0,
+            insetBottom = btn.insetBottom,
+            buttonCornerRadius = btn.cornerRadius.toFloat(),
             strokeWidth = 4f * density,
             gap = 1.5f * density
         )
