@@ -1152,7 +1152,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     }
                     
                     addView(TextView(this@ChatOverlayActivity).apply {
-                        text = "📋 VIEW ALL INSTRUCTIONS"
+                        text = ChatInstructionCopy.TITLE
                         setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
                         textSize = 14f
                         letterSpacing = 0.1f
@@ -1467,7 +1467,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             Triple("User", R.drawable.ic_md3_person, { showPersonaDialog() }),
             Triple("Character", R.drawable.ic_md3_photo_library, { showEditActiveImageSetDialog() }),
             Triple("Model", R.drawable.ic_md3_smart_toy, { showModelMenu() }),
-            Triple("Instruction", R.drawable.ic_md3_description, { showAllPromptsDialog() }),
+            Triple("指示書", R.drawable.ic_md3_description, { showAllPromptsDialog() }),
             Triple("Keys", R.drawable.ic_md3_key, { showApiKeysMenu() }),
             Triple("Visuals", R.drawable.ic_md3_tune, { showVisualConfigDialog() }),
             Triple("Suggest", R.drawable.ic_md3_lightbulb, { showSuggestSettingsDialog() })
@@ -3245,86 +3245,53 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun showAllPromptsDialog() {
-        val prompt = getActiveImageTagsPrompt()
-        if (prompt.isBlank()) {
-            Toast.makeText(this, "タグやプロンプトが設定されていません", Toast.LENGTH_SHORT).show()
-            return
+        UserPersonaManager.loadPersonas(this)
+        MemoryManager.loadMemories(this)
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val persona = UserPersonaManager.activePersona
+        val entry = currentImageEntry
+        val tags = if (entry == null) {
+            emptyList()
+        } else {
+            TagManager.getEffectiveTags(entry.tags).map { tag -> tag to TagManager.getTagPrompt(tag) }
         }
-        
-        val charCount = prompt.length
-        val tokenCount = TagManager.estimateTokenCount(prompt)
-
-        val dialog = MaterialAlertDialogBuilder(md3Context).create()
-        
-        val dialogView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(64, 64, 64, 64)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#1C1B1F"))
-                setStroke(3, android.graphics.Color.parseColor("#49454F")) // Neon Pink border
-                cornerRadius = 48f
-            }
-            
-            addView(TextView(this@ChatOverlayActivity).apply {
-                text = "CHARACTER INSTRUCTIONS"
-                setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
-                textSize = 14f
-                letterSpacing = 0.2f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            })
-
-            addView(TextView(this@ChatOverlayActivity).apply {
-                text = "Length: $charCount chars | Approx. $tokenCount tokens"
-                setTextColor(android.graphics.Color.parseColor("#CAC4D0"))
-                textSize = 10f
-                setPadding(0, 8, 0, 32)
-            })
-            
-            val scrollView = ScrollView(this@ChatOverlayActivity).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    0,
-                    1f
-                )
-            }
-            
-            val tvPrompt = TextView(this@ChatOverlayActivity).apply {
-                text = prompt.trim()
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 14f
-                setLineSpacing(0f, 1.2f)
-            }
-            scrollView.addView(tvPrompt)
-            addView(scrollView)
-            
-            addView(View(this@ChatOverlayActivity).apply {
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
-                    setMargins(0, 32, 0, 32)
-                }
-                setBackgroundColor(android.graphics.Color.parseColor("#2B2930"))
-            })
-            
-            val btnClose = TextView(this@ChatOverlayActivity).apply {
-                text = "GOT IT"
-                setTextColor(android.graphics.Color.BLACK)
-                setPadding(48, 24, 48, 24)
-                gravity = android.view.Gravity.CENTER
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#6750A4"))
-                    cornerRadius = 16f
-                }
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                setOnClickListener { dialog.dismiss() }
-            }
-            addView(btnClose)
-        }
-        
-        dialog.setView(dialogView)
-        dialog.show()
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.9).toInt(),
-            (resources.displayMetrics.heightPixels * 0.7).toInt()
+        val personaItems = persona?.items
+            ?.filter { it.isEnabled }
+            ?.map { it.content }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+            .ifEmpty { listOfNotNull(persona?.mergedPrompt?.takeIf { it.isNotBlank() }) }
+        val sections = ChatInstructionPolicy.sections(
+            ChatInstructionPolicy.Snapshot(
+                personaName = persona?.name,
+                personaItems = personaItems,
+                imageDescription = entry?.let { TavernCardParser.cleanDescriptionText(it.description) },
+                tags = tags,
+                memories = MemoryManager.memories.toList(),
+                suggestEnabled = prefs.getBoolean("chat_suggest_reply", true),
+                suggestExtra = prefs.getString("chat_suggest_custom_instructions", "") ?: ""
+            )
         )
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_chat_instructions)
+        view.findViewById<TextView>(R.id.tv_instruction_title).text = ChatInstructionCopy.TITLE
+        view.findViewById<TextView>(R.id.tv_instruction_count).text = ChatInstructionPolicy.countLine(sections)
+        val rv = view.findViewById<RecyclerView>(R.id.rv_instruction_sections)
+        rv.layoutManager = LinearLayoutManager(view.context)
+        val dialog = Md3PopupDialog.show(this, view)
+        rv.adapter = ChatInstructionAdapter(sections) { section ->
+            showInstructionDetail(section)
+        }
+        view.findViewById<View>(R.id.btn_instruction_close).setOnClickListener { dialog.dismiss() }
+    }
+
+    private fun showInstructionDetail(section: ChatInstructionPolicy.Section) {
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_chat_instruction_detail)
+        view.findViewById<TextView>(R.id.tv_instruction_detail_title).text = section.title
+        view.findViewById<TextView>(R.id.tv_instruction_detail_sub).text = section.subtitle
+        view.findViewById<TextView>(R.id.tv_instruction_detail_body).text =
+            if (section.empty) ChatInstructionCopy.EMPTY else section.body
+        val dialog = Md3PopupDialog.show(this, view)
+        view.findViewById<View>(R.id.btn_instruction_detail_back).setOnClickListener { dialog.dismiss() }
     }
 
     private fun showChatSettingsDialog() {
