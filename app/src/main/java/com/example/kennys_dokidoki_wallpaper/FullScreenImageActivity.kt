@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
@@ -44,7 +45,11 @@ class FullScreenImageActivity : AppCompatActivity() {
     private var prefetchJob: Job? = null
     private var isClosing = false
     private var isGeneratedViewer = false
+    private var isRemoteGenerated = false
+    private lateinit var viewerChromeBar: View
     private lateinit var btnStartTempChat: View
+    private lateinit var btnDeleteImage: View
+    private val deletedUris = arrayListOf<String>()
     private val chromeHandler = Handler(Looper.getMainLooper())
     private var chromeVisible = true
     private var lastChromeInteractionMs = 0L
@@ -64,15 +69,18 @@ class FullScreenImageActivity : AppCompatActivity() {
         rootLayout = findViewById(R.id.full_screen_root)
         imageView = findViewById(R.id.full_screen_image)
         tvCounter = findViewById(R.id.tv_image_counter)
+        viewerChromeBar = findViewById(R.id.viewer_chrome_bar)
         btnStartTempChat = findViewById(R.id.btn_start_temp_chat)
+        btnDeleteImage = findViewById(R.id.btn_delete_image)
         albumName = intent.getStringExtra("ALBUM_NAME") ?: ""
         currentIndex = intent.getIntExtra("START_INDEX", 0)
         isGeneratedViewer = intent.getBooleanExtra("FROM_GENERATED_VIEWER", false) ||
             intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS") != null
+        isRemoteGenerated = intent.getBooleanExtra("REMOTE_GENERATED", false)
 
         loadImages()
         showImage()
-        setupTempChatButton()
+        setupViewerActions()
 
         val leftClick = View.OnClickListener {
             if (currentEntries.isNotEmpty()) {
@@ -103,13 +111,16 @@ class FullScreenImageActivity : AppCompatActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    private fun setupTempChatButton() {
+    private fun setupViewerActions() {
         if (!isGeneratedViewer) {
             btnStartTempChat.visibility = View.GONE
+            btnDeleteImage.visibility = View.GONE
             return
         }
         btnStartTempChat.visibility = View.VISIBLE
+        btnDeleteImage.visibility = View.VISIBLE
         btnStartTempChat.alpha = 1f
+        btnDeleteImage.alpha = 1f
         btnStartTempChat.setOnClickListener {
             if (!chromeVisible) {
                 revealViewerChrome()
@@ -121,7 +132,61 @@ class FullScreenImageActivity : AppCompatActivity() {
                 putExtra("GENERATED_TEMP_CHAT", true)
             })
         }
+        btnDeleteImage.setOnClickListener {
+            if (!chromeVisible) {
+                revealViewerChrome()
+                return@setOnClickListener
+            }
+            confirmDeleteCurrentImage()
+        }
         revealViewerChrome()
+    }
+
+    private fun confirmDeleteCurrentImage() {
+        val entry = currentEntries.getOrNull(currentIndex) ?: return
+        val message = if (isRemoteGenerated || ImageStoragePolicy.isRemote(entry.uri)) {
+            "この画像をPCからも削除します。紐づいた仮チャットも消えます。"
+        } else {
+            "この生成画像を削除します。紐づいた仮チャットも消えます。"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("画像の削除")
+            .setMessage(message)
+            .setNeutralButton("削除する") { _, _ -> deleteCurrentImage(entry) }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun deleteCurrentImage(entry: ImageEntry) {
+        lifecycleScope.launch {
+            val deleted = try {
+                if (isRemoteGenerated || ImageStoragePolicy.isRemote(entry.uri)) {
+                    GenerationAgentClient.deleteLibraryImage(this@FullScreenImageActivity, entry.uri)
+                } else {
+                    DataManager.deleteImageFile(this@FullScreenImageActivity, entry.uri)
+                }
+            } catch (_: Exception) {
+                false
+            }
+            if (!deleted) {
+                Toast.makeText(this@FullScreenImageActivity, "削除に失敗しました。", Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            GeneratedImageDraftStore.deleteImageAndMaybeChat(this@FullScreenImageActivity, entry.uri)
+            DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
+            DataManager.saveData(this@FullScreenImageActivity)
+            deletedUris.add(entry.uri.toString())
+            val removedAt = currentIndex
+            currentEntries.removeAt(removedAt)
+            if (currentEntries.isEmpty()) {
+                Toast.makeText(this@FullScreenImageActivity, "削除しました。", Toast.LENGTH_SHORT).show()
+                closeViewerImmediately()
+                return@launch
+            }
+            currentIndex = removedAt.coerceAtMost(currentEntries.lastIndex)
+            Toast.makeText(this@FullScreenImageActivity, "削除しました。", Toast.LENGTH_SHORT).show()
+            showImage()
+        }
     }
 
     private fun revealViewerChrome() {
@@ -129,15 +194,16 @@ class FullScreenImageActivity : AppCompatActivity() {
         chromeHandler.removeCallbacks(hideChromeRunnable)
         if (!chromeVisible) {
             chromeVisible = true
-            listOf(tvCounter, btnStartTempChat).forEach { view ->
-                if (view === btnStartTempChat && !isGeneratedViewer) return@forEach
+            chromeViews().forEach { view ->
                 view.visibility = View.VISIBLE
                 view.animate().cancel()
                 view.animate().alpha(1f).setDuration(220).start()
             }
-        } else if (isGeneratedViewer && btnStartTempChat.visibility != View.VISIBLE) {
+        } else if (isGeneratedViewer) {
             btnStartTempChat.visibility = View.VISIBLE
             btnStartTempChat.alpha = 1f
+            btnDeleteImage.visibility = View.VISIBLE
+            btnDeleteImage.alpha = 1f
         }
         if (isGeneratedViewer) {
             chromeHandler.postDelayed(hideChromeRunnable, ViewerChromePolicy.HIDE_AFTER_MS)
@@ -152,7 +218,7 @@ class FullScreenImageActivity : AppCompatActivity() {
             return
         }
         chromeVisible = false
-        listOf(tvCounter, btnStartTempChat).forEach { view ->
+        chromeViews().forEach { view ->
             view.animate().cancel()
             view.animate()
                 .alpha(0f)
@@ -162,6 +228,15 @@ class FullScreenImageActivity : AppCompatActivity() {
                 }
                 .start()
         }
+    }
+
+    private fun chromeViews(): List<View> {
+        val views = mutableListOf(viewerChromeBar, tvCounter)
+        if (isGeneratedViewer) {
+            views.add(btnDeleteImage)
+            views.add(btnStartTempChat)
+        }
+        return views
     }
 
     override fun onBackPressed() {
@@ -179,7 +254,12 @@ class FullScreenImageActivity : AppCompatActivity() {
         activeTarget?.let { Glide.with(this).clear(it) }
         activeTarget = null
         imageView.prepareForLoad()
-        setResult(RESULT_OK, android.content.Intent().putExtra("FINAL_INDEX", currentIndex))
+        setResult(RESULT_OK, Intent().apply {
+            putExtra("FINAL_INDEX", currentIndex)
+            if (deletedUris.isNotEmpty()) {
+                putStringArrayListExtra("DELETED_URIS", ArrayList(deletedUris))
+            }
+        })
         // Calling finish directly avoids waiting on the back dispatcher while image/network
         // callbacks are being canceled, which caused intermittent apparent freezes.
         finish()

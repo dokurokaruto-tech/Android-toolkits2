@@ -41,10 +41,16 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
     private val previewLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
+            val deleted = result.data?.getStringArrayListExtra("DELETED_URIS").orEmpty()
+            if (deleted.isNotEmpty()) {
+                deleted.forEach(::forgetVirtualUri)
+                loadImages()
+                if (::imageAdapter.isInitialized) imageAdapter.notifyDataSetChanged()
+            }
             val finalIndex = result.data?.getIntExtra("FINAL_INDEX", -1) ?: -1
-            if (finalIndex != -1) {
+            if (finalIndex != -1 && ::recyclerView.isInitialized) {
                 // カルーセルで見ていた画像の位置まで、アルバム一覧もスクロールさせるわよ！
-                recyclerView.scrollToPosition(finalIndex)
+                recyclerView.scrollToPosition(finalIndex.coerceAtLeast(0))
             }
         }
     }
