@@ -8,7 +8,11 @@ object ChatInstructionPolicy {
     const val ROLE_KEY = "chat_role_instruction"
     const val SUGGEST_KEY = "chat_suggest_instruction"
 
-    val SUGGEST_BODY = """
+    /**
+     * 昔の編集画面だけが持っていた短い雛形。
+     * 生成はこれを使わず、DEFAULT_GENERATION_SUGGEST を送っていた。
+     */
+    val LEGACY_EDITOR_SUGGEST = """
         ユーザーが次に返信しやすくなるような、ユーザーの返信のサジェスト（選択肢）を3パターン生成する。
         会話の口調と態度を反映し、末尾に次の形式で付ける。
         <<<SUGGESTIONS>>>
@@ -17,6 +21,8 @@ object ChatInstructionPolicy {
         C: <少し甘えるかからかう返信、15文字以内>
         <<</SUGGESTIONS>>>
     """.trimIndent()
+
+    val SUGGEST_BODY get() = DEFAULT_GENERATION_SUGGEST
 
     enum class Kind { ROLE, USER, IMAGE, TAG, MEMORY, SUGGEST, SUGGEST_EXTRA }
 
@@ -56,7 +62,16 @@ object ChatInstructionPolicy {
 
     fun roleText(stored: String?): String = stored?.trim().orEmpty().ifEmpty { ROLE_TEXT }
 
-    fun suggestText(stored: String?): String = stored?.trim().orEmpty().ifEmpty { SUGGEST_BODY }
+    fun isUneditedStoredSuggest(stored: String?): Boolean {
+        val edited = stored?.trim().orEmpty()
+        if (edited.isEmpty()) return true
+        return normalizeSuggest(edited) == normalizeSuggest(LEGACY_EDITOR_SUGGEST)
+    }
+
+    fun suggestText(stored: String?): String {
+        if (isUneditedStoredSuggest(stored)) return DEFAULT_GENERATION_SUGGEST
+        return stored!!.trim()
+    }
 
     fun extraBlock(extra: String): String {
         val trimmed = extra.trim()
@@ -65,14 +80,15 @@ object ChatInstructionPolicy {
     }
 
     /**
-     * 画面で直した指示を、生成が本当に読む文にする。
-     * 未保存なら従来の15文字ルール、保存済みならその全文を使う。
+     * 画面で見せている指示そのものを、生成が読む。
+     * 未保存と、昔の短い雛形のままは本物の最重要指令にする。
      */
     fun generationSuggestRules(storedBody: String?, extra: String): String {
-        val extraText = extraBlock(extra)
-        val edited = storedBody?.trim().orEmpty()
-        if (edited.isNotEmpty()) return edited + extraText
-        return DEFAULT_GENERATION_SUGGEST + extraText
+        return suggestText(storedBody) + extraBlock(extra)
+    }
+
+    private fun normalizeSuggest(text: String): String {
+        return text.lineSequence().joinToString("\n") { it.trimEnd() }.trim()
     }
 
     fun applySuggestToUserText(

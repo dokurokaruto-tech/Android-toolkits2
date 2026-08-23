@@ -7,6 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -168,13 +171,13 @@ class ChatAdapter(
             return
         }
         holder.textAi.text = ChatSuggestionParser.visibleText(node.text)
-        holder.layoutSuggestions.visibility = View.GONE
         val streaming = node.text.startsWith("思考中") ||
             node.text.startsWith("推論中") ||
             node.text.startsWith("🧠") ||
             node.text.startsWith("📥")
         holder.btnAiRegen.visibility = if (streaming) View.GONE else View.VISIBLE
         holder.btnAiCopy.visibility = if (streaming) View.GONE else View.VISIBLE
+        bindSuggestionViews(holder, node, isLastMessage = true)
         holder.itemView.requestLayout()
     }
 
@@ -183,6 +186,88 @@ class ChatAdapter(
         val pos = holder.bindingAdapterPosition
         if (pos !in messages.indices) return
         onBindViewHolder(holder, pos)
+    }
+
+    override fun onViewRecycled(holder: ViewHolder) {
+        stopSuggestPulse(holder)
+        super.onViewRecycled(holder)
+    }
+
+    private fun bindSuggestionViews(holder: ViewHolder, node: ChatNode, isLastMessage: Boolean) {
+        val prefs = holder.itemView.context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val enabled = prefs.getBoolean("chat_suggest_reply", true)
+        val generatingThis = ChatGenerationManager.isGenerating &&
+            ChatGenerationManager.activeAiNodeId == node.id
+        val phase = ChatSuggestionUiPolicy.phase(
+            enabled = enabled,
+            isLastMessage = isLastMessage,
+            isUser = node.isUser,
+            generatingThis = generatingThis,
+            rawText = node.text,
+            suggestionA = node.suggestionA,
+            suggestionB = node.suggestionB,
+            suggestionC = node.suggestionC
+        )
+        when (phase) {
+            ChatSuggestionUiPolicy.Phase.HIDDEN -> {
+                stopSuggestPulse(holder)
+                holder.layoutSuggestions.visibility = View.GONE
+            }
+            ChatSuggestionUiPolicy.Phase.GENERATING -> {
+                holder.layoutSuggestions.visibility = View.VISIBLE
+                holder.layoutSuggestLoading.visibility = View.VISIBLE
+                holder.layoutSuggestChoices.visibility = View.GONE
+                holder.tvSuggestLoading.text = ChatSuggestionUiPolicy.LOADING_LABEL
+                startSuggestPulse(holder)
+            }
+            ChatSuggestionUiPolicy.Phase.READY -> {
+                stopSuggestPulse(holder)
+                holder.layoutSuggestions.visibility = View.VISIBLE
+                holder.layoutSuggestLoading.visibility = View.GONE
+                holder.layoutSuggestChoices.visibility = View.VISIBLE
+                holder.btnSuggestA.text = node.suggestionA?.let { "A: $it" }.orEmpty()
+                holder.btnSuggestB.text = node.suggestionB?.let { "B: $it" }.orEmpty()
+                holder.btnSuggestC.text = node.suggestionC?.let { "C: $it" }.orEmpty()
+                holder.btnSuggestA.visibility = if (node.suggestionA.isNullOrBlank()) View.GONE else View.VISIBLE
+                holder.btnSuggestB.visibility = if (node.suggestionB.isNullOrBlank()) View.GONE else View.VISIBLE
+                holder.btnSuggestC.visibility = if (node.suggestionC.isNullOrBlank()) View.GONE else View.VISIBLE
+                holder.btnSuggestA.setOnClickListener { onSelectSuggestion(node.suggestionA ?: "") }
+                holder.btnSuggestB.setOnClickListener { onSelectSuggestion(node.suggestionB ?: "") }
+                holder.btnSuggestC.setOnClickListener { onSelectSuggestion(node.suggestionC ?: "") }
+            }
+        }
+    }
+
+    private fun startSuggestPulse(holder: ViewHolder) {
+        if (holder.suggestPulse?.isRunning == true) return
+        stopSuggestPulse(holder)
+        val views = listOf(
+            holder.tvSuggestLoading,
+            holder.suggestSkelA,
+            holder.suggestSkelB,
+            holder.suggestSkelC
+        )
+        val anims = views.mapIndexed { index, view ->
+            ObjectAnimator.ofFloat(view, View.ALPHA, 0.35f, 1f).apply {
+                duration = 650
+                repeatMode = ValueAnimator.REVERSE
+                repeatCount = ValueAnimator.INFINITE
+                startDelay = index * 90L
+            }
+        }
+        holder.suggestPulse = AnimatorSet().apply {
+            playTogether(anims)
+            start()
+        }
+    }
+
+    private fun stopSuggestPulse(holder: ViewHolder) {
+        holder.suggestPulse?.cancel()
+        holder.suggestPulse = null
+        holder.tvSuggestLoading.alpha = 1f
+        holder.suggestSkelA.alpha = 1f
+        holder.suggestSkelB.alpha = 1f
+        holder.suggestSkelC.alpha = 1f
     }
 
     override fun getItemId(position: Int): Long {
@@ -210,9 +295,16 @@ class ChatAdapter(
         val btnAiRegen: TextView = view.findViewById(R.id.btn_ai_regenerate)
         val btnAiCopy: TextView = view.findViewById(R.id.btn_ai_copy)
         val layoutSuggestions: LinearLayout = view.findViewById(R.id.layout_suggestions)
+        val layoutSuggestLoading: LinearLayout = view.findViewById(R.id.layout_suggest_loading)
+        val layoutSuggestChoices: LinearLayout = view.findViewById(R.id.layout_suggest_choices)
+        val tvSuggestLoading: TextView = view.findViewById(R.id.tv_suggest_loading)
+        val suggestSkelA: View = view.findViewById(R.id.suggest_skel_a)
+        val suggestSkelB: View = view.findViewById(R.id.suggest_skel_b)
+        val suggestSkelC: View = view.findViewById(R.id.suggest_skel_c)
         val btnSuggestA: TextView = view.findViewById(R.id.btn_suggest_a)
         val btnSuggestB: TextView = view.findViewById(R.id.btn_suggest_b)
         val btnSuggestC: TextView = view.findViewById(R.id.btn_suggest_c)
+        var suggestPulse: AnimatorSet? = null
 
         val containerUser: LinearLayout = view.findViewById(R.id.container_user)
         val textUser: TextView = view.findViewById(R.id.text_message_user)
@@ -404,22 +496,7 @@ class ChatAdapter(
                 holder.btnAiNext.visibility = View.GONE
             }
 
-            val isLastMessage = (position == messages.size - 1)
-            val prefs = holder.itemView.context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val isSuggestEnabled = prefs.getBoolean("chat_suggest_reply", true)
-
-            if (isLastMessage && isSuggestEnabled && !node.suggestionA.isNullOrEmpty()) {
-                holder.layoutSuggestions.visibility = View.VISIBLE
-                holder.btnSuggestA.text = "A: ${node.suggestionA}"
-                holder.btnSuggestB.text = "B: ${node.suggestionB}"
-                holder.btnSuggestC.text = "C: ${node.suggestionC}"
-
-                holder.btnSuggestA.setOnClickListener { onSelectSuggestion(node.suggestionA ?: "") }
-                holder.btnSuggestB.setOnClickListener { onSelectSuggestion(node.suggestionB ?: "") }
-                holder.btnSuggestC.setOnClickListener { onSelectSuggestion(node.suggestionC ?: "") }
-            } else {
-                holder.layoutSuggestions.visibility = View.GONE
-            }
+            bindSuggestionViews(holder, node, isLastMessage = position == messages.size - 1)
         }
     }
     override fun getItemCount() = messages.size
@@ -2015,6 +2092,18 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
             if (isComplete) {
                 updateCounter()
+                val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+                if (ChatSuggestionUiPolicy.shouldToastFailure(
+                        enabled = prefs.getBoolean("chat_suggest_reply", true),
+                        isComplete = true,
+                        isError = error != null,
+                        suggestionA = aiNode.suggestionA,
+                        suggestionB = aiNode.suggestionB,
+                        suggestionC = aiNode.suggestionC
+                    )
+                ) {
+                    Toast.makeText(this, ChatSuggestionUiPolicy.FAILED_TOAST, Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

@@ -79,21 +79,49 @@ class ChatInstructionPolicyTest {
     fun storedRoleAndSuggestFallBackToDefaults() {
         assertEquals(ChatInstructionPolicy.ROLE_TEXT, ChatInstructionPolicy.roleText("  "))
         assertEquals("役割を変える", ChatInstructionPolicy.roleText("役割を変える"))
-        assertEquals(ChatInstructionPolicy.SUGGEST_BODY, ChatInstructionPolicy.suggestText(null))
+        assertEquals(ChatInstructionPolicy.DEFAULT_GENERATION_SUGGEST, ChatInstructionPolicy.suggestText(null))
+        assertEquals(
+            ChatInstructionPolicy.DEFAULT_GENERATION_SUGGEST,
+            ChatInstructionPolicy.suggestText(ChatInstructionPolicy.LEGACY_EDITOR_SUGGEST)
+        )
+        assertTrue(ChatInstructionPolicy.suggestText(null).contains("最重要：システム指令"))
+    }
+
+    @Test
+    fun editorAndGenerationShareTheSameSuggestCommand() {
+        val shown = ChatInstructionPolicy.suggestText(null)
+        val sent = ChatInstructionPolicy.generationSuggestRules(null, "")
+        assertEquals(shown, sent)
+        assertTrue(shown.contains("<<<SUGGESTIONS>>>"))
+        assertTrue(shown.contains("15文字以内"))
     }
 
     @Test
     fun savedSuggestRulesReplaceTheHardcodedFifteenLimit() {
-        val saved = ChatInstructionPolicy.SUGGEST_BODY.replace("15文字以内", "50文字以内")
+        val saved = ChatInstructionPolicy.DEFAULT_GENERATION_SUGGEST.replace("15文字以内", "50文字以内")
         val sent = ChatInstructionPolicy.generationSuggestRules(saved, "語尾をにゃ")
         assertTrue(sent.contains("50文字以内"))
         assertFalse(sent.contains("15文字以内"))
         assertTrue(sent.contains("語尾をにゃ"))
+        assertTrue(sent.contains("最重要：システム指令"))
         val fallback = ChatInstructionPolicy.generationSuggestRules(null, "")
         assertTrue(fallback.contains("15文字以内"))
         val applied = ChatInstructionPolicy.applySuggestToUserText("こんにちは", true, saved, "")
         assertTrue(applied.startsWith("こんにちは"))
         assertTrue(applied.contains("50文字以内"))
         assertEquals("こんにちは", ChatInstructionPolicy.applySuggestToUserText("こんにちは", false, saved, ""))
+    }
+
+    @Test
+    fun legacyShortTemplateIsNotSentInPlaceOfTheRealCommand() {
+        val sent = ChatInstructionPolicy.generationSuggestRules(
+            ChatInstructionPolicy.LEGACY_EDITOR_SUGGEST,
+            ""
+        )
+        assertEquals(ChatInstructionPolicy.DEFAULT_GENERATION_SUGGEST, sent)
+        val customizedShort = ChatInstructionPolicy.LEGACY_EDITOR_SUGGEST.replace("15文字以内", "50文字以内")
+        val customSent = ChatInstructionPolicy.generationSuggestRules(customizedShort, "")
+        assertTrue(customSent.contains("50文字以内"))
+        assertFalse(customSent.contains("最重要：システム指令"))
     }
 }
