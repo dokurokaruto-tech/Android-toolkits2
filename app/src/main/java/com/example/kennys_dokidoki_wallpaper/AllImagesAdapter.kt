@@ -105,6 +105,7 @@ class AllImagesAdapter(
             .diskCacheStrategy(DiskCacheStrategy.ALL)
             .centerCrop()
             .into(holder.imageView)
+        ImageMemoryGovernor.onGridBind(holder.imageView.context)
         
         // タグの表示設定
         val settingsPrefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -266,6 +267,11 @@ class AllImagesAdapter(
             }
             true
         }
+    }
+
+    override fun onViewRecycled(holder: ViewHolder) {
+        Glide.with(holder.imageView.context).clear(holder.imageView)
+        super.onViewRecycled(holder)
     }
 
     override fun getItemCount() = images.size

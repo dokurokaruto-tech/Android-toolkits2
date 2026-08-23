@@ -617,6 +617,15 @@ class FullScreenImageActivity : AppCompatActivity() {
         } else {
             displayOriginal(entry.uri, entry.uri, serial)
         }
+        ImageMemoryGovernor.onViewerWorkingSet(this, workingSetKeys(viewedIndex))
+    }
+
+    private fun workingSetKeys(center: Int): Set<String> {
+        val neighbors = (1..2).flatMap { distance ->
+            surroundingUris(center, distance)
+        }.map { it.toString() }
+        val current = currentEntries.getOrNull(center)?.uri?.toString()
+        return ImageMemoryPressurePolicy.keepKeys(current, neighbors)
     }
 
     /**

@@ -24,13 +24,12 @@ import kotlin.coroutines.coroutineContext
  * page or closing the viewer stops waiting but the transfer finishes in the background.
  */
 object OriginalImageMemoryCache {
-    private const val MAX_ENTRIES = 50
     private const val MAX_SINGLE_IMAGE_BYTES = 128 * 1024 * 1024
-    private val maxBytes: Long = (Runtime.getRuntime().maxMemory() / 3)
-        .coerceIn(64L * 1024 * 1024, 384L * 1024 * 1024)
+    private val maxEntries: Int = ImageMemoryPressurePolicy.MAX_ORIGINALS_CALM
+    private val maxBytes: Long = ImageMemoryPressurePolicy.originalBudgetBytes(Runtime.getRuntime().maxMemory())
 
     private val lock = Any()
-    private val entries = LinkedHashMap<String, ByteArray>(MAX_ENTRIES, 0.75f, true)
+    private val entries = LinkedHashMap<String, ByteArray>(maxEntries, 0.75f, true)
     private val inFlight = mutableMapOf<String, CompletableDeferred<ByteArray>>()
     private val downloadJobs = mutableMapOf<String, Job>()
     private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -106,17 +105,33 @@ object OriginalImageMemoryCache {
 
     fun entryCount(): Int = synchronized(lock) { entries.size }
     fun inFlightCount(): Int = synchronized(lock) { inFlight.size }
+    fun byteSize(): Long = synchronized(lock) { totalBytes }
+
+    fun retainThenTrim(keep: Set<String>, maxKept: Int = maxEntries, budgetBytes: Long = maxBytes) {
+        synchronized(lock) {
+            evictLocked(keep, maxKept, budgetBytes)
+        }
+    }
 
     private fun putLocked(key: String, bytes: ByteArray) {
         entries.remove(key)?.let { totalBytes -= it.size }
         entries[key] = bytes
         totalBytes += bytes.size
-        val iterator = entries.entries.iterator()
-        while ((entries.size > MAX_ENTRIES || totalBytes > maxBytes) && entries.size > 1 && iterator.hasNext()) {
-            val eldest = iterator.next()
-            totalBytes -= eldest.value.size
-            iterator.remove()
+        evictLocked(emptySet(), maxEntries, maxBytes)
+    }
+
+    private fun evictLocked(keep: Set<String>, maxKept: Int, budgetBytes: Long) {
+        val snapshot = entries.map { ImageMemoryPressurePolicy.Slot(it.key, it.value.size) }
+        val remaining = ImageMemoryPressurePolicy.evictToBudget(
+            lruOldestFirst = snapshot,
+            keep = keep,
+            maxEntries = maxKept,
+            maxBytes = budgetBytes
+        ).map { it.key }.toSet()
+        entries.keys.filter { it !in remaining }.forEach { key ->
+            entries.remove(key)?.let { totalBytes -= it.size }
         }
+        if (totalBytes < 0L) totalBytes = 0L
     }
 
     private suspend fun download(uri: Uri): ByteArray = withContext(Dispatchers.IO) {

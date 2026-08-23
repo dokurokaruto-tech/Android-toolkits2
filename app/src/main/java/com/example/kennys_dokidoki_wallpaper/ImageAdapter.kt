@@ -98,6 +98,7 @@ class ImageAdapter(
             .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(gridImageUri))
             .centerCrop()
             .into(holder.imageView)
+        ImageMemoryGovernor.onGridBind(holder.imageView.context)
             
         // 生成画像閲覧でもケバブは出す。壁紙用のチェックだけ隠す。
         if (isGeneratedViewerMode) {
@@ -252,6 +253,11 @@ class ImageAdapter(
             }
             true
         }
+    }
+
+    override fun onViewRecycled(holder: ImageViewHolder) {
+        Glide.with(holder.imageView.context).clear(holder.imageView)
+        super.onViewRecycled(holder)
     }
 
     override fun getItemCount() = images.size

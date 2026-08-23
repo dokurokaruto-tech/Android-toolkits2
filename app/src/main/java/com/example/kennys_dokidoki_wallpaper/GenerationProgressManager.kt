@@ -58,6 +58,7 @@ object GenerationProgressManager {
         completedCount: Int? = null
     ) {
         val current = _state.value
+        val previous = current.currentImage
         _state.value = current.copy(
             isGenerating = isGenerating,
             progress = progress,
@@ -66,6 +67,7 @@ object GenerationProgressManager {
             currentImageProgress = currentImageProgress ?: current.currentImageProgress,
             completedCount = completedCount ?: current.completedCount
         )
+        recycleIfUnused(previous, currentImage)
     }
 
     fun updateBatchProgress(current: Int, total: Int, completedCount: Int? = null) {
@@ -95,7 +97,14 @@ object GenerationProgressManager {
 
     fun endGeneration(force: Boolean = false) {
         if (force || !isBatch) {
-            _state.value = _state.value.copy(isGenerating = false, silent = false)
+            val previous = _state.value.currentImage
+            _state.value = _state.value.copy(isGenerating = false, silent = false, currentImage = null)
+            recycleIfUnused(previous, null)
         }
+    }
+
+    private fun recycleIfUnused(previous: Bitmap?, next: Bitmap?) {
+        if (previous == null || previous === next || previous.isRecycled) return
+        previous.recycle()
     }
 }
