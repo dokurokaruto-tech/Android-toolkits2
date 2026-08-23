@@ -3,6 +3,7 @@ package com.example.kennys_dokidoki_wallpaper
 import android.content.Context
 import android.util.AttributeSet
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import kotlin.math.abs
@@ -11,11 +12,11 @@ import kotlin.math.abs
  * 画像生成ビルダー画面の下部にオーバーレイする「選択中カード」ストリップ。
  *
  * - 背景は透明。レイアウトスペースを取らず、コンテンツの上に浮く。
- * - 上から下にスワイプ → 折りたたみ（グラバーだけ残る）
+ * - 上から下にスワイプ → 折りたたみ（履歴ボタンとグラバーだけ残る）
  * - 下から上にスワイプ or タップ → 展開（指の動きに追従）
  * - 折りたたみ中のタップは「展開」のみ（選択解除しない）
  * - 展開中のカードタップ → 選択解除（子RecyclerViewが処理）
- * - 履歴ボタンは中に置くので、畳むと一緒に下へ行く。
+ * - 履歴ボタンはカードの真上のヘッダーに置き、畳んでもカードに重ねず一緒に下へ残る。
  */
 class CollapsibleCardStrip @JvmOverloads constructor(
     context: Context,
@@ -41,6 +42,7 @@ class CollapsibleCardStrip @JvmOverloads constructor(
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        if (isTouchOnHistoryControls(ev)) return false
         if (isCollapsed) return true
 
         when (ev.actionMasked) {
@@ -121,5 +123,21 @@ class CollapsibleCardStrip @JvmOverloads constructor(
         if (height == 0) post(apply) else apply()
     }
 
-    private fun collapsedOffset(): Float = (height - peekHeightPx).toFloat().coerceAtLeast(0f)
+    private fun collapsedOffset(): Float =
+        (height - headerPeekHeight()).toFloat().coerceAtLeast(0f)
+
+    private fun headerPeekHeight(): Int {
+        val header = findViewById<View>(R.id.builder_strip_header)
+        return BuilderStripStatePolicy.peekHeight(header?.height ?: 0, peekHeightPx)
+    }
+
+    private fun isTouchOnHistoryControls(ev: MotionEvent): Boolean {
+        val bar = findViewById<View>(R.id.layout_builder_history) ?: return false
+        if (bar.visibility != VISIBLE) return false
+        val loc = IntArray(2)
+        bar.getLocationOnScreen(loc)
+        val x = ev.rawX
+        val y = ev.rawY
+        return x >= loc[0] && x < loc[0] + bar.width && y >= loc[1] && y < loc[1] + bar.height
+    }
 }

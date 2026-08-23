@@ -8,4 +8,8 @@ object BuilderStripStatePolicy {
     const val KEY_COLLAPSED = "builder_selected_strip_collapsed"
 
     fun isCollapsed(stored: Boolean?): Boolean = stored == true
+
+    /** 畳んだあとも履歴ボタンとグラバーだけ残す。カード本体は隠す。 */
+    fun peekHeight(headerHeight: Int, fallback: Int): Int =
+        if (headerHeight > 0) headerHeight else fallback.coerceAtLeast(1)
 }
