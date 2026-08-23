@@ -1086,11 +1086,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }
                     try {
                         val accepted = GenerationAgentClient.submit(this@MainActivity, requests)
-                        Toast.makeText(
-                            this@MainActivity,
-                            "PCが${accepted.total}枚を受け付けました。アプリを閉じても継続します。",
-                            Toast.LENGTH_LONG
-                        ).show()
                         val completed = GenerationAgentClient.monitor(this@MainActivity, accepted)
                         val preparedForUrls = requests.map {
                             GeneratedImageTagBinding.PreparedImage(
