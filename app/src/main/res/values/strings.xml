@@ -14,4 +14,8 @@
     <string name="not_set_tags">タグが設定されていません</string>
     <string name="thinking">思考中</string>
     <string name="error_occurred">エラーが発生したみたい...</string>
+    <string name="pip_action_stop">停止</string>
+    <string name="pip_action_skip">スキップ</string>
+    <string name="pip_action_live_preview">生成中の画像を全画面で見る</string>
+    <string name="pip_action_restore">PiPに戻して元の画面へ</string>
 </resources>

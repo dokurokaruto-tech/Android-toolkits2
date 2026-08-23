@@ -40,6 +40,7 @@ class GenerationProgressActivity : AppCompatActivity() {
         const val ACTION_STOP = "com.example.ACTION_STOP_GEN"
         const val ACTION_SKIP = "com.example.ACTION_SKIP_GEN"
         const val ACTION_MAXIMIZE = "com.example.ACTION_MAXIMIZE"
+        const val ACTION_RESTORE_PIP = "com.example.ACTION_RESTORE_PIP"
         var isPipActive = false
     }
 
@@ -49,6 +50,7 @@ class GenerationProgressActivity : AppCompatActivity() {
                 ACTION_STOP -> GenerationProgressManager.shouldInterrupt = true
                 ACTION_SKIP -> GenerationProgressManager.shouldSkip = true
                 ACTION_MAXIMIZE -> expandIntoAppPreview()
+                ACTION_RESTORE_PIP -> restorePipOverOriginalScreen()
             }
             if (!isFinishing) updatePiPParams()
         }
@@ -74,6 +76,7 @@ class GenerationProgressActivity : AppCompatActivity() {
                 addAction(ACTION_STOP)
                 addAction(ACTION_SKIP)
                 addAction(ACTION_MAXIMIZE)
+                addAction(ACTION_RESTORE_PIP)
             }, RECEIVER_NOT_EXPORTED)
         }
         
@@ -97,6 +100,30 @@ class GenerationProgressActivity : AppCompatActivity() {
         }
         findViewById<ImageButton>(R.id.btn_pip_maximize).setOnClickListener {
             expandIntoAppPreview()
+        }
+        findViewById<ImageButton>(R.id.btn_pip_restore).setOnClickListener {
+            restorePipOverOriginalScreen()
+        }
+        syncRestorePipButton()
+    }
+
+    private fun restorePipOverOriginalScreen() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (!GenerationPipExpandPolicy.shouldOfferRestorePip(isInPictureInPictureMode)) return
+        val ratio = if (isLargePiP) Rational(1, 1) else Rational(9, 16)
+        enterPictureInPictureMode(
+            PictureInPictureParams.Builder()
+                .setAspectRatio(ratio)
+                .build()
+        )
+    }
+
+    private fun syncRestorePipButton() {
+        val restore = findViewById<ImageButton>(R.id.btn_pip_restore)
+        restore.visibility = if (GenerationPipExpandPolicy.shouldOfferRestorePip(isInPictureInPictureMode)) {
+            View.VISIBLE
+        } else {
+            View.GONE
         }
     }
 
@@ -181,17 +208,35 @@ class GenerationProgressActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val actions = ArrayList<RemoteAction>()
 
-            // ストップボタン
             val stopIntent = PendingIntent.getBroadcast(this, 1, Intent(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-            actions.add(RemoteAction(Icon.createWithResource(this, R.drawable.ic_stop_gen), "中止", "中止", stopIntent))
+            actions.add(
+                RemoteAction(
+                    Icon.createWithResource(this, R.drawable.ic_md3_gen_stop),
+                    GenerationPipExpandPolicy.LABEL_STOP,
+                    GenerationPipExpandPolicy.LABEL_STOP,
+                    stopIntent
+                )
+            )
 
-            // スキップボタン
             val skipIntent = PendingIntent.getBroadcast(this, 2, Intent(ACTION_SKIP), PendingIntent.FLAG_IMMUTABLE)
-            actions.add(RemoteAction(Icon.createWithResource(this, R.drawable.ic_skip_gen), "スキップ", "スキップ", skipIntent))
+            actions.add(
+                RemoteAction(
+                    Icon.createWithResource(this, R.drawable.ic_md3_gen_skip),
+                    GenerationPipExpandPolicy.LABEL_SKIP,
+                    GenerationPipExpandPolicy.LABEL_SKIP,
+                    skipIntent
+                )
+            )
 
-            // 最大化ボタン
             val maxIntent = PendingIntent.getBroadcast(this, 3, Intent(ACTION_MAXIMIZE), PendingIntent.FLAG_IMMUTABLE)
-            actions.add(RemoteAction(Icon.createWithResource(this, R.drawable.ic_maximize), "最大化", "最大化", maxIntent))
+            actions.add(
+                RemoteAction(
+                    Icon.createWithResource(this, R.drawable.ic_md3_gen_live),
+                    GenerationPipExpandPolicy.LABEL_LIVE_PREVIEW,
+                    GenerationPipExpandPolicy.LABEL_LIVE_PREVIEW,
+                    maxIntent
+                )
+            )
 
             val params = PictureInPictureParams.Builder()
                 .setActions(actions)
@@ -216,6 +261,7 @@ class GenerationProgressActivity : AppCompatActivity() {
             llControls.visibility = View.VISIBLE
             pbGeneration.visibility = View.VISIBLE
         }
+        syncRestorePipButton()
     }
 
     override fun onDestroy() {

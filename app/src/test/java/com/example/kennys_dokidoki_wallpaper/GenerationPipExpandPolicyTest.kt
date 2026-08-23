@@ -43,4 +43,20 @@ class GenerationPipExpandPolicyTest {
         assertFalse(GenerationPipExpandPolicy.shouldAutoOpen("20260823"))
         assertFalse(GenerationPipExpandPolicy.shouldAutoOpen("not-a-date"))
     }
+
+    @Test
+    fun offersRestorePipOnlyWhenFullscreen() {
+        assertTrue(GenerationPipExpandPolicy.shouldOfferRestorePip(isInPictureInPictureMode = false))
+        assertFalse(GenerationPipExpandPolicy.shouldOfferRestorePip(isInPictureInPictureMode = true))
+    }
+
+    @Test
+    fun fullscreenControlsAreStopSkipLiveThenRestore() {
+        val labels = GenerationPipExpandPolicy.fullscreenControlLabels()
+        assertEquals(
+            listOf("停止", "スキップ", "全画面で見る", "PiPに戻る"),
+            labels
+        )
+        assertEquals(labels.size, labels.toSet().size)
+    }
 }

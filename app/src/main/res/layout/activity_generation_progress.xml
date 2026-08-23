@@ -42,26 +42,39 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_stop_gen"
-            app:tint="#FF0000" />
+            android:contentDescription="@string/pip_action_stop"
+            android:src="@drawable/ic_md3_gen_stop"
+            app:tint="#FF5252" />
 
         <ImageButton
             android:id="@+id/btn_pip_skip"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="12dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_skip_gen"
+            android:contentDescription="@string/pip_action_skip"
+            android:src="@drawable/ic_md3_gen_skip"
             app:tint="#00F0FF" />
 
         <ImageButton
             android:id="@+id/btn_pip_maximize"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="12dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_maximize"
+            android:contentDescription="@string/pip_action_live_preview"
+            android:src="@drawable/ic_md3_gen_live"
             app:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/btn_pip_restore"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="12dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/pip_action_restore"
+            android:src="@drawable/ic_md3_restore_pip"
+            app:tint="#D0BCFF" />
     </LinearLayout>
 
     <TextView

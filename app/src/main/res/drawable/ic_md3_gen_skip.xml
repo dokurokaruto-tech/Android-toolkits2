@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 二重の送り三角＋終端バー。再生や最大化と混ざらない。 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M3.4,6.2L11.6,12 3.4,17.8V6.2zM11.8,6.2L20,12 11.8,17.8V6.2zM20.6,5.8h2.2v12.4h-2.2z" />
+</vector>

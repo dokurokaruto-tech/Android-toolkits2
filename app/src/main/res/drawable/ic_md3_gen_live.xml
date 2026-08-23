@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 生成中プレビューをアプリ内で大きく見る：写真＋四隅の拡大。 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M2,3h6.2v1.9H3.9V9.2H2zM15.8,3H22v6.2h-1.9V4.9h-4.3zM2,14.8h1.9v4.3h4.3V21H2zM20.1,14.8H22V21h-6.2v-1.9h4.3z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M6.2,7.4h11.6c0.55,0 1,0.45 1,1v7.2c0,0.55 -0.45,1 -1,1H6.2c-0.55,0 -1,-0.45 -1,-1V8.4c0,-0.55 0.45,-1 1,-1zM7.4,8.8v6.4h9.2V8.8H7.4z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8.2,13.9l2.05,-2.55 1.55,1.85 2.15,-2.7 2.45,3.4H8.2zM15.7,10.15c0.5,0 0.9,0.4 0.9,0.9s-0.4,0.9 -0.9,0.9 -0.9,-0.4 -0.9,-0.9 0.4,-0.9 0.9,-0.9z" />
+</vector>
