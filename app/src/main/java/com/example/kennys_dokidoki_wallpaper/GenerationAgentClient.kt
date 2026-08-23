@@ -65,6 +65,7 @@ data class AgentJobState(
 object GenerationAgentClient {
     private const val ACTIVE_JOB_KEY = "generation_agent_active_job_id"
     private const val ACTIVE_JOB_TAGS_KEY = "generation_agent_active_job_tags"
+    private const val ACTIVE_JOB_CARDS_KEY = "generation_agent_active_job_cards"
     private const val LAST_GOOD_URL_KEY = "remote_server_url_last_good"
     private const val ALT_URL_KEY = "remote_server_url_alts"
     private const val TAG = "GenerationAgent"
@@ -464,6 +465,7 @@ object GenerationAgentClient {
         settings(context).edit()
             .remove(ACTIVE_JOB_KEY)
             .remove(ACTIVE_JOB_TAGS_KEY)
+            .remove(ACTIVE_JOB_CARDS_KEY)
             .apply()
     }
 
