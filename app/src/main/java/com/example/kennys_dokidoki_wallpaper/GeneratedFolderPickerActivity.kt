@@ -143,11 +143,11 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                 )
             } catch (error: Exception) {
                 setLoading(false)
-                Toast.makeText(
+                AgentConnectionUi.showDiagnosis(
                     this@GeneratedFolderPickerActivity,
-                    "PC画像一覧を取得できません: ${error.message}",
-                    Toast.LENGTH_LONG
-                ).show()
+                    AgentConnectionLog.last ?: AgentConnectionClassifier.fromException(error),
+                    "PC画像一覧を取得できない"
+                )
             }
         }
     }

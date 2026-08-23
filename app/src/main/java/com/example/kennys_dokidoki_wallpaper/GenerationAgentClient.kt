@@ -85,12 +85,37 @@ object GenerationAgentClient {
     fun hasPendingJob(context: Context): Boolean =
         !settings(context).getString(ACTIVE_JOB_KEY, null).isNullOrBlank()
 
-    suspend fun isAvailable(context: Context): Boolean = withContext(Dispatchers.IO) {
+    suspend fun isAvailable(context: Context): Boolean {
+        val diagnosis = probe(context)
+        return diagnosis.code == AgentConnectionClassifier.OK ||
+            diagnosis.code == AgentConnectionClassifier.SD_DOWN
+    }
+
+    /** 接続先へ /health を叩き、成功でも失敗でも原因を残す。 */
+    suspend fun probe(context: Context): AgentConnectionDiagnosis = withContext(Dispatchers.IO) {
+        val target = AgentConnectionClassifier.redactUrl(baseUrl(context))
+        if (baseUrl(context).isBlank()) {
+            val diagnosis = AgentConnectionClassifier.fromException(
+                IOException("PC生成エージェントのURLが未設定です"),
+                target,
+                "/api/v1/health"
+            )
+            AgentConnectionLog.record(context, "接続テスト", diagnosis)
+            return@withContext diagnosis
+        }
         try {
-            val json = requestJson(context, "/api/v1/health")
-            json.optString("service") == "android-toolkits-generation-agent"
-        } catch (_: Exception) {
-            false
+            val json = requestJson(context, "/api/v1/health", recordFailure = false)
+            val diagnosis = AgentConnectionClassifier.fromHealth(
+                service = json.optString("service"),
+                sdReachable = if (json.has("sd_reachable")) json.optBoolean("sd_reachable") else null,
+                target = target
+            )
+            AgentConnectionLog.record(context, "接続テスト", diagnosis)
+            diagnosis
+        } catch (error: Exception) {
+            val diagnosis = AgentConnectionClassifier.fromException(error, target, "/api/v1/health")
+            AgentConnectionLog.record(context, "接続テスト", diagnosis)
+            diagnosis
         }
     }
 
@@ -262,12 +287,18 @@ object GenerationAgentClient {
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
                     connectionFailures++
-                    Log.w(TAG, "Agent monitor reconnect $connectionFailures", error)
+                    val diagnosis = AgentConnectionClassifier.fromException(
+                        error,
+                        AgentConnectionClassifier.redactUrl(baseUrl(context)),
+                        "/api/v1/jobs/$jobId"
+                    )
+                    AgentConnectionLog.record(context, "監視再接続 $connectionFailures", diagnosis)
+                    Log.w(TAG, "Agent monitor reconnect $connectionFailures ${diagnosis.code}", error)
                     GenerationProgressManager.updateState(
                         true, state.progress, GenerationProgressManager.state.value.currentImage,
-                        "PCへ再接続中...（PC側の生成は継続）"
+                        "再接続中 ${connectionFailures}/5 [${diagnosis.code}] ${diagnosis.title}"
                     )
-                    if (connectionFailures >= 5) throw error
+                    if (connectionFailures >= 5) throw IOException(diagnosis.displayText(), error)
                     delay(2000)
                 }
             }
@@ -289,8 +320,11 @@ object GenerationAgentClient {
         context: Context,
         request: AgentGenerationRequest
     ): android.net.Uri {
-        if (!isAvailable(context)) {
-            throw IOException("PC生成エージェントに接続できません")
+        val diagnosis = probe(context)
+        if (diagnosis.code != AgentConnectionClassifier.OK &&
+            diagnosis.code != AgentConnectionClassifier.SD_DOWN
+        ) {
+            throw IOException(diagnosis.displayText())
         }
         val accepted = submit(
             context,
@@ -371,10 +405,21 @@ object GenerationAgentClient {
         context: Context,
         path: String,
         method: String = "GET",
-        body: JSONObject? = null
+        body: JSONObject? = null,
+        recordFailure: Boolean = true
     ): JSONObject {
         val configured = baseUrl(context)
-        if (configured.isBlank()) throw IOException("PC生成エージェントのURLが未設定です")
+        if (configured.isBlank()) {
+            val error = IOException("PC生成エージェントのURLが未設定です")
+            if (recordFailure) {
+                AgentConnectionLog.record(
+                    context,
+                    "$method $path",
+                    AgentConnectionClassifier.fromException(error, "(未設定)", path)
+                )
+            }
+            throw error
+        }
         val target = if (path.startsWith("http")) path else "$configured${if (path.startsWith('/')) path else "/$path"}"
         val connection = (URL(target).openConnection() as HttpURLConnection).apply {
             requestMethod = method
@@ -398,6 +443,19 @@ object GenerationAgentClient {
                 throw IOException("PC生成エージェント HTTP $status: $detail")
             }
             return if (text.isBlank()) JSONObject() else JSONObject(text)
+        } catch (error: Exception) {
+            if (recordFailure && error !is CancellationException) {
+                AgentConnectionLog.record(
+                    context,
+                    "$method $path",
+                    AgentConnectionClassifier.fromException(
+                        error,
+                        AgentConnectionClassifier.redactUrl(configured),
+                        path
+                    )
+                )
+            }
+            throw error
         } finally {
             connection.disconnect()
         }

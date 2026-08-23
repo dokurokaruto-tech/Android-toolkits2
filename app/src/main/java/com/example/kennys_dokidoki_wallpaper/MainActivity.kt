@@ -1043,7 +1043,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     return@launch
                 }
 
-                if (GenerationAgentClient.isAvailable(this@MainActivity)) {
+                val probe = GenerationAgentClient.probe(this@MainActivity)
+                if (probe.code == AgentConnectionClassifier.OK ||
+                    probe.code == AgentConnectionClassifier.SD_DOWN
+                ) {
+                    if (probe.code == AgentConnectionClassifier.SD_DOWN) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "エージェントには届いたがSDが応答していない。キューには載せる。",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                     try {
                         val accepted = GenerationAgentClient.submit(this@MainActivity, requests)
                         Toast.makeText(
@@ -1073,21 +1083,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         if (error is CancellationException) throw error
                         GenerationProgressManager.endGeneration(force = true)
                         Log.e("Generation", "PC agent job failed", error)
-                        Toast.makeText(
+                        AgentConnectionUi.showDiagnosis(
                             this@MainActivity,
-                            "PC生成エージェントとの通信に失敗しました: ${error.message}",
-                            Toast.LENGTH_LONG
-                        ).show()
+                            AgentConnectionLog.last ?: AgentConnectionClassifier.fromException(error),
+                            "PC生成エージェントとの通信に失敗"
+                        )
                     }
                 } else {
                     // PC保存を唯一の生成経路にする。エージェント不在時に端末へ
                     // フォールバック保存すると、ユーザーの保存方針に反するため生成しない。
                     GenerationProgressManager.endGeneration(force = true)
-                    Toast.makeText(
+                    AgentConnectionUi.showDiagnosis(
                         this@MainActivity,
-                        "PC生成エージェントに接続できません。PC側のstart-agent.batを起動してください。",
-                        Toast.LENGTH_LONG
-                    ).show()
+                        probe,
+                        "PC生成エージェントに接続できない"
+                    )
                 }
             }
         }
@@ -2125,11 +2135,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } catch (error: Exception) {
             if (error is CancellationException) throw error
             Log.e("PcThumbnail", "PC thumbnail generation failed", error)
-            Toast.makeText(
+            AgentConnectionUi.showDiagnosis(
                 this,
-                "PC生成エージェントでサムネイルを生成できません: ${error.message}",
-                Toast.LENGTH_LONG
-            ).show()
+                AgentConnectionLog.last ?: AgentConnectionClassifier.fromException(error),
+                "サムネイル生成の接続失敗"
+            )
             null
         }
     }
@@ -2365,7 +2375,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         settingsLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(32, 32, 32, 32)
             addView(createSettingsRow("タップ操作のカスタム設定") { startActivity(Intent(this@MainActivity, TapSettingsActivity::class.java)) })
-            addView(createSettingsRow("PC生成エージェントの接続設定", "URL / APIキー") { showServerUrlDialog() })
+            addView(createSettingsRow("PC生成エージェントの接続設定", "URL / APIキー / 接続テスト") { showServerUrlDialog() })
+            addView(createSettingsRow("PC接続の失敗ログ", "原因コードと確認手順を表示・コピー") {
+                AgentConnectionUi.showLog(this@MainActivity)
+            })
             
             val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             
@@ -2673,16 +2686,31 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .setTitle("PC生成エージェント接続設定")
             .setView(container)
             .setPositiveButton("保存") { _, _ ->
-                var url = urlInput.text.toString().trim()
-                if (url.isNotEmpty() && !url.startsWith("http")) url = "http://$url"
-                prefs.edit()
-                    .putString("remote_server_url", url.removeSuffix("/"))
-                    .putString("generation_agent_api_key", keyInput.text.toString().trim())
-                    .apply()
+                saveAgentConnection(prefs, urlInput.text.toString(), keyInput.text.toString())
                 Toast.makeText(this, "PC生成エージェントの接続設定を保存しました。", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("接続テスト") { _, _ ->
+                saveAgentConnection(prefs, urlInput.text.toString(), keyInput.text.toString())
+                lifecycleScope.launch {
+                    val diagnosis = GenerationAgentClient.probe(this@MainActivity)
+                    AgentConnectionUi.showDiagnosis(
+                        this@MainActivity,
+                        diagnosis,
+                        if (diagnosis.code == AgentConnectionClassifier.OK) "接続テスト成功" else "接続テスト失敗"
+                    )
+                }
             }
             .setNegativeButton("キャンセル", null)
             .show()
+    }
+
+    private fun saveAgentConnection(prefs: SharedPreferences, rawUrl: String, rawKey: String) {
+        var url = rawUrl.trim()
+        if (url.isNotEmpty() && !url.startsWith("http")) url = "http://$url"
+        prefs.edit()
+            .putString("remote_server_url", url.removeSuffix("/"))
+            .putString("generation_agent_api_key", rawKey.trim())
+            .apply()
     }
 
     private fun showApiKeyDialog() {
