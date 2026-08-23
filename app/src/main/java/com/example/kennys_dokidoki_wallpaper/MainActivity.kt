@@ -417,7 +417,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 total = 1,
                 silent = false
             )
-            if (!GenerationProgressActivity.isPipActive) {
+            if (!GenerationProgressActivity.isPipActive &&
+                !GenerationPipExpandPolicy.shouldSuppressPipRelaunch()
+            ) {
                 startActivity(Intent(this, GenerationProgressActivity::class.java))
             }
         }

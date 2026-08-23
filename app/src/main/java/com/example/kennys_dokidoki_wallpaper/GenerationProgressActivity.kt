@@ -48,14 +48,9 @@ class GenerationProgressActivity : AppCompatActivity() {
             when (intent?.action) {
                 ACTION_STOP -> GenerationProgressManager.shouldInterrupt = true
                 ACTION_SKIP -> GenerationProgressManager.shouldSkip = true
-                ACTION_MAXIMIZE -> {
-                    // PiPから戻る時は、Activityを通常表示にするわ
-                    val startIntent = Intent(this@GenerationProgressActivity, GenerationProgressActivity::class.java)
-                    startIntent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                    startActivity(startIntent)
-                }
+                ACTION_MAXIMIZE -> expandIntoAppPreview()
             }
-            updatePiPParams() // ボタンの状態とか変わるかもしれないから更新しとくわ
+            if (!isFinishing) updatePiPParams()
         }
     }
 
@@ -101,14 +96,24 @@ class GenerationProgressActivity : AppCompatActivity() {
             GenerationProgressManager.shouldSkip = true
         }
         findViewById<ImageButton>(R.id.btn_pip_maximize).setOnClickListener {
-            // 全画面からPiPに戻りたいってことね！了解よ！っ！
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(if (isLargePiP) Rational(1, 1) else Rational(9, 16))
-                    .build()
-                enterPictureInPictureMode(params)
-            }
+            expandIntoAppPreview()
         }
+    }
+
+    private fun expandIntoAppPreview() {
+        GenerationPipExpandPolicy.markExpanding()
+        val date = GenerationPipExpandPolicy.todayDate()
+        val main = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        }
+        val picker = Intent(this, GeneratedFolderPickerActivity::class.java).apply {
+            putExtra(GenerationPipExpandPolicy.EXTRA_AUTO_OPEN_DATE, date)
+            putExtra(GenerationPipExpandPolicy.EXTRA_SHOW_LIVE_PREVIEW, true)
+            putExtra(GenerationPipExpandPolicy.EXTRA_ALLOW_EMPTY_FOLDER, true)
+        }
+        startActivities(arrayOf(main, picker))
+        finish()
     }
 
     private fun setupGestures() {

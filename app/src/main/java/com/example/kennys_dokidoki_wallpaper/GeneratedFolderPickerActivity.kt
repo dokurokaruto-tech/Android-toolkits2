@@ -58,6 +58,19 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
             includedRoot.getChildAt(1).visibility = View.GONE
         }
 
+        val autoDate = intent.getStringExtra(GenerationPipExpandPolicy.EXTRA_AUTO_OPEN_DATE)
+        if (GenerationPipExpandPolicy.shouldAutoOpen(autoDate)) {
+            openRemoteFolder(
+                date = autoDate!!,
+                allowEmpty = intent.getBooleanExtra(GenerationPipExpandPolicy.EXTRA_ALLOW_EMPTY_FOLDER, false),
+                thenShowLivePreview = intent.getBooleanExtra(
+                    GenerationPipExpandPolicy.EXTRA_SHOW_LIVE_PREVIEW,
+                    false
+                )
+            )
+            return
+        }
+
         loadFolders(reportRemoteFailure = true)
     }
 
@@ -146,12 +159,16 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         }
     }
 
-    private fun openRemoteFolder(date: String) {
+    private fun openRemoteFolder(
+        date: String,
+        allowEmpty: Boolean = false,
+        thenShowLivePreview: Boolean = false
+    ) {
         setLoading(true)
         lifecycleScope.launch {
             try {
                 val images = GenerationAgentClient.fetchImages(this@GeneratedFolderPickerActivity, date)
-                if (images.isEmpty()) {
+                if (images.isEmpty() && !allowEmpty) {
                     setLoading(false)
                     Toast.makeText(this@GeneratedFolderPickerActivity, "この日付の画像はありません。", Toast.LENGTH_SHORT).show()
                     return@launch
@@ -176,9 +193,19 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                     uris = images.map { it.url },
                     thumbnailUris = images.map { it.thumbnailUrl },
                     tagLists = images.map { GeneratedImageTagBinding.encodeTagList(it.tags) },
-                    remoteDate = date
+                    remoteDate = date,
+                    thenShowLivePreview = thenShowLivePreview
                 )
             } catch (error: Exception) {
+                if (allowEmpty) {
+                    openAlbum(
+                        albumName = "生成: $date",
+                        uris = emptyList(),
+                        remoteDate = date,
+                        thenShowLivePreview = thenShowLivePreview
+                    )
+                    return@launch
+                }
                 setLoading(false)
                 AgentConnectionUi.showDiagnosis(
                     this@GeneratedFolderPickerActivity,
@@ -204,7 +231,8 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         thumbnailUris: List<String>? = null,
         tagLists: List<String>? = null,
         remoteDate: String? = null,
-        folderUri: String? = null
+        folderUri: String? = null,
+        thenShowLivePreview: Boolean = false
     ) {
         awaitingAlbumReturn = true
         startActivity(Intent(this, AlbumDetailActivity::class.java).apply {
@@ -221,6 +249,9 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                 putStringArrayListExtra("VIRTUAL_ALBUM_TAGS", ArrayList(it))
             }
         })
+        if (thenShowLivePreview) {
+            startActivity(Intent(this, GenerationLivePreviewActivity::class.java))
+        }
         // Do not animate through the prompt builder between the two generated-image screens.
         overridePendingTransition(0, 0)
     }

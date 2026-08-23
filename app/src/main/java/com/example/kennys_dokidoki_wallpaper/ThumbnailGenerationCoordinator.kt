@@ -96,6 +96,7 @@ object ThumbnailGenerationCoordinator {
         val app = context.applicationContext
         if (GenerationAgentClient.isThumbnailJob(app) &&
             !GenerationProgressActivity.isPipActive &&
+            !GenerationPipExpandPolicy.shouldSuppressPipRelaunch() &&
             context is Activity
         ) {
             showPip(context)

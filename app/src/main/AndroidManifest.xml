@@ -103,6 +103,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".GenerationLivePreviewActivity"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:exported="false" />
+
+        <activity
             android:name=".InspectionActivity"
             android:theme="@style/Theme.AppCompat.NoActionBar"
             android:exported="false" />
