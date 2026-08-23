@@ -15,9 +15,9 @@ class Md3PopupDialogTest {
     fun editorsShareATallUnifiedHeight() {
         val screen = 2400
         val height = Md3PopupDialog.popupHeight(screen)
-        assertEquals(2208, height)
+        assertEquals(2256, height)
         assertEquals(height, Md3PopupDialog.popupHeight(screen))
         assertTrue(height < screen)
-        assertTrue(height >= (screen * 0.90f).toInt())
+        assertTrue(height >= (screen * 0.94f).toInt())
     }
 }

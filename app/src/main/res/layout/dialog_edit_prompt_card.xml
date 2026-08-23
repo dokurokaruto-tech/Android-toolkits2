@@ -1,61 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
-    android:fillViewport="true"
-    android:overScrollMode="ifContentScrolls">
+    app:cardBackgroundColor="?attr/colorSurface"
+    app:cardCornerRadius="28dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:orientation="vertical"
         android:paddingStart="24dp"
         android:paddingTop="24dp"
         android:paddingEnd="24dp"
-        android:paddingBottom="16dp">
+        android:paddingBottom="8dp">
 
-        <!-- タイトル -->
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/tv_dialog_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
             android:text="プロンプトカードの編集"
             android:textAppearance="?attr/textAppearanceHeadlineSmall"
             android:textColor="?attr/colorOnSurface"
-            android:layout_marginBottom="20dp"
             tools:ignore="HardcodedText" />
 
-        <!-- サムネイル -->
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/tv_thumbnail_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
             android:text="サムネイル"
             android:textAppearance="?attr/textAppearanceLabelLarge"
             android:textColor="?attr/colorOnSurfaceVariant"
-            android:layout_marginBottom="8dp"
             tools:ignore="HardcodedText" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:layout_marginBottom="16dp"
             android:gravity="center_vertical"
-            android:layout_marginBottom="20dp">
+            android:orientation="horizontal">
 
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:minWidth="140dp"
                 android:minHeight="96dp"
+                app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
-                app:strokeWidth="1dp"
                 app:strokeColor="?attr/colorOutlineVariant"
-                app:cardBackgroundColor="?attr/colorSurfaceContainerHigh">
+                app:strokeWidth="1dp">
 
                 <ImageView
                     android:id="@+id/iv_card_thumbnail_preview"
@@ -73,9 +72,9 @@
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="12dp">
+                android:orientation="vertical">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_pick_card_thumbnail"
@@ -98,35 +97,41 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- カテゴリー（既存一覧からの選択） -->
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_card_category"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="12dp"
             android:hint="カテゴリー"
             app:boxCornerRadiusBottomEnd="16dp"
             app:boxCornerRadiusBottomStart="16dp"
             app:boxCornerRadiusTopEnd="16dp"
             app:boxCornerRadiusTopStart="16dp"
+            app:endIconMode="dropdown_menu"
             app:hintTextColor="?attr/colorPrimary">
 
             <AutoCompleteTextView
                 android:id="@+id/et_card_category"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clickable="true"
+                android:cursorVisible="false"
+                android:editable="false"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:importantForAutofill="no"
                 android:inputType="none"
+                android:longClickable="false"
                 android:textColor="?attr/colorOnSurface"
                 android:textSize="14sp" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <!-- ラベル -->
         <com.google.android.material.textfield.TextInputLayout
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="12dp"
             android:hint="ラベル"
             app:boxCornerRadiusBottomEnd="16dp"
             app:boxCornerRadiusBottomStart="16dp"
@@ -142,228 +147,238 @@
                 android:textSize="14sp" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <!-- メインプロンプト -->
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/tv_main_prompt_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="メインプロンプト"
-            android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:layout_marginBottom="4dp"
-            tools:ignore="HardcodedText" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_ai_convert_prompt_card"
-            style="@style/Widget.Material3.Button.TonalButton.Icon"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:layout_marginBottom="8dp"
-            android:text="自然言語から変換"
-            app:icon="@drawable/ic_md3_auto_awesome"
-            tools:ignore="HardcodedText" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/til_main_prompt"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:boxCornerRadiusBottomEnd="16dp"
-            app:boxCornerRadiusBottomStart="16dp"
-            app:boxCornerRadiusTopEnd="16dp"
-            app:boxCornerRadiusTopStart="16dp"
-            app:hintTextColor="?attr/colorPrimary">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_main_prompt"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="?attr/colorOnSurface"
-                android:textSize="14sp"
-                android:minLines="3"
-                android:gravity="top" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- ネガティブプロンプト -->
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/tv_negative_prompt_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="ネガティブプロンプト"
-            android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:layout_marginBottom="4dp"
-            tools:ignore="HardcodedText" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/til_negative_prompt"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="20dp"
-            app:boxCornerRadiusBottomEnd="16dp"
-            app:boxCornerRadiusBottomStart="16dp"
-            app:boxCornerRadiusTopEnd="16dp"
-            app:boxCornerRadiusTopStart="16dp"
-            app:hintTextColor="?attr/colorPrimary">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_negative_prompt"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="?attr/colorOnSurface"
-                android:textSize="14sp"
-                android:minLines="4"
-                android:gravity="top" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- タグ -->
-        <LinearLayout
-            android:id="@+id/ll_applied_tags_block"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="20dp">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="自動付与するタグ"
-                android:textAppearance="?attr/textAppearanceLabelLarge"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:layout_marginBottom="4dp"
-                tools:ignore="HardcodedText" />
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true"
+            android:overScrollMode="ifContentScrolls">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:orientation="vertical">
 
                 <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/tv_applied_tags_display"
-                    android:layout_width="0dp"
+                    android:id="@+id/tv_main_prompt_label"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="なし"
-                    android:textColor="?attr/colorPrimary"
-                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:layout_marginBottom="4dp"
+                    android:text="メインプロンプト"
+                    android:textAppearance="?attr/textAppearanceLabelLarge"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     tools:ignore="HardcodedText" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_edit_applied_tags"
+                    android:id="@+id/btn_ai_convert_prompt_card"
                     style="@style/Widget.Material3.Button.TonalButton.Icon"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="タグを選択"
-                    app:icon="@drawable/ic_md3_check"
+                    android:layout_gravity="end"
+                    android:layout_marginBottom="8dp"
+                    android:text="自然言語から変換"
+                    app:icon="@drawable/ic_md3_auto_awesome"
                     tools:ignore="HardcodedText" />
-            </LinearLayout>
-        </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_overwrite_preset_selection"
-            style="@style/Widget.Material3.Button.TonalButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="20dp"
-            android:text="選択中のカードで上書き"
-            android:visibility="gone"
-            tools:ignore="HardcodedText"
-            tools:visibility="visible" />
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/til_main_prompt"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    app:boxCornerRadiusBottomEnd="16dp"
+                    app:boxCornerRadiusBottomStart="16dp"
+                    app:boxCornerRadiusTopEnd="16dp"
+                    app:boxCornerRadiusTopStart="16dp"
+                    app:hintTextColor="?attr/colorPrimary">
 
-        <LinearLayout
-            android:id="@+id/ll_randomizer_block"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-        <!-- 区切り線 -->
-        <com.google.android.material.divider.MaterialDivider
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:dividerColor="?attr/colorOutlineVariant" />
-
-        <!-- 個別ランダマイザー -->
-        <com.google.android.material.textview.MaterialTextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="個別ランダマイザー"
-            android:textAppearance="?attr/textAppearanceTitleMedium"
-            android:textColor="?attr/colorOnSurface"
-            android:layout_marginBottom="8dp"
-            tools:ignore="HardcodedText" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/cb_use_individual_randomizer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="有効にする"
-            android:textColor="?attr/colorOnSurface"
-            android:layout_marginBottom="8dp"
-            tools:ignore="HardcodedText" />
-
-        <LinearLayout
-            android:id="@+id/ll_randomizer_settings"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="20dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="4dp">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_main_prompt"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="top"
+                        android:minLines="8"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/tv_negative_prompt_label"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="発生確率: "
+                    android:layout_marginBottom="4dp"
+                    android:text="ネガティブプロンプト"
+                    android:textAppearance="?attr/textAppearanceLabelLarge"
                     android:textColor="?attr/colorOnSurfaceVariant"
-                    android:textAppearance="?attr/textAppearanceBodyMedium"
                     tools:ignore="HardcodedText" />
 
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/et_random_probability"
-                    android:layout_width="wrap_content"
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/til_negative_prompt"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="50"
-                    android:textColor="?attr/colorOnSurface"
-                    android:textAppearance="?attr/textAppearanceTitleMedium"
-                    android:textStyle="bold"
-                    tools:ignore="HardcodedText" />
+                    android:layout_marginBottom="20dp"
+                    app:boxCornerRadiusBottomEnd="16dp"
+                    app:boxCornerRadiusBottomStart="16dp"
+                    app:boxCornerRadiusTopEnd="16dp"
+                    app:boxCornerRadiusTopStart="16dp"
+                    app:hintTextColor="?attr/colorPrimary">
 
-                <com.google.android.material.textview.MaterialTextView
-                    android:layout_width="wrap_content"
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_negative_prompt"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="top"
+                        android:minLines="6"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <LinearLayout
+                    android:id="@+id/ll_applied_tags_block"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="%"
-                    android:textColor="?attr/colorOnSurfaceVariant"
-                    android:textAppearance="?attr/textAppearanceBodyMedium"
-                    tools:ignore="HardcodedText" />
+                    android:layout_marginBottom="20dp"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:text="自動付与するタグ"
+                        android:textAppearance="?attr/textAppearanceLabelLarge"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        tools:ignore="HardcodedText" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/tv_applied_tags_display"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="なし"
+                            android:textAppearance="?attr/textAppearanceBodyMedium"
+                            android:textColor="?attr/colorPrimary"
+                            tools:ignore="HardcodedText" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_edit_applied_tags"
+                            style="@style/Widget.Material3.Button.TonalButton.Icon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="タグを選択"
+                            app:icon="@drawable/ic_md3_check"
+                            tools:ignore="HardcodedText" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_overwrite_preset_selection"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="20dp"
+                    android:text="選択中のカードで上書き"
+                    android:visibility="gone"
+                    tools:ignore="HardcodedText"
+                    tools:visibility="visible" />
+
+                <LinearLayout
+                    android:id="@+id/ll_randomizer_block"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.divider.MaterialDivider
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="16dp"
+                        app:dividerColor="?attr/colorOutlineVariant" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="個別ランダマイザー"
+                        android:textAppearance="?attr/textAppearanceTitleMedium"
+                        android:textColor="?attr/colorOnSurface"
+                        tools:ignore="HardcodedText" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/cb_use_individual_randomizer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="有効にする"
+                        android:textColor="?attr/colorOnSurface"
+                        tools:ignore="HardcodedText" />
+
+                    <LinearLayout
+                        android:id="@+id/ll_randomizer_settings"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="20dp"
+                        android:orientation="vertical">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="4dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="発生確率: "
+                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                tools:ignore="HardcodedText" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/et_random_probability"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="50"
+                                android:textAppearance="?attr/textAppearanceTitleMedium"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textStyle="bold"
+                                tools:ignore="HardcodedText" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="%"
+                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                tools:ignore="HardcodedText" />
+                        </LinearLayout>
+
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/sb_random_probability"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:stepSize="5.0"
+                            android:value="50.0"
+                            android:valueFrom="0.0"
+                            android:valueTo="100.0" />
+                    </LinearLayout>
+                </LinearLayout>
             </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
 
-            <com.google.android.material.slider.Slider
-                android:id="@+id/sb_random_probability"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:valueFrom="0.0"
-                android:valueTo="100.0"
-                android:stepSize="5.0"
-                android:value="50.0" />
-        </LinearLayout>
-        </LinearLayout>
-
-        <!-- アクションボタン -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="end"
             android:orientation="horizontal"
-            android:gravity="end">
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_delete_card"
@@ -393,4 +408,4 @@
                 tools:ignore="HardcodedText" />
         </LinearLayout>
     </LinearLayout>
-</androidx.core.widget.NestedScrollView>
+</com.google.android.material.card.MaterialCardView>

@@ -1,21 +1,22 @@
 package com.example.kennys_dokidoki_wallpaper
 
+import android.app.Dialog
 import android.content.Context
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.app.AlertDialog
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import android.view.Window
+import androidx.appcompat.app.AppCompatDialog
 
 /**
  * プロンプトカード／プリセット編集を、画面いっぱいにせず
  * Material Design 3 の浮きポップアップとして出す。
- * 中身の量に関わらず同じ縦幅にし、できるだけ多くの項目を見せる。
+ * AlertDialog の wrap 制限を避け、中身の量に関わらず同じ縦幅にする。
  */
 object Md3PopupDialog {
     const val WIDTH_FRACTION = 0.92f
-    const val HEIGHT_FRACTION = 0.92f
+    const val HEIGHT_FRACTION = 0.94f
 
     fun wrap(context: Context): ContextThemeWrapper =
         ContextThemeWrapper(context, com.google.android.material.R.style.Theme_Material3_Dark_NoActionBar)
@@ -31,33 +32,49 @@ object Md3PopupDialog {
     fun popupHeight(screenHeightPx: Int): Int =
         (screenHeightPx * HEIGHT_FRACTION).toInt().coerceAtLeast(1)
 
-    fun show(context: Context, view: View): AlertDialog {
-        val md3 = view.context
-        val dialog = MaterialAlertDialogBuilder(
-            md3,
-            com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog
-        ).setView(view).create()
+    fun show(context: Context, view: View): AppCompatDialog {
+        val dialog = AppCompatDialog(view.context, R.style.ThemeOverlay_Kennys_Md3Popup)
+        dialog.supportRequestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.setContentView(
+            view,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        dialog.setCanceledOnTouchOutside(true)
         dialog.show()
         val metrics = context.resources.displayMetrics
         applyPopupSize(dialog, view, metrics.widthPixels, metrics.heightPixels)
         dialog.window?.setDimAmount(0.6f)
+        view.post { applyPopupSize(dialog, view, metrics.widthPixels, metrics.heightPixels) }
         return dialog
     }
 
-    fun applyPopupSize(dialog: AlertDialog, view: View, screenWidthPx: Int, screenHeightPx: Int) {
+    fun applyPopupSize(dialog: Dialog, view: View, screenWidthPx: Int, screenHeightPx: Int) {
         val width = popupWidth(screenWidthPx)
         val height = popupHeight(screenHeightPx)
         dialog.window?.setLayout(width, height)
-        val match = ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
-        view.layoutParams = match
-        (view.parent as? View)?.let { parent ->
-            parent.layoutParams = parent.layoutParams?.apply {
-                this.width = ViewGroup.LayoutParams.MATCH_PARENT
-                this.height = ViewGroup.LayoutParams.MATCH_PARENT
-            } ?: match
+        matchParentChain(view, width, height)
+    }
+
+    fun matchParentChain(view: View, minWidthPx: Int, minHeightPx: Int) {
+        var current: View? = view
+        while (current != null) {
+            current.minimumWidth = minWidthPx
+            current.minimumHeight = minHeightPx
+            val params = current.layoutParams
+            if (params != null) {
+                params.width = ViewGroup.LayoutParams.MATCH_PARENT
+                params.height = ViewGroup.LayoutParams.MATCH_PARENT
+                current.layoutParams = params
+            } else {
+                current.layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+            current = current.parent as? View
         }
     }
 }

@@ -1572,10 +1572,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     ) {
         val options = CategoryPickerPolicy.selectable(categories, selected)
         val current = CategoryPickerPolicy.defaultSelected(options, selected)
-        field.setAdapter(ArrayAdapter(field.context, android.R.layout.simple_dropdown_item_1line, options))
-        field.setText(current, false)
+        field.inputType = android.text.InputType.TYPE_NULL
         field.keyListener = null
+        field.isCursorVisible = false
+        field.threshold = Int.MAX_VALUE
+        field.setAdapter(ArrayAdapter(field.context, android.R.layout.simple_list_item_1, options))
+        field.setText(current, false)
         field.setOnClickListener { field.showDropDown() }
+        field.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) field.showDropDown()
+        }
     }
 
     private fun showAddPresetDialog() {
