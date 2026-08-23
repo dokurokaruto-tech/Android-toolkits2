@@ -1,7 +1,5 @@
 package com.example.kennys_dokidoki_wallpaper
 
-import org.json.JSONArray
-
 /**
  * 生成開始時点のカード選択と「自動付与するタグ」を凍結し、完成画像へ載せる。
  */
