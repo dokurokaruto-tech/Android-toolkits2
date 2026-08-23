@@ -34,10 +34,7 @@ object BulkThumbnailDialog {
 
         var rows = entries.toList()
         var filter = BulkThumbnailPickerPolicy.Filter.ALL
-        val adapter = BulkThumbnailAdapter { id ->
-            rows = rows.map { if (it.id == id) BulkThumbnailPickerPolicy.toggle(it) else it }
-            render()
-        }
+        lateinit var adapter: BulkThumbnailAdapter
 
         fun currentFilter(): BulkThumbnailPickerPolicy.Filter = when {
             chipMissing.isChecked -> BulkThumbnailPickerPolicy.Filter.MISSING
@@ -52,6 +49,11 @@ object BulkThumbnailDialog {
             val visible = BulkThumbnailPickerPolicy.visible(rows, filter)
             val allOn = visible.isNotEmpty() && visible.all { it.selected }
             btnSelectAll.text = if (allOn) "全解除" else "全選択"
+        }
+
+        adapter = BulkThumbnailAdapter { id ->
+            rows = rows.map { if (it.id == id) BulkThumbnailPickerPolicy.toggle(it) else it }
+            render()
         }
 
         tvTitle.text = title
