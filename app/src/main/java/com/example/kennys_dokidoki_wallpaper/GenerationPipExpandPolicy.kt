@@ -46,4 +46,14 @@ object GenerationPipExpandPolicy {
 
     fun shouldOfferRestorePip(isInPictureInPictureMode: Boolean): Boolean =
         !isInPictureInPictureMode
+
+    /**
+     * ビルダー上部の再表示は、生成中かつ PiP 画面が消えているときだけ出す。
+     * 生成進捗の更新を待たず、PiP の生死そのもので判定する。
+     */
+    fun shouldShowBuilderRestorePip(
+        isGenerating: Boolean,
+        silent: Boolean,
+        pipActive: Boolean
+    ): Boolean = isGenerating && !silent && !pipActive
 }

@@ -284,17 +284,6 @@
                             tools:ignore="HardcodedText" />
 
                         <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_save_preset"
-                            style="@style/Widget.Material3.Button.IconButton"
-                            android:layout_width="48dp"
-                            android:layout_height="48dp"
-                            android:contentDescription="プリセットを保存"
-                            app:icon="@drawable/ic_md3_save"
-                            app:iconSize="24dp"
-                            app:iconTint="?attr/colorOnSurfaceVariant"
-                            tools:ignore="HardcodedText" />
-
-                        <com.google.android.material.button.MaterialButton
                             android:id="@+id/btn_restore_pip"
                             style="@style/Widget.Material3.Button.IconButton"
                             android:layout_width="48dp"

@@ -51,6 +51,38 @@ class GenerationPipExpandPolicyTest {
     }
 
     @Test
+    fun builderRestoreButtonAppearsWhenPipIsGoneDuringGeneration() {
+        assertTrue(
+            GenerationPipExpandPolicy.shouldShowBuilderRestorePip(
+                isGenerating = true,
+                silent = false,
+                pipActive = false
+            )
+        )
+        assertFalse(
+            GenerationPipExpandPolicy.shouldShowBuilderRestorePip(
+                isGenerating = true,
+                silent = false,
+                pipActive = true
+            )
+        )
+        assertFalse(
+            GenerationPipExpandPolicy.shouldShowBuilderRestorePip(
+                isGenerating = true,
+                silent = true,
+                pipActive = false
+            )
+        )
+        assertFalse(
+            GenerationPipExpandPolicy.shouldShowBuilderRestorePip(
+                isGenerating = false,
+                silent = false,
+                pipActive = false
+            )
+        )
+    }
+
+    @Test
     fun fullscreenControlsAreStopSkipLiveThenRestore() {
         val labels = GenerationPipExpandPolicy.fullscreenControlLabels()
         assertEquals(

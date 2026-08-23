@@ -64,7 +64,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var isStripCollapsed = false
     private lateinit var recyclerSelectedCards: RecyclerView
     private var lastStripPad = -1
-    private lateinit var btnSavePreset: Button
     private lateinit var btnUndo: View
     private lateinit var btnRedo: View
     private lateinit var generationRing: ProgressRingView
@@ -97,6 +96,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var btnViewGenerated: Button
     private lateinit var btnRestorePip: Button
     private lateinit var btnSwitchColumns: Button
+    private val pipPresenceListener: (Boolean) -> Unit = {
+        runOnUiThread { syncBuilderRestorePipButton() }
+    }
 
     // Generation Settings Views
     private lateinit var tvSettingResolution: TextView
@@ -464,11 +466,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     // PiPが閉じてる時だけ復活ボタンを出すわよ。
                     // ただしサムネイル生成(silent)ではPiP画面がないので出さない
                     // （これを出すとトップバーのボタンが詰まってタイトル/生成ボタンが縦長になる）。
-                    if (!state.silent && !GenerationProgressActivity.isPipActive) {
-                        btnRestorePip.visibility = View.VISIBLE
-                    } else {
-                        btnRestorePip.visibility = View.GONE
-                    }
+                    syncBuilderRestorePipButton()
                 } else {
                     btnGenerateConcatenatedTop.text = "生成"
                     btnGenerateConcatenatedTop.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#D0BCFF"))
@@ -476,7 +474,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         generationRing.visibility = View.GONE
                         generationRing.setProgress(0f)
                     }
-                    btnRestorePip.visibility = View.GONE
+                    syncBuilderRestorePipButton()
                 }
                 }
             }
@@ -487,6 +485,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onDestroy()
         getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(this)
         getSharedPreferences("settings", Context.MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(this)
+        GenerationPipPresence.removeListener(pipPresenceListener)
     }
 
     override fun onResume() {
@@ -497,6 +496,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         imageSetAdapter.notifyDataSetChanged()
         tagPromptAdapter.refreshItemsFromManager()
         presetAdapter.updateList(PresetManager.presets)
+        syncBuilderRestorePipButton()
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
@@ -540,7 +540,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         recyclerViewPromptCards = findViewById(R.id.recycler_view_prompt_cards)
         recyclerViewPresets = findViewById(R.id.recycler_view_presets)
         fabAddPromptCategory = findViewById(R.id.fab_add_prompt_category)
-        btnSavePreset = findViewById(R.id.btn_save_preset)
         
         selectionActionBar = findViewById(R.id.selection_action_bar)
         tvSelectionCount = findViewById(R.id.tv_selection_count)
@@ -568,6 +567,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             startActivity(intent)
         }
+        GenerationPipPresence.addListener(pipPresenceListener)
+        syncBuilderRestorePipButton()
 
         tvSettingResolution = findViewById(R.id.btn_setting_resolution)
         tvSettingSteps = findViewById(R.id.btn_setting_steps)
@@ -883,6 +884,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             presets = PresetManager.presets,
             onPresetClick = { preset -> applyPreset(preset) },
             onPresetLongClick = { preset -> showEditPresetDialog(preset) },
+            onAddNewClick = { category -> showAddPresetDialog(category) },
             onCategorySettingsClick = { category ->
                 showPresetCategorySettingsDialog(category)
             },
@@ -995,8 +997,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             syncGenerationRing()
         }
         btnGenerateConcatenatedTop.post { syncGenerationRing() }
-
-        btnSavePreset.setOnClickListener { showAddPresetDialog() }
 
         btnGenerateConcatenatedTop.isEnabled = PromptCardManager.randomEnabledCategories.isNotEmpty() || promptCardAdapter.getSelectedCardsWithLevels().isNotEmpty()
         btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
@@ -1571,7 +1571,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun showAddPresetDialog() {
+    private fun syncBuilderRestorePipButton() {
+        if (!::btnRestorePip.isInitialized) return
+        val state = GenerationProgressManager.state.value
+        btnRestorePip.visibility = if (
+            GenerationPipExpandPolicy.shouldShowBuilderRestorePip(
+                isGenerating = state.isGenerating,
+                silent = state.silent,
+                pipActive = GenerationPipPresence.isActive
+            )
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+    }
+
+    private fun showAddPresetDialog(initialCategory: String? = null) {
         val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_prompt_card)
         val etName = dialogView.findViewById<EditText>(R.id.et_card_label)
         val etCategory = dialogView.findViewById<AutoCompleteTextView>(R.id.et_card_category)
@@ -2307,6 +2323,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
                 R.id.nav_builder -> {
                     layoutBuilder.visibility = View.VISIBLE
+                    syncBuilderRestorePipButton()
                 }
                 R.id.nav_settings -> { 
                     settingsLayout.visibility = View.VISIBLE
@@ -2959,4 +2976,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         tvFilterCount.text = "${pinned.size} 枚"
         updateActiveImageHighlight()
     }
+}
+}
 }

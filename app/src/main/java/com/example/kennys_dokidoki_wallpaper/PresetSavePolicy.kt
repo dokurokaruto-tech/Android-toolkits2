@@ -27,6 +27,11 @@ object PresetSavePolicy {
         return if (QUICK_CATEGORY in categories) QUICK_CATEGORY else categories.first()
     }
 
+    fun saveDialogCategory(requested: String?, existing: Collection<String> = emptyList()): String {
+        val trimmed = requested?.trim().orEmpty()
+        return if (trimmed.isNotEmpty()) trimmed else defaultCategory(existing)
+    }
+
     fun overwriteSelection(
         selectionLevels: Map<String, Int>,
         randomEnabledCategories: Set<String>

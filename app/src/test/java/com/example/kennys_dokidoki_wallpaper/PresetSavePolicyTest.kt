@@ -28,6 +28,13 @@ class PresetSavePolicyTest {
     }
 
     @Test
+    fun saveDialogUsesTappedCategoryThenFallsBack() {
+        assertEquals("夜", PresetSavePolicy.saveDialogCategory("夜", listOf("未分類")))
+        assertEquals("クイックプリセット", PresetSavePolicy.saveDialogCategory("  ", listOf("未分類")))
+        assertEquals("クイックプリセット", PresetSavePolicy.saveDialogCategory(null))
+    }
+
+    @Test
     fun overwriteCopiesCurrentSelection() {
         val (cards, random) = PresetSavePolicy.overwriteSelection(
             mapOf("card-a" to 2, "card-b" to 1),

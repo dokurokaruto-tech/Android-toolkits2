@@ -15,6 +15,7 @@ class PresetAdapter(
     private var presets: List<Preset>,
     private val onPresetClick: (Preset) -> Unit,
     private val onPresetLongClick: (Preset) -> Unit,
+    private val onAddNewClick: (String) -> Unit,
     private val onCategorySettingsClick: (String) -> Unit,
     private val onStartDrag: (RecyclerView.ViewHolder) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -22,6 +23,7 @@ class PresetAdapter(
     companion object {
         private const val TYPE_HEADER = 0
         private const val TYPE_PRESET = 1
+        private const val TYPE_ADD_NEW = 2
     }
 
     private val items = mutableListOf<AdapterItem>()
@@ -34,18 +36,23 @@ class PresetAdapter(
     private sealed class AdapterItem {
         data class Header(val title: String) : AdapterItem()
         data class PresetItem(val preset: Preset) : AdapterItem()
+        data class AddNew(val category: String) : AdapterItem()
     }
 
     private fun buildItems() {
         items.clear()
-        val categorized = presets.groupBy { it.category }
-        
-        for (category in PresetManager.categoryOrder) {
-            items.add(AdapterItem.Header(category))
-            if (!PresetManager.collapsedCategories.contains(category)) {
-                categorized[category]?.forEach { preset ->
-                    items.add(AdapterItem.PresetItem(preset))
+        val byId = presets.associateBy { it.id }
+        PresetListPolicy.rows(
+            categoryOrder = PresetManager.categoryOrder.toList(),
+            presets = presets.map { it.id to it.category },
+            collapsed = PresetManager.collapsedCategories.toSet()
+        ).forEach { row ->
+            when (row) {
+                is PresetListPolicy.Row.Header -> items.add(AdapterItem.Header(row.title))
+                is PresetListPolicy.Row.Card -> {
+                    byId[row.id]?.let { items.add(AdapterItem.PresetItem(it)) }
                 }
+                is PresetListPolicy.Row.AddNew -> items.add(AdapterItem.AddNew(row.category))
             }
         }
     }
@@ -65,10 +72,13 @@ class PresetAdapter(
         val btnRandom: ImageButton = view.findViewById(R.id.btn_category_random)
     }
 
+    class AddNewViewHolder(view: View) : RecyclerView.ViewHolder(view)
+
     override fun getItemViewType(position: Int): Int {
         return when (items[position]) {
             is AdapterItem.Header -> TYPE_HEADER
             is AdapterItem.PresetItem -> TYPE_PRESET
+            is AdapterItem.AddNew -> TYPE_ADD_NEW
         }
     }
 
@@ -79,6 +89,10 @@ class PresetAdapter(
                 view.findViewById<View>(R.id.btn_category_random).visibility = View.GONE
                 view.findViewById<View>(R.id.tv_category_selection_count).visibility = View.GONE
                 HeaderViewHolder(view)
+            }
+            TYPE_ADD_NEW -> {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_preset_add_new, parent, false)
+                AddNewViewHolder(view)
             }
             else -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_preset, parent, false)
@@ -144,6 +158,12 @@ class PresetAdapter(
                 holder.itemView.setOnLongClickListener { 
                     onPresetLongClick(preset)
                     true
+                }
+            }
+            is AddNewViewHolder -> {
+                val addNew = item as AdapterItem.AddNew
+                holder.itemView.setOnClickListener {
+                    onAddNewClick(addNew.category)
                 }
             }
         }

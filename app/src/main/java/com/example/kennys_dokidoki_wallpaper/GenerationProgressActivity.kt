@@ -41,7 +41,9 @@ class GenerationProgressActivity : AppCompatActivity() {
         const val ACTION_SKIP = "com.example.ACTION_SKIP_GEN"
         const val ACTION_MAXIMIZE = "com.example.ACTION_MAXIMIZE"
         const val ACTION_RESTORE_PIP = "com.example.ACTION_RESTORE_PIP"
-        var isPipActive = false
+        var isPipActive: Boolean
+            get() = GenerationPipPresence.isActive
+            set(value) { GenerationPipPresence.setActive(value) }
     }
 
     private val receiver = object : BroadcastReceiver() {
