@@ -82,6 +82,9 @@ object PresetManager {
         presets.forEach { 
             if (!categoryOrder.contains(it.category)) categoryOrder.add(it.category)
         }
+        if (!categoryOrder.contains(PresetSavePolicy.QUICK_CATEGORY)) {
+            categoryOrder.add(0, PresetSavePolicy.QUICK_CATEGORY)
+        }
         if (categoryOrder.isEmpty()) categoryOrder.add("未分類")
     }
 
@@ -125,6 +128,18 @@ object PresetManager {
     fun addPreset(context: Context, preset: Preset) {
         presets.add(preset)
         if (!categoryOrder.contains(preset.category)) categoryOrder.add(preset.category)
+        savePresets(context)
+    }
+
+    fun overwriteSelection(
+        context: Context,
+        preset: Preset,
+        selectionLevels: Map<String, Int>,
+        randomEnabledCategories: Set<String>
+    ) {
+        val (cards, random) = PresetSavePolicy.overwriteSelection(selectionLevels, randomEnabledCategories)
+        preset.activePromptStates = cards
+        preset.randomEnabledCategories = random
         savePresets(context)
     }
 

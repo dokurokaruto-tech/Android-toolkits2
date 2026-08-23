@@ -1145,7 +1145,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         tvTitle.text = "プリセットの編集"
         etLabel.hint = "プリセット名"
-        etCategory.setText(preset.category)
+        bindPresetCategoryPicker(etCategory, preset.category)
         etLabel.setText(preset.name)
         
         // プリセットの場合は個別のプロンプト編集は隠す（カードの組み合わせだからね）
@@ -1156,8 +1156,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         etNegativePrompt.visibility = View.GONE
         dialogView.findViewById<View>(R.id.tv_negative_prompt_label).visibility = View.GONE
         dialogView.findViewById<View>(R.id.til_negative_prompt).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.ll_applied_tags_block).visibility = View.GONE
         tvAppliedTags.visibility = View.GONE
         btnEditAppliedTags.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.ll_randomizer_block).visibility = View.GONE
+
+        val btnOverwriteSelection = dialogView.findViewById<Button>(R.id.btn_overwrite_preset_selection)
+        btnOverwriteSelection.visibility = View.VISIBLE
+        btnOverwriteSelection.text = PresetSavePolicy.OVERWRITE_BUTTON_LABEL
 
         tempCardThumbnailUri = preset.thumbnailUri
         loadThumbnailPreview(preset.thumbnailUri)
@@ -1213,6 +1219,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 type = "image/*"
             }
             pickCardThumbnailLauncher.launch(intent)
+        }
+
+        btnOverwriteSelection.setOnClickListener {
+            PresetManager.overwriteSelection(
+                this,
+                preset,
+                PromptCardManager.selectionLevels.toMap(),
+                PromptCardManager.randomEnabledCategories.toSet()
+            )
+            presetAdapter.updateList(PresetManager.presets)
+            refreshPresetMatchHighlight(forceRebind = true)
+            Toast.makeText(
+                this,
+                "いま選んでいるカード ${preset.activePromptStates.size} 枚を反映した。",
+                Toast.LENGTH_SHORT
+            ).show()
         }
 
         btnDelete.setOnClickListener {
@@ -1511,6 +1533,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun bindPresetCategoryPicker(field: EditText, selected: String) {
+        val categories = PresetSavePolicy.selectableCategories(PresetManager.categoryOrder + listOf(selected))
+        field.keyListener = null
+        field.isFocusable = false
+        field.isClickable = true
+        field.isCursorVisible = false
+        field.setText(selected.takeIf { it.isNotBlank() } ?: PresetSavePolicy.defaultCategory(categories))
+        field.setOnClickListener {
+            AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
+                .setTitle("カテゴリー")
+                .setItems(categories.toTypedArray()) { _, which ->
+                    field.setText(categories[which])
+                }
+                .show()
+        }
+    }
+
     private fun showAddPresetDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_edit_prompt_card, null)
         val etName = dialogView.findViewById<EditText>(R.id.et_card_label)
@@ -1523,17 +1562,26 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         dialogView.findViewById<View>(R.id.tv_negative_prompt_label).visibility = View.GONE
         dialogView.findViewById<View>(R.id.til_negative_prompt).visibility = View.GONE
         dialogView.findViewById<View>(R.id.btn_pick_card_thumbnail).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.btn_generate_card_thumbnail).visibility = View.GONE
         dialogView.findViewById<View>(R.id.tv_thumbnail_label).visibility = View.GONE
         dialogView.findViewById<View>(R.id.iv_card_thumbnail_preview).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.ll_applied_tags_block).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.ll_randomizer_block).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.btn_overwrite_preset_selection).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.btn_delete_card).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.btn_cancel_edit).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.btn_save_card).visibility = View.GONE
         dialogView.findViewById<TextView>(R.id.tv_dialog_title).text = "現在の状態をプリセット保存"
-        etName.hint = "プリセットの名前（例：美少女 16:9）"
-        etCategory.hint = "プリセットのカテゴリー"
-        
+        etName.hint = "プリセット名"
+        etName.setText(PresetSavePolicy.defaultName(genWidth, genHeight))
+        bindPresetCategoryPicker(etCategory, PresetSavePolicy.defaultCategory(PresetManager.categoryOrder))
+
         AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
             .setView(dialogView)
             .setPositiveButton("保存") { _, _ ->
                 val name = etName.text.toString().trim()
-                val category = etCategory.text.toString().trim().ifEmpty { "未分類" }
+                val category = etCategory.text.toString().trim()
+                    .ifEmpty { PresetSavePolicy.defaultCategory(PresetManager.categoryOrder) }
                 if (name.isNotEmpty()) {
                     val preset = Preset(
                         id = UUID.randomUUID().toString(),

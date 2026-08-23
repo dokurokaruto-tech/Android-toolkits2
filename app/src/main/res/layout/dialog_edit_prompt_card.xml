@@ -201,41 +201,65 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <!-- タグ -->
-        <com.google.android.material.textview.MaterialTextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="自動付与するタグ"
-            android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:layout_marginBottom="4dp"
-            tools:ignore="HardcodedText" />
-
         <LinearLayout
+            android:id="@+id/ll_applied_tags_block"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
+            android:orientation="vertical"
             android:layout_marginBottom="20dp">
 
             <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/tv_applied_tags_display"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="なし"
-                android:textColor="?attr/colorPrimary"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
-                tools:ignore="HardcodedText" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_edit_applied_tags"
-                style="@style/Widget.Material3.Button.TonalButton.Icon"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="タグを選択"
-                app:icon="@drawable/ic_md3_check"
+                android:text="自動付与するタグ"
+                android:textAppearance="?attr/textAppearanceLabelLarge"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:layout_marginBottom="4dp"
                 tools:ignore="HardcodedText" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/tv_applied_tags_display"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="なし"
+                    android:textColor="?attr/colorPrimary"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    tools:ignore="HardcodedText" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_edit_applied_tags"
+                    style="@style/Widget.Material3.Button.TonalButton.Icon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="タグを選択"
+                    app:icon="@drawable/ic_md3_check"
+                    tools:ignore="HardcodedText" />
+            </LinearLayout>
         </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_overwrite_preset_selection"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:text="選択を反映"
+            android:visibility="gone"
+            tools:ignore="HardcodedText"
+            tools:visibility="visible" />
+
+        <LinearLayout
+            android:id="@+id/ll_randomizer_block"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
         <!-- 区切り線 -->
         <com.google.android.material.divider.MaterialDivider
@@ -312,6 +336,7 @@
                 android:valueTo="100.0"
                 android:stepSize="5.0"
                 android:value="50.0" />
+        </LinearLayout>
         </LinearLayout>
 
         <!-- アクションボタン -->
