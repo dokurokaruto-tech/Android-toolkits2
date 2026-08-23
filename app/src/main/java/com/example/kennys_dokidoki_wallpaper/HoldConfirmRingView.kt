@@ -32,6 +32,15 @@ class HoldConfirmRingView @JvmOverloads constructor(
         strokeCap = Paint.Cap.ROUND
     }
 
+    fun setStrokeWidthPx(widthPx: Float) {
+        val next = widthPx.coerceAtLeast(1f)
+        if (next != progressPaint.strokeWidth) {
+            progressPaint.strokeWidth = next
+            trackPaint.strokeWidth = next
+            invalidate()
+        }
+    }
+
     init {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         isClickable = false

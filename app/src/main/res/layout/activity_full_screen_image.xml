@@ -54,6 +54,19 @@
 
     </LinearLayout>
 
+    <com.example.kennys_dokidoki_wallpaper.HoldConfirmRingView
+        android:id="@+id/delete_hold_center_ring"
+        android:layout_width="168dp"
+        android:layout_height="168dp"
+        android:clickable="false"
+        android:focusable="false"
+        android:importantForAccessibility="no"
+        android:visibility="invisible"
+        app:layout_constraintBottom_toBottomOf="@id/full_screen_image"
+        app:layout_constraintEnd_toEndOf="@id/full_screen_image"
+        app:layout_constraintStart_toStartOf="@id/full_screen_image"
+        app:layout_constraintTop_toTopOf="@id/full_screen_image" />
+
     <ImageView
         android:id="@+id/btn_create_preset_from_image"
         android:layout_width="44dp"

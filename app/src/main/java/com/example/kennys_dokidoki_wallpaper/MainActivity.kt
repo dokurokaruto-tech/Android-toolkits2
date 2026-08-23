@@ -425,6 +425,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
         ThumbnailGenerationCoordinator.ensureWatching(this)
+        if (!GenerationAgentClient.hasPendingJob(this)) {
+            window.decorView.post { WallpaperSetupCoordinator.offerIfNeeded(this) }
+        }
 
         getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(this)
         getSharedPreferences("settings", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(this)

@@ -54,6 +54,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     private lateinit var deleteHoldHost: View
     private lateinit var btnDeleteImage: View
     private lateinit var deleteHoldRing: HoldConfirmRingView
+    private lateinit var deleteHoldCenterRing: HoldConfirmRingView
     private lateinit var btnCreatePreset: View
     private lateinit var btnReplayGeneration: View
     private val deletedUris = arrayListOf<String>()
@@ -86,6 +87,8 @@ class FullScreenImageActivity : AppCompatActivity() {
         deleteHoldHost = findViewById(R.id.delete_hold_host)
         btnDeleteImage = findViewById(R.id.btn_delete_image)
         deleteHoldRing = findViewById(R.id.delete_hold_ring)
+        deleteHoldCenterRing = findViewById(R.id.delete_hold_center_ring)
+        deleteHoldCenterRing.setStrokeWidthPx(5f * resources.displayMetrics.density)
         btnCreatePreset = findViewById(R.id.btn_create_preset_from_image)
         btnReplayGeneration = findViewById(R.id.btn_replay_generation)
         albumName = intent.getStringExtra("ALBUM_NAME") ?: ""
@@ -354,13 +357,12 @@ class FullScreenImageActivity : AppCompatActivity() {
         deleteHoldActive = true
         lastChromeInteractionMs = System.currentTimeMillis()
         chromeHandler.removeCallbacks(hideChromeRunnable)
-        deleteHoldRing.visibility = View.VISIBLE
-        deleteHoldRing.setProgress(0f)
+        showDeleteHoldProgress(0f)
         val animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = ViewerDeleteHoldPolicy.HOLD_MS
             interpolator = LinearInterpolator()
             addUpdateListener { animation ->
-                deleteHoldRing.setProgress(animation.animatedValue as Float)
+                showDeleteHoldProgress(animation.animatedValue as Float)
             }
         }
         deleteHoldAnimator = animator
@@ -370,16 +372,14 @@ class FullScreenImageActivity : AppCompatActivity() {
 
     private fun cancelDeleteHold() {
         if (!deleteHoldActive && deleteHoldAnimator == null) {
-            deleteHoldRing.visibility = View.INVISIBLE
-            deleteHoldRing.setProgress(0f)
+            hideDeleteHoldProgress()
             return
         }
         deleteHoldActive = false
         chromeHandler.removeCallbacks(confirmDeleteHoldRunnable)
         deleteHoldAnimator?.cancel()
         deleteHoldAnimator = null
-        deleteHoldRing.setProgress(0f)
-        deleteHoldRing.visibility = View.INVISIBLE
+        hideDeleteHoldProgress()
         if (isGeneratedViewer && !isClosing && !isFinishing) revealViewerChrome()
     }
 
@@ -388,12 +388,25 @@ class FullScreenImageActivity : AppCompatActivity() {
         deleteHoldActive = false
         deleteHoldAnimator?.end()
         deleteHoldAnimator = null
-        deleteHoldRing.setProgress(1f)
+        showDeleteHoldProgress(1f)
         val entry = currentEntries.getOrNull(currentIndex)
-        deleteHoldRing.visibility = View.INVISIBLE
-        deleteHoldRing.setProgress(0f)
+        hideDeleteHoldProgress()
         if (entry != null) deleteCurrentImage(entry)
         if (isGeneratedViewer && !isClosing) revealViewerChrome()
+    }
+
+    private fun showDeleteHoldProgress(progress: Float) {
+        deleteHoldRing.visibility = View.VISIBLE
+        deleteHoldRing.setProgress(progress)
+        deleteHoldCenterRing.visibility = View.VISIBLE
+        deleteHoldCenterRing.setProgress(progress)
+    }
+
+    private fun hideDeleteHoldProgress() {
+        deleteHoldRing.setProgress(0f)
+        deleteHoldRing.visibility = View.INVISIBLE
+        deleteHoldCenterRing.setProgress(0f)
+        deleteHoldCenterRing.visibility = View.INVISIBLE
     }
 
     private fun deleteCurrentImage(entry: ImageEntry) {
@@ -476,7 +489,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     private fun chromeViews(): List<View> {
         val views = mutableListOf(viewerChromeBar, tvCounter)
         if (isGeneratedViewer) {
-            views.add(btnDeleteImage)
+            views.add(deleteHoldHost)
             views.add(btnStartTempChat)
             views.add(btnReplayGeneration)
         }
