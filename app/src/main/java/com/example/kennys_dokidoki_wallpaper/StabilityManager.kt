@@ -215,7 +215,13 @@ object StabilityManager {
                 
                 // 画像が取れなかった時は、真っ黒にならないように前の画像を使い回すわよ！っ！
                 val finalBitmap = bitmap ?: GenerationProgressManager.state.value.currentImage
-                GenerationProgressManager.updateState(true, progress, finalBitmap, "錬成中... ${(progress * 100).toInt()}%")
+                GenerationProgressManager.updateState(
+                    true,
+                    progress,
+                    finalBitmap,
+                    "錬成中... ${(progress * 100).toInt()}%",
+                    currentImageProgress = progress
+                )
             }
         } catch (e: Exception) {
             Log.e("StabilityManager", "Progress polling failed", e)

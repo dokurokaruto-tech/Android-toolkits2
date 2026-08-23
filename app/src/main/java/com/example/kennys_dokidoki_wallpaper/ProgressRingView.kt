@@ -43,16 +43,39 @@ class ProgressRingView @JvmOverloads constructor(
     /** 背景の薄いトラック */
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 4f * density
-        color = 0x33FFFFFF
+        strokeWidth = GenerationRingProgressPolicy.STROKE_DP * density
+        color = GenerationRingProgressPolicy.INNER_TRACK_COLOR
     }
 
     /** 進捗を示す明るい線 */
     private val progressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 4f * density
-        color = 0xFF00F0FF.toInt() // 明るいシアン
+        strokeWidth = GenerationRingProgressPolicy.STROKE_DP * density
+        color = GenerationRingProgressPolicy.INNER_COLOR
         strokeCap = Paint.Cap.ROUND
+    }
+
+    fun setStrokeWidth(widthPx: Float) {
+        val next = widthPx.coerceAtLeast(0f)
+        if (next != progressPaint.strokeWidth) {
+            progressPaint.strokeWidth = next
+            trackPaint.strokeWidth = next
+            invalidate()
+        }
+    }
+
+    fun setProgressColor(color: Int) {
+        if (color != progressPaint.color) {
+            progressPaint.color = color
+            invalidate()
+        }
+    }
+
+    fun setTrackColor(color: Int) {
+        if (color != trackPaint.color) {
+            trackPaint.color = color
+            invalidate()
+        }
     }
 
     private val outlinePath = Path()

@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var btnUndo: View
     private lateinit var btnRedo: View
     private lateinit var generationRing: ProgressRingView
+    private lateinit var generationOverallRing: ProgressRingView
 
     // ===== プロンプトビルダーの undo/redo =====
     private data class BuilderSnapshot(
@@ -457,9 +458,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     // 通常画像だけでなく、プロンプトカード／プリセットカードの
                     // サムネイル生成(silent)でも同じ角丸プログレスバーを表示する。
                     // silent はPiPを出さないという意味であり、トップバーの進捗は隠さない。
-                    if (::generationRing.isInitialized) {
+                    if (::generationRing.isInitialized && ::generationOverallRing.isInitialized) {
+                        val current = GenerationRingProgressPolicy.currentImage(
+                            state.currentImageProgress.takeIf { it > 0f || state.completedCount > 0 },
+                            state.progress,
+                            state.completedCount,
+                            state.totalBatch
+                        )
+                        val overall = GenerationRingProgressPolicy.overall(
+                            state.completedCount,
+                            state.totalBatch,
+                            current
+                        )
                         generationRing.visibility = View.VISIBLE
-                        generationRing.setProgress(state.progress)
+                        generationOverallRing.visibility = View.VISIBLE
+                        generationRing.setProgress(current)
+                        generationOverallRing.setProgress(overall)
                         syncGenerationRing()
                     }
 
@@ -473,6 +487,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     if (::generationRing.isInitialized) {
                         generationRing.visibility = View.GONE
                         generationRing.setProgress(0f)
+                    }
+                    if (::generationOverallRing.isInitialized) {
+                        generationOverallRing.visibility = View.GONE
+                        generationOverallRing.setProgress(0f)
                     }
                     syncBuilderRestorePipButton()
                 }
@@ -986,13 +1004,25 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         builderHistoryCursor = 0
         updateUndoRedoButtons()
 
+        val ringHost = findViewById<GenerationButtonHost>(R.id.generate_button_host)
+        generationOverallRing = ProgressRingView(this).apply {
+            isClickable = false
+            isFocusable = false
+            visibility = View.GONE
+            elevation = 7f * resources.displayMetrics.density
+            setProgressColor(GenerationRingProgressPolicy.OUTER_COLOR)
+            setTrackColor(GenerationRingProgressPolicy.OUTER_TRACK_COLOR)
+        }
         generationRing = ProgressRingView(this).apply {
             isClickable = false
             isFocusable = false
             visibility = View.GONE
             elevation = 8f * resources.displayMetrics.density
+            setProgressColor(GenerationRingProgressPolicy.INNER_COLOR)
+            setTrackColor(GenerationRingProgressPolicy.INNER_TRACK_COLOR)
         }
-        findViewById<GenerationButtonHost>(R.id.generate_button_host).addView(generationRing)
+        ringHost.addView(generationOverallRing)
+        ringHost.addView(generationRing)
         btnGenerateConcatenatedTop.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             syncGenerationRing()
         }
@@ -1504,11 +1534,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun syncGenerationRing() {
-        if (!::generationRing.isInitialized) return
+        if (!::generationRing.isInitialized || !::generationOverallRing.isInitialized) return
         val btn = btnGenerateConcatenatedTop
         if (btn.width == 0 || btn.height == 0) return
         val density = resources.displayMetrics.density
-        val spec = GenerationRingLayoutPolicy.layout(
+        val stroke = GenerationRingProgressPolicy.STROKE_DP * density
+        val nested = GenerationRingLayoutPolicy.nested(
             buttonWidth = btn.width,
             buttonHeight = btn.height,
             insetLeft = 0,
@@ -1516,20 +1547,30 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             insetRight = 0,
             insetBottom = btn.insetBottom,
             buttonCornerRadius = btn.cornerRadius.toFloat(),
-            strokeWidth = 4f * density,
-            gap = 1.5f * density
+            strokeWidth = stroke,
+            gap = GenerationRingProgressPolicy.GAP_DP * density
         )
-        generationRing.setCornerRadius(spec.cornerRadius)
-        val lp = generationRing.layoutParams
+        applyRingSpec(generationRing, nested.inner, stroke)
+        applyRingSpec(generationOverallRing, nested.outer, stroke)
+    }
+
+    private fun applyRingSpec(
+        ring: ProgressRingView,
+        spec: GenerationRingLayoutPolicy.Spec,
+        stroke: Float
+    ) {
+        ring.setStrokeWidth(stroke)
+        ring.setCornerRadius(spec.cornerRadius)
+        val lp = ring.layoutParams
         if (lp is FrameLayout.LayoutParams) {
             lp.width = spec.width
             lp.height = spec.height
             lp.leftMargin = spec.left
             lp.topMargin = spec.top
             lp.gravity = android.view.Gravity.NO_GRAVITY
-            generationRing.layoutParams = lp
+            ring.layoutParams = lp
         } else {
-            generationRing.layoutParams = FrameLayout.LayoutParams(spec.width, spec.height).apply {
+            ring.layoutParams = FrameLayout.LayoutParams(spec.width, spec.height).apply {
                 leftMargin = spec.left
                 topMargin = spec.top
             }
@@ -1611,7 +1652,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         dialogView.findViewById<TextView>(R.id.tv_dialog_title).text = "現在の状態をプリセット保存"
         etName.hint = "プリセット名"
         etName.setText(PresetSavePolicy.defaultName(genWidth, genHeight))
-        bindPresetCategoryPicker(etCategory, PresetSavePolicy.defaultCategory(PresetManager.categoryOrder))
+        bindPresetCategoryPicker(
+            etCategory,
+            PresetSavePolicy.saveDialogCategory(initialCategory, PresetManager.categoryOrder)
+        )
         val dialog = Md3PopupDialog.show(this, dialogView)
         btnCancel.setOnClickListener { dialog.dismiss() }
         btnSave.setOnClickListener {

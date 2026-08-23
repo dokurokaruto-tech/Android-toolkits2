@@ -63,4 +63,26 @@ class GenerationRingLayoutPolicyTest {
         assertEquals(56, spec.height)
         assertEquals(10f, spec.cornerRadius)
     }
+
+    @Test
+    fun outerRingSitsImmediatelyOutsideInner() {
+        val nested = GenerationRingLayoutPolicy.nested(
+            buttonWidth = 200,
+            buttonHeight = 80,
+            insetLeft = 0,
+            insetTop = 10,
+            insetRight = 0,
+            insetBottom = 10,
+            buttonCornerRadius = 40f,
+            strokeWidth = 6f,
+            gap = 2f
+        )
+        val inner = nested.inner
+        val outer = nested.outer
+        assertEquals(inner.left - 6, outer.left)
+        assertEquals(inner.top - 6, outer.top)
+        assertEquals(inner.width + 12, outer.width)
+        assertEquals(inner.height + 12, outer.height)
+        assertEquals(inner.cornerRadius + 6f, outer.cornerRadius)
+    }
 }

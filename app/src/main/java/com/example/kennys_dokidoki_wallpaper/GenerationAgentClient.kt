@@ -59,6 +59,7 @@ data class AgentJobState(
     val failed: Int,
     val pending: Int = 0,
     val progress: Float,
+    val currentImageProgress: Float = 0f,
     val previewUrl: String?,
     val imageUrls: List<String>,
     val error: String?
@@ -584,6 +585,12 @@ object GenerationAgentClient {
         } else {
             0
         }
+        val overall = json.optDouble("progress", 0.0).toFloat().coerceIn(0f, 1f)
+        val rawCurrent = if (json.has("current_image_progress")) {
+            json.optDouble("current_image_progress", 0.0).toFloat()
+        } else {
+            null
+        }
         return AgentJobState(
             id = json.getString("id"),
             status = json.getString("status"),
@@ -591,7 +598,13 @@ object GenerationAgentClient {
             completed = completed,
             failed = failed,
             pending = pending,
-            progress = json.optDouble("progress", 0.0).toFloat().coerceIn(0f, 1f),
+            progress = overall,
+            currentImageProgress = GenerationRingProgressPolicy.currentImage(
+                rawCurrent,
+                overall,
+                completed,
+                total
+            ),
             previewUrl = json.optString("preview_url").takeIf { it.isNotBlank() },
             imageUrls = imageUrls,
             error = json.optString("error").takeIf { it.isNotBlank() && it != "null" }

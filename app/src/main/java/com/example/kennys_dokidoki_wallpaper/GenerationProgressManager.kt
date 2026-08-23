@@ -17,6 +17,8 @@ object GenerationProgressManager {
         val statusText: String = "",
         val currentBatch: Int = 0,
         val totalBatch: Int = 0,
+        val currentImageProgress: Float = 0f,
+        val completedCount: Int = 0,
         // サムネイル生成など PiP を伴わない（静かな）生成。ビルダーのPiP復活ボタン等を出さない。
         val silent: Boolean = false
     )
@@ -47,19 +49,30 @@ object GenerationProgressManager {
         lastErrorMessage = null
     }
 
-    fun updateState(isGenerating: Boolean, progress: Float, currentImage: Bitmap?, statusText: String = "") {
-        _state.value = _state.value.copy(
+    fun updateState(
+        isGenerating: Boolean,
+        progress: Float,
+        currentImage: Bitmap?,
+        statusText: String = "",
+        currentImageProgress: Float? = null,
+        completedCount: Int? = null
+    ) {
+        val current = _state.value
+        _state.value = current.copy(
             isGenerating = isGenerating,
             progress = progress,
             currentImage = currentImage,
-            statusText = statusText
+            statusText = statusText,
+            currentImageProgress = currentImageProgress ?: current.currentImageProgress,
+            completedCount = completedCount ?: current.completedCount
         )
     }
 
-    fun updateBatchProgress(current: Int, total: Int) {
+    fun updateBatchProgress(current: Int, total: Int, completedCount: Int? = null) {
         _state.value = _state.value.copy(
             currentBatch = current,
-            totalBatch = total
+            totalBatch = total,
+            completedCount = completedCount ?: GenerationRingProgressPolicy.completedFromBatchIndex(current)
         )
     }
 
@@ -74,6 +87,8 @@ object GenerationProgressManager {
             statusText = "錬成準備中...",
             currentBatch = if (batchMode) 1 else 0,
             totalBatch = if (batchMode) total else 0,
+            currentImageProgress = 0f,
+            completedCount = 0,
             silent = silent
         )
     }

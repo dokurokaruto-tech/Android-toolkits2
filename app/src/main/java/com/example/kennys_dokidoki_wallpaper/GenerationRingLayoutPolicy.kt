@@ -43,4 +43,36 @@ object GenerationRingLayoutPolicy {
             cornerRadius = baseCorner + gap.coerceAtLeast(0f)
         )
     }
+
+    data class Nested(
+        val inner: Spec,
+        val outer: Spec
+    )
+
+    /**
+     * 内側の青リングのすぐ外側へ、同じ太さのリングを密着させる。
+     */
+    fun nested(
+        buttonWidth: Int,
+        buttonHeight: Int,
+        insetLeft: Int,
+        insetTop: Int,
+        insetRight: Int,
+        insetBottom: Int,
+        buttonCornerRadius: Float,
+        strokeWidth: Float,
+        gap: Float
+    ): Nested {
+        val safeStroke = strokeWidth.coerceAtLeast(0f)
+        return Nested(
+            inner = layout(
+                buttonWidth, buttonHeight, insetLeft, insetTop, insetRight, insetBottom,
+                buttonCornerRadius, safeStroke, gap
+            ),
+            outer = layout(
+                buttonWidth, buttonHeight, insetLeft, insetTop, insetRight, insetBottom,
+                buttonCornerRadius, safeStroke, gap.coerceAtLeast(0f) + safeStroke
+            )
+        )
+    }
 }
