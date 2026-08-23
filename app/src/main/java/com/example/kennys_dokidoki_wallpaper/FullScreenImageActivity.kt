@@ -226,7 +226,7 @@ class FullScreenImageActivity : AppCompatActivity() {
                 MotionEvent.ACTION_DOWN -> {
                     deleteHoldDownX = event.rawX
                     deleteHoldDownY = event.rawY
-                    (btnDeleteImage.parent as? View)?.requestDisallowInterceptTouchEvent(true)
+                    btnDeleteImage.parent?.requestDisallowInterceptTouchEvent(true)
                     beginDeleteHold()
                     true
                 }
