@@ -7,23 +7,24 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.google.android.material.appbar.MaterialToolbar
 import kotlinx.coroutines.launch
 
 /**
- * Keeps the generated-date picker as an Activity in the back stack.
- * MainActivity -> this picker -> AlbumDetailActivity means neither forward nor back
- * navigation exposes the prompt builder while network data is being fetched.
+ * 生成画像の日付フォルダを全画面で選ぶ。
+ * MainActivity -> この画面 -> AlbumDetailActivity なので、往復でビルダーが一瞬出ない。
  */
 class GeneratedFolderPickerActivity : AppCompatActivity() {
     private data class FolderItem(
@@ -36,27 +37,30 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var loadingOverlay: View
-    private lateinit var emptyText: TextView
+    private lateinit var emptyState: View
+    private lateinit var emptyMessage: TextView
     private var awaitingAlbumReturn = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContentView(R.layout.activity_generated_folder_picker)
-        sizeDialogWindow()
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.generated_folders_root)) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar_generated_folders)
+        toolbar.title = GeneratedFolderPickerPolicy.TITLE
+        toolbar.subtitle = GeneratedFolderPickerPolicy.SUBTITLE
+        toolbar.setNavigationOnClickListener { finish() }
 
         recyclerView = findViewById(R.id.recycler_view_tags)
         loadingOverlay = findViewById(R.id.generated_folders_loading_overlay)
-        emptyText = findViewById(R.id.tv_generated_folders_empty)
+        emptyState = findViewById(R.id.tv_generated_folders_empty)
+        emptyMessage = findViewById(R.id.tv_generated_folders_empty_message)
         recyclerView.layoutManager = GridLayoutManager(this, 2)
-
-        // Keep the existing folder-card presentation; remove tag-editor-only controls.
-        findViewById<Button>(R.id.btn_dialog_done).visibility = View.GONE
-        findViewById<View>(R.id.btn_add_tag).visibility = View.GONE
-        (findViewById<View>(R.id.dialog_title).parent as? View)?.visibility = View.GONE
-        val includedRoot = recyclerView.parent as? LinearLayout
-        if (includedRoot != null && includedRoot.childCount > 1) {
-            includedRoot.getChildAt(1).visibility = View.GONE
-        }
 
         val autoDate = intent.getStringExtra(GenerationPipExpandPolicy.EXTRA_AUTO_OPEN_DATE)
         if (GenerationPipExpandPolicy.shouldAutoOpen(autoDate)) {
@@ -74,11 +78,6 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         loadFolders(reportRemoteFailure = true)
     }
 
-    override fun onStart() {
-        super.onStart()
-        sizeDialogWindow()
-    }
-
     override fun onResume() {
         super.onResume()
         if (awaitingAlbumReturn) {
@@ -86,14 +85,6 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
             setLoading(false)
             loadFolders(reportRemoteFailure = false)
         }
-    }
-
-    private fun sizeDialogWindow() {
-        val metrics = resources.displayMetrics
-        window.setLayout(
-            (metrics.widthPixels * 0.94f).toInt(),
-            (metrics.heightPixels * 0.86f).toInt()
-        )
     }
 
     private fun loadFolders(reportRemoteFailure: Boolean) {
@@ -131,14 +122,14 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
 
             recyclerView.adapter = FolderAdapter(items, ::onFolderSelected)
             if (items.isEmpty()) {
-                emptyText.visibility = View.VISIBLE
-                emptyText.text = if (remoteFailure != null) {
+                emptyState.visibility = View.VISIBLE
+                emptyMessage.text = if (remoteFailure != null) {
                     "PCから日付フォルダを取れなかった。\n[${remoteFailure.code}] ${remoteFailure.title}"
                 } else {
                     "まだ画像が生成されていません。\nPC生成エージェントの接続を確認してください。"
                 }
             } else {
-                emptyText.visibility = View.GONE
+                emptyState.visibility = View.GONE
             }
             setLoading(false)
             if (reportRemoteFailure && remoteFailure != null) {
@@ -252,7 +243,6 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         if (thenShowLivePreview) {
             startActivity(Intent(this, GenerationLivePreviewActivity::class.java))
         }
-        // Do not animate through the prompt builder between the two generated-image screens.
         overridePendingTransition(0, 0)
     }
 
@@ -306,8 +296,8 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val folder = folders[position]
-            holder.name.text = folder.name
-            holder.count.text = "${folder.count} 枚"
+            holder.name.text = GeneratedFolderPickerPolicy.formatFolderLabel(folder.name)
+            holder.count.text = GeneratedFolderPickerPolicy.countLabel(folder.count)
             if (folder.thumbnail != null) {
                 val uri = Uri.parse(folder.thumbnail.toString())
                 Glide.with(holder.thumbnail)
@@ -317,7 +307,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                     .into(holder.thumbnail)
             } else {
                 Glide.with(holder.thumbnail).clear(holder.thumbnail)
-                holder.thumbnail.setImageResource(R.drawable.ic_folder)
+                holder.thumbnail.setImageResource(R.drawable.ic_md3_gallery)
                 holder.thumbnail.scaleType = ImageView.ScaleType.CENTER_INSIDE
             }
             holder.card.setOnClickListener { onClick(folder) }

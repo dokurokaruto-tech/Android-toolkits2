@@ -1208,30 +1208,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         ThumbnailBinder.addListener(previewListener)
 
         btnGenerateThumbnail.setOnClickListener {
-            val presetCards = preset.activePromptStates.mapNotNull { (id, level) ->
-                PromptCardManager.promptCards.find { it.id == id }?.let { it to level }
-            }
-            if (presetCards.isEmpty()) {
-                Toast.makeText(this, "このプリセットにはカードが含まれていません。", Toast.LENGTH_SHORT).show()
+            val request = thumbnailRequestForPreset(preset)
+            if (request == null) {
+                Toast.makeText(this, "カードもランダム対象も無い。", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            val finalMainPrompt = presetCards.joinToString(", ") { (card, level) ->
-                when (level) {
-                    2 -> "(${card.mainPrompt}:1.2)"
-                    3 -> "(${card.mainPrompt}:1.6)"
-                    else -> card.mainPrompt
-                }
-            }.trim()
-            val finalNegativePrompt = presetCards.map { it.first.negativePrompt }
-                .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
             ThumbnailGenerationCoordinator.start(
                 this,
-                listOf(
-                    ThumbnailBindPolicy.Item(
-                        ThumbnailBindPolicy.Target.preset(preset.id),
-                        thumbnailRequest(finalMainPrompt, finalNegativePrompt, preset.steps, preset.sampler)
-                    )
-                )
+                listOf(ThumbnailBindPolicy.Item(ThumbnailBindPolicy.Target.preset(preset.id), request))
             )
         }
 
@@ -1750,29 +1734,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 ThumbnailBindPolicy.Item(ThumbnailBindPolicy.Target.preset(preset.id), request)
             }
             if (items.isEmpty()) {
-                Toast.makeText(this, "カードが入っていないプリセットは作れない。", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "カードもランダム対象も無い。", Toast.LENGTH_SHORT).show()
                 return@show
             }
             ThumbnailGenerationCoordinator.start(this, items)
         }
     }
 
-    private fun thumbnailRequestForPreset(preset: Preset): AgentGenerationRequest? {
-        val presetCards = preset.activePromptStates.mapNotNull { (id, level) ->
-            PromptCardManager.promptCards.find { it.id == id }?.let { it to level }
-        }
-        if (presetCards.isEmpty()) return null
-        val finalMainPrompt = presetCards.joinToString(", ") { (card, level) ->
-            when (level) {
-                2 -> "(${card.mainPrompt}:1.2)"
-                3 -> "(${card.mainPrompt}:1.6)"
-                else -> card.mainPrompt
-            }
-        }.trim()
-        val finalNegativePrompt = presetCards.map { it.first.negativePrompt }
-            .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
-        return thumbnailRequest(finalMainPrompt, finalNegativePrompt, preset.steps, preset.sampler)
-    }
+    private fun thumbnailRequestForPreset(preset: Preset): AgentGenerationRequest? =
+        PresetThumbnailPromptPolicy.request(
+            preset = preset,
+            roster = PromptCardManager.promptCards.toList(),
+            randomizerIncludedIds = PromptCardManager.randomizerIncludedIds.toSet(),
+            chance = { Random.nextInt(100) },
+            pickIndex = { size -> Random.nextInt(size) }
+        )
 
     private fun requestIgnoreBatteryOptimizations() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
