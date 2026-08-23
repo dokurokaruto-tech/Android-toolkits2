@@ -1676,55 +1676,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun showPromptCategorySettingsDialog(category: String) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_prompt_category_settings, null)
-        val etName = dialogView.findViewById<EditText>(R.id.et_category_name)
-        val btnDelete = dialogView.findViewById<Button>(R.id.btn_delete_category)
-        val btnCancel = dialogView.findViewById<Button>(R.id.btn_cancel)
-        val btnSave = dialogView.findViewById<Button>(R.id.btn_save_category)
-
-        etName.setText(category)
-
-        // 一括サムネイル生成ボタンの追加
-        val btnBulkThumb = Button(this).apply {
-            text = "サムネイルの一括生成"
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = 16
-            }
-            setOnClickListener {
-                showBulkThumbnailGenerationDialog(category)
-            }
-        }
-        (dialogView as LinearLayout).addView(btnBulkThumb, 2)
-
-        val dialog = AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper).setView(dialogView).create()
-
-        btnDelete.setOnClickListener {
-            AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-                .setTitle("本当に削除する？")
-                .setMessage("カテゴリー『$category』および含まれるすべてのカードを削除します。よろしいですか？")
-                .setPositiveButton("削除する") { _, _ ->
-                    PromptCardManager.deleteCategory(this, category)
-                    promptCardAdapter.updateList(PromptCardManager.promptCards)
-                    dialog.dismiss()
-                }
-                .setNegativeButton("やめとく", null)
-                .show()
-        }
-
-        btnCancel.setOnClickListener { dialog.dismiss() }
-
-        btnSave.setOnClickListener {
-            val newName = etName.text.toString().trim()
-            if (newName.isNotEmpty()) {
+        CategorySettingsDialog.show(
+            activity = this,
+            category = category,
+            title = "カテゴリーの設定",
+            deleteMessage = "カテゴリー『$category』および含まれるすべてのカードを削除します。よろしいですか？",
+            onSave = { newName ->
                 PromptCardManager.renameCategory(this, category, newName)
                 promptCardAdapter.updateList(PromptCardManager.promptCards)
-                dialog.dismiss()
-            } else {
-                Toast.makeText(this, "名称を入力してください。", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        dialog.show()
+            },
+            onDelete = {
+                PromptCardManager.deleteCategory(this, category)
+                promptCardAdapter.updateList(PromptCardManager.promptCards)
+            },
+            onBulkThumbnails = { showBulkThumbnailGenerationDialog(category) }
+        )
     }
 
     private fun getConcatenatedPromptForCard(targetMainPrompt: String, targetNegativePrompt: String): Pair<String, String> {
@@ -1747,46 +1713,70 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun showBulkThumbnailGenerationDialog(category: String) {
         val cards = PromptCardManager.promptCards.filter { it.category == category }
-        if (cards.isEmpty()) {
-            Toast.makeText(this, "このカテゴリーにはカードが存在しません。", Toast.LENGTH_SHORT).show()
-            return
+        BulkThumbnailDialog.show(
+            activity = this,
+            title = "カードの一括サムネイル",
+            entries = cards.map { BulkThumbnailPickerPolicy.entry(it.id, it.label, it.thumbnailUri?.toString()) }
+        ) { ids ->
+            val selected = cards.filter { it.id in ids.toSet() }
+            val items = selected.map { card ->
+                val (p, np) = getConcatenatedPromptForCard(card.mainPrompt, card.negativePrompt)
+                ThumbnailBindPolicy.Item(
+                    ThumbnailBindPolicy.Target.card(card.id),
+                    thumbnailRequest(p, np)
+                )
+            }
+            if (ThumbnailGenerationCoordinator.start(this, items)) {
+                Toast.makeText(
+                    this,
+                    "${items.size}件をPiPで生成する。1枚終わるごとに自動で紐づける。",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
+    }
 
-        val checkedItems = BooleanArray(cards.size) { true }
-        val cardLabels = cards.map { it.label }.toTypedArray()
+    private fun showBulkPresetThumbnailGenerationDialog(category: String) {
+        val presets = PresetManager.presets.filter { it.category == category }
+        BulkThumbnailDialog.show(
+            activity = this,
+            title = "プリセットの一括サムネイル",
+            entries = presets.map { BulkThumbnailPickerPolicy.entry(it.id, it.name, it.thumbnailUri?.toString()) }
+        ) { ids ->
+            val selected = presets.filter { it.id in ids.toSet() }
+            val items = selected.mapNotNull { preset ->
+                val request = thumbnailRequestForPreset(preset) ?: return@mapNotNull null
+                ThumbnailBindPolicy.Item(ThumbnailBindPolicy.Target.preset(preset.id), request)
+            }
+            if (items.isEmpty()) {
+                Toast.makeText(this, "カードが入っていないプリセットは作れない。", Toast.LENGTH_SHORT).show()
+                return@show
+            }
+            if (ThumbnailGenerationCoordinator.start(this, items)) {
+                Toast.makeText(
+                    this,
+                    "${items.size}件をPiPで生成する。1枚終わるごとに自動で紐づける。",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
 
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setTitle("一括サムネイル生成")
-            .setMultiChoiceItems(cardLabels, checkedItems) { _, which, isChecked ->
-                checkedItems[which] = isChecked
+    private fun thumbnailRequestForPreset(preset: Preset): AgentGenerationRequest? {
+        val presetCards = preset.activePromptStates.mapNotNull { (id, level) ->
+            PromptCardManager.promptCards.find { it.id == id }?.let { it to level }
+        }
+        if (presetCards.isEmpty()) return null
+        val finalMainPrompt = presetCards.joinToString(", ") { (card, level) ->
+            when (level) {
+                2 -> "(${card.mainPrompt}:1.2)"
+                3 -> "(${card.mainPrompt}:1.6)"
+                else -> card.mainPrompt
             }
-            .setNeutralButton("全選択/解除") { dialog, _ ->
-                val allChecked = checkedItems.all { it }
-                for (i in checkedItems.indices) checkedItems[i] = !allChecked
-                (dialog as AlertDialog).listView.apply {
-                    for (i in checkedItems.indices) setItemChecked(i, checkedItems[i])
-                }
-            }
-            .setPositiveButton("生成開始") { _, _ ->
-                val targetCards = cards.filterIndexed { index, _ -> checkedItems[index] }
-                if (targetCards.isEmpty()) return@setPositiveButton
-                val items = targetCards.map { card ->
-                    val (p, np) = getConcatenatedPromptForCard(card.mainPrompt, card.negativePrompt)
-                    ThumbnailBindPolicy.Item(
-                        ThumbnailBindPolicy.Target.card(card.id),
-                        thumbnailRequest(p, np)
-                    )
-                }
-                if (ThumbnailGenerationCoordinator.start(this, items)) {
-                    Toast.makeText(
-                        this,
-                        "${items.size}件をPiPで生成する。1枚終わるごとに自動で紐づける。",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-            .setNegativeButton("キャンセル", null)
-            .show()
+        }.trim()
+        val finalNegativePrompt = presetCards.map { it.first.negativePrompt }
+            .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
+        return thumbnailRequest(finalMainPrompt, finalNegativePrompt, preset.steps, preset.sampler)
     }
 
     private fun requestIgnoreBatteryOptimizations() {
@@ -1797,43 +1787,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun showPresetCategorySettingsDialog(category: String) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_prompt_category_settings, null)
-        val etName = dialogView.findViewById<EditText>(R.id.et_category_name)
-        val btnDelete = dialogView.findViewById<Button>(R.id.btn_delete_category)
-        val btnCancel = dialogView.findViewById<Button>(R.id.btn_cancel)
-        val btnSave = dialogView.findViewById<Button>(R.id.btn_save_category)
-
-        etName.setText(category)
-
-        val dialog = AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper).setView(dialogView).create()
-
-        btnDelete.setOnClickListener {
-            AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-                .setTitle("本当に削除する？")
-                .setMessage("カテゴリー『$category』および含まれるすべてのプリセットを削除します。よろしいですか？")
-                .setPositiveButton("削除する") { _, _ ->
-                    PresetManager.deleteCategory(this, category)
-                    presetAdapter.updateList(PresetManager.presets)
-                    dialog.dismiss()
-                }
-                .setNegativeButton("やめとく", null)
-                .show()
-        }
-
-        btnCancel.setOnClickListener { dialog.dismiss() }
-
-        btnSave.setOnClickListener {
-            val newName = etName.text.toString().trim()
-            if (newName.isNotEmpty()) {
+        CategorySettingsDialog.show(
+            activity = this,
+            category = category,
+            title = "プリセット分類の設定",
+            deleteMessage = "カテゴリー『$category』および含まれるすべてのプリセットを削除します。よろしいですか？",
+            onSave = { newName ->
                 PresetManager.renameCategory(this, category, newName)
                 presetAdapter.updateList(PresetManager.presets)
-                dialog.dismiss()
-            } else {
-                Toast.makeText(this, "名称を入力してください。", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        dialog.show()
+            },
+            onDelete = {
+                PresetManager.deleteCategory(this, category)
+                presetAdapter.updateList(PresetManager.presets)
+            },
+            onBulkThumbnails = { showBulkPresetThumbnailGenerationDialog(category) }
+        )
     }
 
     private fun updateGenSettingsUI() {
