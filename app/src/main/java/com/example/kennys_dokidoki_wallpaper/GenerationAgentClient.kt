@@ -25,6 +25,7 @@ data class AgentGenerationRequest(
     val steps: Int,
     val samplerName: String,
     val purpose: String = "image",
+    val seed: Long? = null,
     val tags: List<String> = emptyList(),
     val cardStates: Map<String, Int> = emptyMap(),
     val randomPickedIds: Set<String> = emptySet(),
@@ -44,6 +45,8 @@ data class AgentGeneratedImage(
     val steps: Int? = null,
     val sampler: String? = null,
     val prompt: String? = null,
+    val negativePrompt: String? = null,
+    val seed: Long? = null,
     val randomPickedIds: Set<String> = emptySet(),
     val randomEnabledCategories: Set<String> = emptySet()
 )
@@ -215,6 +218,7 @@ object GenerationAgentClient {
                 put("cfg_scale", 7)
                 put("sampler_name", request.samplerName)
                 put("purpose", request.purpose)
+                request.seed?.takeIf { it >= 0L }?.let { put("seed", it) }
                 val tags = JSONArray()
                 request.tags.forEach { tag ->
                     if (tag.isNotBlank()) tags.put(tag)
@@ -321,6 +325,10 @@ object GenerationAgentClient {
                         steps = parameters?.optInt("steps", 0)?.takeIf { it > 0 },
                         sampler = parameters?.optString("sampler_name")?.takeIf { it.isNotBlank() },
                         prompt = parameters?.optString("prompt")?.takeIf { it.isNotBlank() },
+                        negativePrompt = parameters?.optString("negative_prompt")?.takeIf { it.isNotBlank() },
+                        seed = GeneratedImageReplayPolicy.parseSeed(
+                            if (parameters?.has("seed") == true) parameters.opt("seed") else null
+                        ),
                         randomPickedIds = GeneratedImageTagBinding.parseStringSet(item.optJSONArray("random_picked_ids")),
                         randomEnabledCategories = GeneratedImageTagBinding.parseStringSet(item.optJSONArray("random_categories"))
                     )

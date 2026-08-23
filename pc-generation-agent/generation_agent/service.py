@@ -449,7 +449,11 @@ class GenerationService:
                     self.database.finish_task(job_id, index, existing)
                     continue
                 sd_payload = {key: value for key, value in task["payload"].items() if not key.startswith("_agent_")}
-                image, suffix = self.sd.generate(sd_payload)
+                image, suffix, seed = self.sd.generate(sd_payload)
+                if seed is not None and sd_payload.get("seed") in (None, -1, "-1"):
+                    sd_payload["seed"] = seed
+                elif seed is not None and "seed" not in sd_payload:
+                    sd_payload["seed"] = seed
                 relative_path = self._save_image(job_id, index, suffix, image, task["payload"], sd_payload)
                 self.database.finish_task(job_id, index, relative_path)
             except Exception as error:
@@ -554,6 +558,9 @@ class GenerationService:
             "cfg_scale": float(task.get("cfg_scale", 7)),
             "sampler_name": str(task.get("sampler_name", "Euler a")),
         })
+        if "seed" in task and task.get("seed") is not None:
+            seed = self._integer(task.get("seed"), "seed", 0, 4_294_967_295)
+            result["seed"] = seed
         result.pop("batch_size", None)
         result.pop("n_iter", None)
         result.pop("tags", None)
@@ -639,6 +646,14 @@ class GenerationService:
         tags = metadata.get("tags")
         card_states = metadata.get("card_states")
         parameters = metadata.get("parameters")
+        merged = dict(parameters) if isinstance(parameters, dict) else {}
+        png_info = self._png_generation_info(image)
+        if "seed" not in merged and "seed" in png_info:
+            merged["seed"] = png_info["seed"]
+        if not str(merged.get("negative_prompt", "")).strip() and png_info.get("negative_prompt"):
+            merged["negative_prompt"] = png_info["negative_prompt"]
+        if not str(merged.get("prompt", "")).strip() and png_info.get("prompt"):
+            merged["prompt"] = png_info["prompt"]
         return {
             "name": image.name,
             "date": date,
@@ -648,10 +663,36 @@ class GenerationService:
             "thumbnail_url": self.mobile_thumbnail_url(date, image.name),
             "tags": [str(tag).strip() for tag in tags if str(tag).strip()] if isinstance(tags, list) else [],
             "card_states": card_states if isinstance(card_states, dict) else {},
-            "parameters": parameters if isinstance(parameters, dict) else {},
+            "parameters": merged,
             "random_picked_ids": metadata.get("random_picked_ids") if isinstance(metadata.get("random_picked_ids"), list) else [],
             "random_categories": metadata.get("random_categories") if isinstance(metadata.get("random_categories"), list) else [],
         }
+
+    @staticmethod
+    def _png_generation_info(path: Path) -> dict[str, Any]:
+        try:
+            from PIL import Image
+            with Image.open(path) as opened:
+                text = str(opened.info.get("parameters") or "")
+        except Exception:
+            return {}
+        if not text.strip():
+            return {}
+        info: dict[str, Any] = {}
+        seed_match = re.search(r"(?:^|,)\s*Seed:\s*(-?\d+)", text)
+        if seed_match:
+            seed = int(seed_match.group(1))
+            if seed >= 0:
+                info["seed"] = seed
+        negative_match = re.search(r"Negative prompt:\s*(.*?)(?:\nSteps:|\nSeed:|$)", text, re.S)
+        if negative_match:
+            negative = negative_match.group(1).strip()
+            if negative:
+                info["negative_prompt"] = negative
+        prompt_part = text.split("Negative prompt:", 1)[0].strip()
+        if prompt_part:
+            info["prompt"] = prompt_part
+        return info
 
     def _write_metadata(
         self,

@@ -3,6 +3,7 @@ package com.example.kennys_dokidoki_wallpaper
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
@@ -11,18 +12,17 @@ import androidx.appcompat.widget.AppCompatImageView
 
 /**
  * Draws independently downloaded lossless image strips at their real vertical positions.
- * This is network-progress rendering, not a reveal/fade animation: rows only appear after
- * their actual pixels have arrived and decoded.
+ * Strips are first stamped into one source-sized bitmap so scaled drawing never shows
+ * the black seam that bilinear filtering leaves between separate tiles.
  */
 class ProgressiveTileImageView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : AppCompatImageView(context, attrs, defStyleAttr) {
-    private data class Tile(val bitmap: Bitmap, val top: Int)
-
-    private val tiles = mutableListOf<Tile>()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val blitPaint = Paint()
+    private var composed: Bitmap? = null
     private var sourceWidth = 0
     private var sourceHeight = 0
     private var tileMode = false
@@ -39,16 +39,28 @@ class ProgressiveTileImageView @JvmOverloads constructor(
         sourceWidth = width
         sourceHeight = height
         tileMode = width > 0 && height > 0
+        if (tileMode) {
+            composed = try {
+                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
+                    it.eraseColor(Color.TRANSPARENT)
+                }
+            } catch (_: OutOfMemoryError) {
+                tileMode = false
+                null
+            }
+        }
         setImageDrawable(null)
         invalidate()
     }
 
     fun appendDecodedTile(bitmap: Bitmap, top: Int) {
-        if (!tileMode) {
+        val canvasBitmap = composed
+        if (!tileMode || canvasBitmap == null || canvasBitmap.isRecycled) {
             bitmap.recycle()
             return
         }
-        tiles += Tile(bitmap, top)
+        Canvas(canvasBitmap).drawBitmap(bitmap, 0f, top.toFloat(), blitPaint)
+        if (!bitmap.isRecycled) bitmap.recycle()
         invalidate()
     }
 
@@ -60,7 +72,8 @@ class ProgressiveTileImageView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (!tileMode || sourceWidth <= 0 || sourceHeight <= 0) {
+        val bitmap = composed
+        if (!tileMode || bitmap == null || bitmap.isRecycled || sourceWidth <= 0 || sourceHeight <= 0) {
             super.onDraw(canvas)
             return
         }
@@ -69,20 +82,17 @@ class ProgressiveTileImageView @JvmOverloads constructor(
         val drawnHeight = sourceHeight * scale
         val left = (width - drawnWidth) / 2f
         val topOffset = (height - drawnHeight) / 2f
-        for (tile in tiles) {
-            val destination = RectF(
-                left,
-                topOffset + tile.top * scale,
-                left + drawnWidth,
-                topOffset + (tile.top + tile.bitmap.height) * scale
-            )
-            canvas.drawBitmap(tile.bitmap, null, destination, paint)
-        }
+        canvas.drawBitmap(
+            bitmap,
+            null,
+            RectF(left, topOffset, left + drawnWidth, topOffset + drawnHeight),
+            paint
+        )
     }
 
     private fun clearTiles() {
-        tiles.forEach { if (!it.bitmap.isRecycled) it.bitmap.recycle() }
-        tiles.clear()
+        composed?.let { if (!it.isRecycled) it.recycle() }
+        composed = null
         sourceWidth = 0
         sourceHeight = 0
     }

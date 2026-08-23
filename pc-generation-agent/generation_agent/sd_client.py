@@ -53,13 +53,42 @@ class StableDiffusionClient:
             raw = base64.b64decode(encoded, validate=False)
         except Exception as error:
             raise RuntimeError("SD returned invalid base64 image data") from error
+        seed = self._seed_from_result(result)
         if raw.startswith(b"\x89PNG\r\n\x1a\n"):
-            return raw, ".png"
+            return raw, ".png", seed
         if raw.startswith(b"\xff\xd8\xff"):
-            return raw, ".jpg"
+            return raw, ".jpg", seed
         if raw.startswith(b"RIFF") and raw[8:12] == b"WEBP":
-            return raw, ".webp"
+            return raw, ".webp", seed
         raise RuntimeError("SD returned an unsupported or corrupt image")
+
+    @staticmethod
+    def _seed_from_result(result: dict[str, Any]) -> int | None:
+        info = result.get("info")
+        parsed: dict[str, Any] = {}
+        if isinstance(info, str) and info.strip():
+            try:
+                loaded = json.loads(info)
+                if isinstance(loaded, dict):
+                    parsed = loaded
+            except Exception:
+                parsed = {}
+        elif isinstance(info, dict):
+            parsed = info
+        for key in ("seed",):
+            value = parsed.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int) and value >= 0:
+                return value
+            if isinstance(value, float) and value >= 0:
+                return int(value)
+        seeds = parsed.get("all_seeds")
+        if isinstance(seeds, list) and seeds:
+            first = seeds[0]
+            if isinstance(first, (int, float)) and not isinstance(first, bool) and first >= 0:
+                return int(first)
+        return None
 
     def progress(self, include_image: bool = False) -> dict[str, Any]:
         suffix = "" if include_image else "?skip_current_image=true"

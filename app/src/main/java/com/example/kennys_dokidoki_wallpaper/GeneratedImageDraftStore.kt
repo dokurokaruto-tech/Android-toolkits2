@@ -51,7 +51,9 @@ object GeneratedImageDraftStore {
         sampler: String? = null,
         prompt: String? = null,
         randomPickedIds: Set<String> = emptySet(),
-        randomEnabledCategories: Set<String> = emptySet()
+        randomEnabledCategories: Set<String> = emptySet(),
+        seed: Long? = null,
+        negativePrompt: String? = null
     ) {
         val incoming = GeneratedImageTagBinding.collect(listOf(generatedTags))
         val key = keyFor(uri)
@@ -72,6 +74,8 @@ object GeneratedImageDraftStore {
             steps = steps ?: existing?.steps,
             sampler = sampler ?: existing?.sampler,
             prompt = prompt?.takeIf { it.isNotBlank() } ?: existing?.prompt,
+            negativePrompt = negativePrompt?.takeIf { it.isNotBlank() } ?: existing?.negativePrompt,
+            seed = GeneratedImageReplayPolicy.parseSeed(seed) ?: existing?.seed,
             randomPickedIds = if (randomPickedIds.isNotEmpty()) randomPickedIds else existing?.randomPickedIds.orEmpty(),
             randomEnabledCategories = if (randomEnabledCategories.isNotEmpty()) {
                 randomEnabledCategories
@@ -105,6 +109,8 @@ object GeneratedImageDraftStore {
                 steps = existing?.steps,
                 sampler = existing?.sampler,
                 prompt = existing?.prompt,
+                negativePrompt = existing?.negativePrompt,
+                seed = existing?.seed,
                 randomPickedIds = existing?.randomPickedIds.orEmpty(),
                 randomEnabledCategories = existing?.randomEnabledCategories.orEmpty()
             )
@@ -163,7 +169,9 @@ object GeneratedImageDraftStore {
                 draft.sampler,
                 draft.prompt,
                 draft.randomPickedIds,
-                draft.randomEnabledCategories
+                draft.randomEnabledCategories,
+                draft.seed,
+                draft.negativePrompt
             )
         }
         if (!plan.chatId.isNullOrBlank()) {
@@ -247,6 +255,8 @@ object GeneratedImageDraftStore {
                         steps = item.optInt("steps", 0).takeIf { it > 0 },
                         sampler = item.optString("sampler").takeIf { it.isNotBlank() && it != "null" },
                         prompt = item.optString("prompt").takeIf { it.isNotBlank() && it != "null" },
+                        negativePrompt = item.optString("negativePrompt").takeIf { it.isNotBlank() && it != "null" },
+                        seed = item.optLong("seed", -1L).takeIf { it >= 0L },
                         randomPickedIds = GeneratedImageTagBinding.parseStringSet(item.optJSONArray("randomPickedIds")),
                         randomEnabledCategories = GeneratedImageTagBinding.parseStringSet(item.optJSONArray("randomEnabledCategories"))
                     )
@@ -273,6 +283,8 @@ object GeneratedImageDraftStore {
                 put("steps", draft.steps ?: JSONObject.NULL)
                 put("sampler", draft.sampler ?: JSONObject.NULL)
                 put("prompt", draft.prompt ?: JSONObject.NULL)
+                put("negativePrompt", draft.negativePrompt ?: JSONObject.NULL)
+                put("seed", draft.seed ?: JSONObject.NULL)
                 put("randomPickedIds", GeneratedImageTagBinding.encodeStringSet(draft.randomPickedIds))
                 put("randomEnabledCategories", GeneratedImageTagBinding.encodeStringSet(draft.randomEnabledCategories))
             })

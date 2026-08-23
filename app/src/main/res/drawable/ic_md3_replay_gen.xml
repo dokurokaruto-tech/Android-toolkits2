@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 同じ絵をもう一度回す：枠の中に循環矢印。 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M4.4,3.6h15.2c0.77,0 1.4,0.63 1.4,1.4v14c0,0.77 -0.63,1.4 -1.4,1.4H4.4c-0.77,0 -1.4,-0.63 -1.4,-1.4v-14c0,-0.77 0.63,-1.4 1.4,-1.4zM5.8,5.4v13.2h12.4V5.4H5.8z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M15.9,8.15c-0.85,-0.85 -2.02,-1.35 -3.35,-1.35 -2.65,0 -4.8,2.15 -4.8,4.8h1.7c0,-1.71 1.39,-3.1 3.1,-3.1 0.86,0 1.63,0.35 2.19,0.91L13.3,10.85h3.9V6.95zM8.1,15.85c0.85,0.85 2.02,1.35 3.35,1.35 2.65,0 4.8,-2.15 4.8,-4.8h-1.7c0,1.71 -1.39,3.1 -3.1,3.1 -0.86,0 -1.63,-0.35 -2.19,-0.91L10.7,13.15H6.8v3.9z" />
+</vector>

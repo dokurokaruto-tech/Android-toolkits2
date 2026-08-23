@@ -14,6 +14,8 @@ object GeneratedImageLifecycle {
         val steps: Int? = null,
         val sampler: String? = null,
         val prompt: String? = null,
+        val negativePrompt: String? = null,
+        val seed: Long? = null,
         val randomPickedIds: Set<String> = emptySet(),
         val randomEnabledCategories: Set<String> = emptySet()
     )

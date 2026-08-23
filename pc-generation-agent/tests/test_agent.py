@@ -42,7 +42,11 @@ class FakeSdHandler(BaseHTTPRequestHandler):
         if self.path == "/sdapi/v1/txt2img":
             self.__class__.generated += 1
             assert body["batch_size"] == 1
-            self.send_json({"images": [base64.b64encode(PNG).decode()]})
+            seed = body.get("seed", 4242)
+            self.send_json({
+                "images": [base64.b64encode(PNG).decode()],
+                "info": json.dumps({"seed": seed, "all_seeds": [seed]}),
+            })
         elif self.path in {"/sdapi/v1/interrupt", "/sdapi/v1/skip"}:
             self.send_json({})
         else:
@@ -241,6 +245,26 @@ class AgentIntegrationTest(unittest.TestCase):
         date = dates["dates"][0]["date"]
         _, images = self.request(f"/api/v1/library/images?date={date}")
         self.assertEqual(["金髪", "幼女"], images["images"][0]["tags"])
+        self.assertEqual(4242, images["images"][0]["parameters"].get("seed"))
+
+    def test_replay_task_keeps_requested_seed(self) -> None:
+        _, job = self.request(
+            "/api/v1/jobs",
+            "POST",
+            {"tasks": [{"prompt": "replay me", "steps": 40, "seed": 777}]},
+        )
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, state = self.request(f"/api/v1/jobs/{job['id']}")
+            if state["status"] == "completed":
+                break
+            time.sleep(0.05)
+        self.assertEqual("completed", state["status"])
+        _, dates = self.request("/api/v1/library/dates")
+        date = dates["dates"][0]["date"]
+        _, images = self.request(f"/api/v1/library/images?date={date}")
+        self.assertEqual(777, images["images"][0]["parameters"]["seed"])
+        self.assertEqual(40, images["images"][0]["parameters"]["steps"])
 
     def test_delete_library_image_removes_file(self) -> None:
         date = "2026-08-22"

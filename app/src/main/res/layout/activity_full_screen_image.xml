@@ -122,6 +122,20 @@
             android:src="@drawable/ic_md3_chat"
             android:visibility="gone"
             app:tint="#E6E1E5" />
+
+        <ImageView
+            android:id="@+id/btn_replay_generation"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_counter_bubble"
+            android:clickable="true"
+            android:contentDescription="同じ設定で再生成"
+            android:focusable="true"
+            android:padding="10dp"
+            android:src="@drawable/ic_md3_replay_gen"
+            android:visibility="gone"
+            app:tint="#E6E1E5" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

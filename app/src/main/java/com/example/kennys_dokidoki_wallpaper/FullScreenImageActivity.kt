@@ -51,6 +51,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     private lateinit var btnStartTempChat: View
     private lateinit var btnDeleteImage: View
     private lateinit var btnCreatePreset: View
+    private lateinit var btnReplayGeneration: View
     private val deletedUris = arrayListOf<String>()
     private val chromeHandler = Handler(Looper.getMainLooper())
     private var chromeVisible = true
@@ -75,6 +76,7 @@ class FullScreenImageActivity : AppCompatActivity() {
         btnStartTempChat = findViewById(R.id.btn_start_temp_chat)
         btnDeleteImage = findViewById(R.id.btn_delete_image)
         btnCreatePreset = findViewById(R.id.btn_create_preset_from_image)
+        btnReplayGeneration = findViewById(R.id.btn_replay_generation)
         albumName = intent.getStringExtra("ALBUM_NAME") ?: ""
         currentIndex = intent.getIntExtra("START_INDEX", 0)
         isGeneratedViewer = intent.getBooleanExtra("FROM_GENERATED_VIEWER", false) ||
@@ -119,14 +121,17 @@ class FullScreenImageActivity : AppCompatActivity() {
             btnStartTempChat.visibility = View.GONE
             btnDeleteImage.visibility = View.GONE
             btnCreatePreset.visibility = View.GONE
+            btnReplayGeneration.visibility = View.GONE
             return
         }
         btnStartTempChat.visibility = View.VISIBLE
         btnDeleteImage.visibility = View.VISIBLE
         btnCreatePreset.visibility = View.VISIBLE
+        btnReplayGeneration.visibility = View.VISIBLE
         btnStartTempChat.alpha = 1f
         btnDeleteImage.alpha = 1f
         btnCreatePreset.alpha = 1f
+        btnReplayGeneration.alpha = 1f
         btnCreatePreset.setOnClickListener {
             if (!chromeVisible) {
                 revealViewerChrome()
@@ -153,7 +158,102 @@ class FullScreenImageActivity : AppCompatActivity() {
             }
             confirmDeleteCurrentImage()
         }
+        btnReplayGeneration.setOnClickListener {
+            if (!chromeVisible) {
+                revealViewerChrome()
+                return@setOnClickListener
+            }
+            showReplayDialog()
+        }
         revealViewerChrome()
+    }
+
+    private fun showReplayDialog() {
+        val entry = currentEntries.getOrNull(currentIndex) ?: return
+        val draft = GeneratedImageDraftStore.get(this, GeneratedImageDraftStore.keyFor(entry.uri))
+        val missing = GeneratedImageReplayPolicy.missingReason(draft)
+        if (missing != null) {
+            Toast.makeText(this, missing, Toast.LENGTH_LONG).show()
+            return
+        }
+        val recipe = GeneratedImageReplayPolicy.recipeFrom(draft) ?: return
+        val md3 = Md3PopupDialog.wrap(this)
+        val view = android.view.LayoutInflater.from(md3).inflate(R.layout.dialog_replay_generation, null)
+        val summary = view.findViewById<android.widget.TextView>(R.id.tv_replay_summary)
+        val promptView = view.findViewById<android.widget.TextView>(R.id.tv_replay_prompt)
+        val stepsField = view.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_replay_steps)
+        summary.text = GeneratedImageReplayPolicy.summary(recipe)
+        promptView.text = recipe.prompt
+        stepsField.setText(recipe.steps.toString())
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            md3,
+            com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog
+        ).setView(view).create()
+        view.findViewById<View>(R.id.btn_replay_cancel).setOnClickListener { dialog.dismiss() }
+        view.findViewById<View>(R.id.btn_replay_generate).setOnClickListener {
+            val steps = GeneratedImageReplayPolicy.clampSteps(stepsField.text?.toString()?.toIntOrNull())
+            dialog.dismiss()
+            startReplayGeneration(recipe, steps)
+        }
+        dialog.show()
+    }
+
+    private fun startReplayGeneration(recipe: GeneratedImageReplayPolicy.Recipe, steps: Int) {
+        if (GenerationProgressManager.state.value.isGenerating) {
+            Toast.makeText(this, GeneratedImageReplayPolicy.BUSY, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val request = GeneratedImageReplayPolicy.request(recipe, steps)
+        GenerationProgressManager.startGeneration(batchMode = true, total = 1)
+        startActivity(Intent(this, GenerationProgressActivity::class.java))
+        lifecycleScope.launch {
+            val probe = GenerationAgentClient.probe(this@FullScreenImageActivity)
+            if (probe.code != AgentConnectionClassifier.OK &&
+                probe.code != AgentConnectionClassifier.SD_DOWN
+            ) {
+                GenerationProgressManager.endGeneration(force = true)
+                AgentConnectionUi.showDiagnosis(
+                    this@FullScreenImageActivity,
+                    probe,
+                    "PC生成エージェントに接続できない"
+                )
+                return@launch
+            }
+            try {
+                val accepted = GenerationAgentClient.submit(this@FullScreenImageActivity, listOf(request))
+                val completed = GenerationAgentClient.monitor(this@FullScreenImageActivity, accepted)
+                completed.imageUrls.forEach { url ->
+                    GeneratedImageDraftStore.seedGeneratedSource(
+                        this@FullScreenImageActivity,
+                        android.net.Uri.parse(url),
+                        request.tags,
+                        request.cardStates,
+                        request.width,
+                        request.height,
+                        request.steps,
+                        request.samplerName,
+                        request.prompt,
+                        request.randomPickedIds,
+                        request.randomEnabledCategories,
+                        request.seed,
+                        request.negativePrompt
+                    )
+                }
+                Toast.makeText(
+                    this@FullScreenImageActivity,
+                    "PC生成完了: ${completed.completed}/${completed.total}枚（閲覧から確認できます）",
+                    Toast.LENGTH_LONG
+                ).show()
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                GenerationProgressManager.endGeneration(force = true)
+                AgentConnectionUi.showDiagnosis(
+                    this@FullScreenImageActivity,
+                    AgentConnectionLog.last ?: AgentConnectionClassifier.fromException(error),
+                    "PC生成エージェントとの通信に失敗"
+                )
+            }
+        }
     }
 
     private fun confirmDeleteCurrentImage() {
@@ -220,6 +320,8 @@ class FullScreenImageActivity : AppCompatActivity() {
             btnDeleteImage.alpha = 1f
             btnCreatePreset.visibility = View.VISIBLE
             btnCreatePreset.alpha = 1f
+            btnReplayGeneration.visibility = View.VISIBLE
+            btnReplayGeneration.alpha = 1f
         }
         if (isGeneratedViewer) {
             chromeHandler.postDelayed(hideChromeRunnable, ViewerChromePolicy.HIDE_AFTER_MS)
@@ -251,6 +353,7 @@ class FullScreenImageActivity : AppCompatActivity() {
         if (isGeneratedViewer) {
             views.add(btnDeleteImage)
             views.add(btnStartTempChat)
+            views.add(btnReplayGeneration)
         }
         return views
     }
