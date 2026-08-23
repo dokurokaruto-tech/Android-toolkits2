@@ -2977,5 +2977,3 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         updateActiveImageHighlight()
     }
 }
-}
-}
