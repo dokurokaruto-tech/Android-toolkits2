@@ -166,7 +166,9 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                         image.height,
                         image.steps,
                         image.sampler,
-                        image.prompt
+                        image.prompt,
+                        image.randomPickedIds,
+                        image.randomEnabledCategories
                     )
                 }
                 openAlbum(

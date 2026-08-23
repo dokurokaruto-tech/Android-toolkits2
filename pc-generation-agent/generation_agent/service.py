@@ -541,8 +541,12 @@ class GenerationService:
         result.pop("n_iter", None)
         result.pop("tags", None)
         result.pop("card_states", None)
+        result.pop("random_picked_ids", None)
+        result.pop("random_categories", None)
         result["_agent_tags"] = self._normalize_tags(task.get("tags"))
         result["_agent_card_states"] = self._normalize_card_states(task.get("card_states"))
+        result["_agent_random_picked_ids"] = self._normalize_id_list(task.get("random_picked_ids"))
+        result["_agent_random_categories"] = self._normalize_id_list(task.get("random_categories"))
         return result
 
     @staticmethod
@@ -559,6 +563,40 @@ class GenerationService:
             if len(tags) > 64:
                 raise ValueError("a task may contain at most 64 tags")
         return tags
+
+    @staticmethod
+    def _normalize_card_states(raw: Any) -> dict[str, int]:
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict):
+            raise ValueError("card_states must be an object")
+        states: dict[str, int] = {}
+        for key, value in raw.items():
+            card_id = str(key).strip()[:80]
+            try:
+                level = int(value)
+            except (TypeError, ValueError) as error:
+                raise ValueError("card_states values must be integers") from error
+            if card_id and 1 <= level <= 3:
+                states[card_id] = level
+            if len(states) > 128:
+                raise ValueError("a task may contain at most 128 card_states")
+        return states
+
+    @staticmethod
+    def _normalize_id_list(raw: Any) -> list[str]:
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            raise ValueError("id list must be an array")
+        values: list[str] = []
+        for item in raw:
+            text = str(item).strip()[:80]
+            if text and text not in values:
+                values.append(text)
+            if len(values) > 128:
+                raise ValueError("a task may contain at most 128 ids")
+        return values
 
     def _metadata_path(self, date: str, name: str) -> Path:
         return self.config.database_path.parent / "metadata" / date / f"{name}.json"
@@ -624,6 +662,8 @@ class GenerationService:
                 existing = {}
         tags = stored_payload.get("_agent_tags") or existing.get("tags") or []
         card_states = stored_payload.get("_agent_card_states") or existing.get("card_states") or {}
+        random_picked = stored_payload.get("_agent_random_picked_ids") or existing.get("random_picked_ids") or []
+        random_categories = stored_payload.get("_agent_random_categories") or existing.get("random_categories") or []
         metadata = {
             "job_id": job_id,
             "task_index": index,
@@ -632,5 +672,7 @@ class GenerationService:
             "parameters": sd_payload if sd_payload is not None else existing.get("parameters", {}),
             "tags": tags if isinstance(tags, list) else [],
             "card_states": card_states if isinstance(card_states, dict) else {},
+            "random_picked_ids": random_picked if isinstance(random_picked, list) else [],
+            "random_categories": random_categories if isinstance(random_categories, list) else [],
         }
         path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")

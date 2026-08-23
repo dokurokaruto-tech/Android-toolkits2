@@ -49,7 +49,9 @@ object GeneratedImageDraftStore {
         height: Int? = null,
         steps: Int? = null,
         sampler: String? = null,
-        prompt: String? = null
+        prompt: String? = null,
+        randomPickedIds: Set<String> = emptySet(),
+        randomEnabledCategories: Set<String> = emptySet()
     ) {
         val incoming = GeneratedImageTagBinding.collect(listOf(generatedTags))
         val key = keyFor(uri)
@@ -69,7 +71,13 @@ object GeneratedImageDraftStore {
             height = height ?: existing?.height,
             steps = steps ?: existing?.steps,
             sampler = sampler ?: existing?.sampler,
-            prompt = prompt?.takeIf { it.isNotBlank() } ?: existing?.prompt
+            prompt = prompt?.takeIf { it.isNotBlank() } ?: existing?.prompt,
+            randomPickedIds = if (randomPickedIds.isNotEmpty()) randomPickedIds else existing?.randomPickedIds.orEmpty(),
+            randomEnabledCategories = if (randomEnabledCategories.isNotEmpty()) {
+                randomEnabledCategories
+            } else {
+                existing?.randomEnabledCategories.orEmpty()
+            }
         )
         if (existing == next) return
         upsert(context, key, next)
@@ -96,7 +104,9 @@ object GeneratedImageDraftStore {
                 height = existing?.height,
                 steps = existing?.steps,
                 sampler = existing?.sampler,
-                prompt = existing?.prompt
+                prompt = existing?.prompt,
+                randomPickedIds = existing?.randomPickedIds.orEmpty(),
+                randomEnabledCategories = existing?.randomEnabledCategories.orEmpty()
             )
         )
         val chatId = entry.linkedChatId
@@ -151,7 +161,9 @@ object GeneratedImageDraftStore {
                 draft.height,
                 draft.steps,
                 draft.sampler,
-                draft.prompt
+                draft.prompt,
+                draft.randomPickedIds,
+                draft.randomEnabledCategories
             )
         }
         if (!plan.chatId.isNullOrBlank()) {
@@ -234,7 +246,9 @@ object GeneratedImageDraftStore {
                         height = item.optInt("height", 0).takeIf { it > 0 },
                         steps = item.optInt("steps", 0).takeIf { it > 0 },
                         sampler = item.optString("sampler").takeIf { it.isNotBlank() && it != "null" },
-                        prompt = item.optString("prompt").takeIf { it.isNotBlank() && it != "null" }
+                        prompt = item.optString("prompt").takeIf { it.isNotBlank() && it != "null" },
+                        randomPickedIds = GeneratedImageTagBinding.parseStringSet(item.optJSONArray("randomPickedIds")),
+                        randomEnabledCategories = GeneratedImageTagBinding.parseStringSet(item.optJSONArray("randomEnabledCategories"))
                     )
                 }
             }

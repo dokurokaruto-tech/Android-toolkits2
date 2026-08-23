@@ -26,7 +26,9 @@ data class AgentGenerationRequest(
     val samplerName: String,
     val purpose: String = "image",
     val tags: List<String> = emptyList(),
-    val cardStates: Map<String, Int> = emptyMap()
+    val cardStates: Map<String, Int> = emptyMap(),
+    val randomPickedIds: Set<String> = emptySet(),
+    val randomEnabledCategories: Set<String> = emptySet()
 )
 
 data class AgentGeneratedFolder(val date: String, val count: Int, val thumbnailUrl: String?)
@@ -41,7 +43,9 @@ data class AgentGeneratedImage(
     val height: Int? = null,
     val steps: Int? = null,
     val sampler: String? = null,
-    val prompt: String? = null
+    val prompt: String? = null,
+    val randomPickedIds: Set<String> = emptySet(),
+    val randomEnabledCategories: Set<String> = emptySet()
 )
 
 data class AgentJobState(
@@ -67,6 +71,7 @@ object GenerationAgentClient {
     private const val ACTIVE_JOB_KEY = "generation_agent_active_job_id"
     private const val ACTIVE_JOB_TAGS_KEY = "generation_agent_active_job_tags"
     private const val ACTIVE_JOB_CARDS_KEY = "generation_agent_active_job_cards"
+    private const val ACTIVE_JOB_RANDOM_KEY = "generation_agent_active_job_random"
     private const val LAST_GOOD_URL_KEY = "remote_server_url_last_good"
     private const val ALT_URL_KEY = "remote_server_url_alts"
     private const val TAG = "GenerationAgent"
@@ -209,6 +214,8 @@ object GenerationAgentClient {
                         if (id.isNotBlank() && level in 1..3) states.put(id, level)
                     }
                 })
+                put("random_picked_ids", GeneratedImageTagBinding.encodeStringSet(request.randomPickedIds))
+                put("random_categories", GeneratedImageTagBinding.encodeStringSet(request.randomEnabledCategories))
             })
         }
         val body = JSONObject().apply {
@@ -223,6 +230,13 @@ object GenerationAgentClient {
                 .putString(ACTIVE_JOB_KEY, state.id)
                 .putString(ACTIVE_JOB_TAGS_KEY, GeneratedImageTagBinding.encodeTagLists(requests.map { it.tags }))
                 .putString(ACTIVE_JOB_CARDS_KEY, GeneratedImageTagBinding.encodeCardStateLists(requests.map { it.cardStates }))
+                .putString(
+                    ACTIVE_JOB_RANDOM_KEY,
+                    GeneratedImageTagBinding.encodeRandomMetaLists(
+                        requests.map { it.randomPickedIds },
+                        requests.map { it.randomEnabledCategories }
+                    )
+                )
                 .commit()
         }
         seedCompletedUrls(context, state.imageUrls)
@@ -442,23 +456,33 @@ object GenerationAgentClient {
         if (urls.isEmpty()) return
         val tagLists = GeneratedImageTagBinding.decodeTagLists(settings(context).getString(ACTIVE_JOB_TAGS_KEY, null))
         val cardLists = GeneratedImageTagBinding.decodeCardStateLists(settings(context).getString(ACTIVE_JOB_CARDS_KEY, null))
+        val randomLists = GeneratedImageTagBinding.decodeRandomMetaLists(settings(context).getString(ACTIVE_JOB_RANDOM_KEY, null))
         val prepared = tagLists.mapIndexed { index, tags ->
+            val random = randomLists.getOrNull(index)
             GeneratedImageTagBinding.PreparedImage(
                 prompt = "",
                 negativePrompt = "",
                 tags = tags,
-                cardStates = cardLists.getOrNull(index).orEmpty()
+                cardStates = cardLists.getOrNull(index).orEmpty(),
+                randomPickedIds = random?.first.orEmpty(),
+                randomEnabledCategories = random?.second.orEmpty()
             )
         }
         if (prepared.isEmpty()) return
         val tagsByUrl = GeneratedImageTagBinding.tagsForCompletedUrls(urls, prepared).toMap()
         val cardsByUrl = GeneratedImageTagBinding.cardStatesForCompletedUrls(urls, prepared).toMap()
-        urls.forEach { url ->
+        urls.forEachIndexed { order, url ->
+            val item = GeneratedImageTagBinding.taskIndexFromUrl(url)
+                ?.let { prepared.getOrNull(it - 1) }
+                ?: prepared.getOrNull(order)
             GeneratedImageDraftStore.seedGeneratedSource(
                 context,
                 android.net.Uri.parse(url),
                 tagsByUrl[url].orEmpty(),
-                cardsByUrl[url].orEmpty()
+                cardsByUrl[url].orEmpty(),
+                prompt = item?.prompt,
+                randomPickedIds = item?.randomPickedIds.orEmpty(),
+                randomEnabledCategories = item?.randomEnabledCategories.orEmpty()
             )
         }
     }
@@ -468,6 +492,7 @@ object GenerationAgentClient {
             .remove(ACTIVE_JOB_KEY)
             .remove(ACTIVE_JOB_TAGS_KEY)
             .remove(ACTIVE_JOB_CARDS_KEY)
+            .remove(ACTIVE_JOB_RANDOM_KEY)
             .apply()
     }
 

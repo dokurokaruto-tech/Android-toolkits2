@@ -76,6 +76,38 @@ class GeneratedImagePresetPolicyTest {
     }
 
     @Test
+    @Test
+    fun randomizerModeDropsPickedCardsAndKeepsCategories() {
+        val source = GeneratedImagePresetPolicy.sourceFrom(
+            storedCards = mapOf("fixed" to 2, "rolled" to 1),
+            imageTags = emptySet(),
+            roster = emptyList(),
+            width = 720,
+            height = 1280,
+            steps = 20,
+            sampler = "Euler a",
+            thumbnail = "http://pc/a.png",
+            randomPickedIds = setOf("rolled"),
+            randomEnabledCategories = setOf("髪")
+        )!!
+        assertEquals(
+            mapOf("fixed" to 2, "rolled" to 1),
+            GeneratedImagePresetPolicy.cardsForMode(source, GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS)
+        )
+        assertEquals(
+            mapOf("fixed" to 2),
+            GeneratedImagePresetPolicy.cardsForMode(source, GeneratedImagePresetPolicy.FromImageMode.KEEP_RANDOMIZER)
+        )
+        assertEquals(
+            setOf("髪"),
+            GeneratedImagePresetPolicy.randomCategoriesForMode(source, GeneratedImagePresetPolicy.FromImageMode.KEEP_RANDOMIZER)
+        )
+        assertEquals(
+            emptySet<String>(),
+            GeneratedImagePresetPolicy.randomCategoriesForMode(source, GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS)
+        )
+    }
+
     fun missingSourceReturnsNull() {
         assertNull(
             GeneratedImagePresetPolicy.sourceFrom(

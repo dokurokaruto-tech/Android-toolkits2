@@ -81,6 +81,8 @@ class GeneratedImageTagBindingTest {
         assertEquals(listOf("金髪", "メイド"), included.single().tags)
         val skipped = GeneratedImageTagBinding.buildPreparedImages(snapshot, chance = { 90 }, pickIndex = { 0 })
         assertEquals(listOf("金髪"), skipped.single().tags)
+        assertEquals(setOf("c2"), included.single().randomPickedIds)
+        assertEquals(emptySet<String>(), skipped.single().randomPickedIds)
     }
 
     @Test

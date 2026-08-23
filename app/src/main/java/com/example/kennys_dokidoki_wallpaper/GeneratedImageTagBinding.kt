@@ -33,7 +33,9 @@ object GeneratedImageTagBinding {
         val prompt: String,
         val negativePrompt: String,
         val tags: List<String>,
-        val cardStates: Map<String, Int> = emptyMap()
+        val cardStates: Map<String, Int> = emptyMap(),
+        val randomPickedIds: Set<String> = emptySet(),
+        val randomEnabledCategories: Set<String> = emptySet()
     )
 
     fun collect(cardTagSets: Iterable<Iterable<String>>): Set<String> {
@@ -90,6 +92,7 @@ object GeneratedImageTagBinding {
     ): List<PreparedImage> {
         val prepared = mutableListOf<PreparedImage>()
         repeat(snapshot.batchCount.coerceAtLeast(1)) {
+            val explicitIds = snapshot.selected.map { it.first.id }.toSet()
             val chosen = snapshot.selected.toMutableList()
             snapshot.roster.forEach { card ->
                 if (card.useIndividualRandomizer && chosen.none { it.first.id == card.id }) {
@@ -188,6 +191,47 @@ object GeneratedImageTagBinding {
             buildList {
                 for (index in 0 until array.length()) {
                     add(parseCardStates(array.optJSONObject(index)))
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun parseStringSet(raw: JSONArray?): Set<String> {
+        if (raw == null) return emptySet()
+        val result = linkedSetOf<String>()
+        for (index in 0 until raw.length()) {
+            val value = raw.optString(index).trim()
+            if (value.isNotEmpty()) result.add(value)
+        }
+        return result
+    }
+
+    fun encodeStringSet(values: Collection<String>): JSONArray =
+        JSONArray().also { array -> values.map { it.trim() }.filter { it.isNotEmpty() }.distinct().forEach { array.put(it) } }
+
+    fun encodeRandomMetaLists(
+        picked: List<Set<String>>,
+        categories: List<Set<String>>
+    ): String {
+        val array = JSONArray()
+        val count = maxOf(picked.size, categories.size)
+        for (index in 0 until count) {
+            array.put(JSONObject().apply {
+                put("picked", encodeStringSet(picked.getOrNull(index).orEmpty()))
+                put("categories", encodeStringSet(categories.getOrNull(index).orEmpty()))
+            })
+        }
+        return array.toString()
+    }
+
+    fun decodeRandomMetaLists(raw: String?): List<Pair<Set<String>, Set<String>>> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: JSONObject()
+                    add(parseStringSet(item.optJSONArray("picked")) to parseStringSet(item.optJSONArray("categories")))
                 }
             }
         }.getOrDefault(emptyList())

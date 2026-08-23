@@ -7,14 +7,21 @@ import java.util.UUID
  * 生成画像から「その画像に使われたカードと同じ」プリセットを組み立てる。
  */
 object GeneratedImagePresetPolicy {
+    enum class FromImageMode { INDIVIDUAL_CARDS, KEEP_RANDOMIZER }
+
     data class Source(
         val cardStates: Map<String, Int>,
+        val randomPickedIds: Set<String>,
+        val randomEnabledCategories: Set<String>,
         val width: Int,
         val height: Int,
         val steps: Int,
         val sampler: String,
         val thumbnail: String
-    )
+    ) {
+        val hasRandomizerChoice: Boolean
+            get() = randomEnabledCategories.isNotEmpty() || randomPickedIds.isNotEmpty()
+    }
 
     data class InferableCard(
         val id: String,
@@ -94,12 +101,17 @@ object GeneratedImagePresetPolicy {
         steps: Int?,
         sampler: String?,
         thumbnail: String,
-        prompt: String? = null
+        prompt: String? = null,
+        randomPickedIds: Set<String> = emptySet(),
+        randomEnabledCategories: Set<String> = emptySet()
     ): Source? {
         val cards = resolveCardStates(storedCards, imageTags, roster, prompt)
         if (cards.isEmpty()) return null
+        val picked = randomPickedIds.filter { it in cards }.toSet()
         return Source(
             cardStates = cards,
+            randomPickedIds = picked,
+            randomEnabledCategories = randomEnabledCategories.map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
             width = width?.takeIf { it > 0 } ?: 720,
             height = height?.takeIf { it > 0 } ?: 1280,
             steps = steps?.takeIf { it > 0 } ?: 20,
@@ -108,18 +120,32 @@ object GeneratedImagePresetPolicy {
         )
     }
 
-    fun buildPreset(source: Source, id: String = UUID.randomUUID().toString()): Preset {
+    fun cardsForMode(source: Source, mode: FromImageMode): Map<String, Int> =
+        if (mode == FromImageMode.KEEP_RANDOMIZER) {
+            source.cardStates.filterKeys { it !in source.randomPickedIds }
+        } else {
+            source.cardStates
+        }
+
+    fun randomCategoriesForMode(source: Source, mode: FromImageMode): Set<String> =
+        if (mode == FromImageMode.KEEP_RANDOMIZER) source.randomEnabledCategories else emptySet()
+
+    fun buildPreset(
+        source: Source,
+        mode: FromImageMode = FromImageMode.INDIVIDUAL_CARDS,
+        id: String = UUID.randomUUID().toString()
+    ): Preset {
         return Preset(
             id = id,
             name = PresetSavePolicy.defaultName(source.width, source.height),
             category = PresetSavePolicy.QUICK_CATEGORY,
-            activePromptStates = source.cardStates,
+            activePromptStates = cardsForMode(source, mode),
             width = source.width,
             height = source.height,
             steps = source.steps,
             batchCount = 1,
             sampler = source.sampler,
-            randomEnabledCategories = emptySet(),
+            randomEnabledCategories = randomCategoriesForMode(source, mode),
             thumbnailUri = source.thumbnail.takeIf { it.isNotBlank() }?.let(Uri::parse)
         )
     }

@@ -1034,7 +1034,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         steps = startSnapshot.steps,
                         samplerName = startSnapshot.sampler,
                         tags = TagManager.minimizeTags(prepared.tags.toSet()).toList(),
-                        cardStates = prepared.cardStates
+                        cardStates = prepared.cardStates,
+                        randomPickedIds = prepared.randomPickedIds,
+                        randomEnabledCategories = prepared.randomEnabledCategories
                     )
                 }
 
@@ -1065,7 +1067,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         val completed = GenerationAgentClient.monitor(this@MainActivity, accepted)
                         val preparedForUrls = requests.map {
                             GeneratedImageTagBinding.PreparedImage(
-                                it.prompt, it.negativePrompt, it.tags, it.cardStates
+                                it.prompt,
+                                it.negativePrompt,
+                                it.tags,
+                                it.cardStates,
+                                it.randomPickedIds,
+                                it.randomEnabledCategories
                             )
                         }
                         val tagsByUrl = GeneratedImageTagBinding.tagsForCompletedUrls(completed.imageUrls, preparedForUrls).toMap()
@@ -1083,7 +1090,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                                 startSnapshot.height,
                                 startSnapshot.steps,
                                 startSnapshot.sampler,
-                                prepared?.prompt
+                                prepared?.prompt,
+                                prepared?.randomPickedIds.orEmpty(),
+                                prepared?.randomEnabledCategories.orEmpty()
                             )
                         }
                         Toast.makeText(
