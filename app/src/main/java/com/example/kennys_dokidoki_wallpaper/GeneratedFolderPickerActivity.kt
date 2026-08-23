@@ -110,7 +110,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         val items = remote.map {
             FolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date)
         }
-        val remoteNames = remote.map { it.name }.toSet()
+        val remoteNames = remote.map { it.date }.toSet()
         val local = loadLocalFolders().map {
             if (it.name in remoteNames) it.copy(name = "${it.name} (端末)") else it
         }
