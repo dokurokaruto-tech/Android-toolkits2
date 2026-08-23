@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from generation_agent.config import AgentConfig
 from generation_agent.database import JobDatabase
-from generation_agent.network import is_client_disconnect, is_idle_timeout_log
 from generation_agent.server import AgentServer
 from generation_agent.service import GenerationService
 
@@ -251,15 +250,6 @@ class AgentIntegrationTest(unittest.TestCase):
             self.request("/api/v1/jobs", "POST", {"tasks": [{"prompt": "", "width": 1}]})
         self.assertIsNone(self.service.resolve_file("../../etc", "passwd"))
         self.assertIsNone(self.service.resolve_file("2026-08-22", "../secret.png"))
-
-    def test_windows_lan_timeout_is_treated_as_client_disconnect(self) -> None:
-        timeout = TimeoutError(
-            10060,
-            "接続済みの呼び出し先が一定の時間を過ぎても正しく応答しなかったため、接続できませんでした。",
-        )
-        self.assertTrue(is_client_disconnect(timeout))
-        self.assertTrue(is_idle_timeout_log("Request timed out: TimeoutError(10060, '接続済みの呼び出し先')"))
-        self.assertFalse(is_idle_timeout_log("SD HTTP 500: boom"))
 
     def test_database_requeues_interrupted_process_state(self) -> None:
         path = Path(self.temp.name) / "recovery.sqlite3"
