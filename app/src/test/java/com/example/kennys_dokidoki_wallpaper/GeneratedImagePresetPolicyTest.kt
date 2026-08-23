@@ -25,6 +25,44 @@ class GeneratedImagePresetPolicyTest {
     }
 
     @Test
+    fun promptRestoresEverySelectedCardAndItsLevel() {
+        val roster = listOf(
+            GeneratedImagePresetPolicy.InferableCard("hair", emptySet(), "blonde hair"),
+            GeneratedImagePresetPolicy.InferableCard("pose", emptySet(), "sitting"),
+            GeneratedImagePresetPolicy.InferableCard("look", emptySet(), "smile"),
+            GeneratedImagePresetPolicy.InferableCard("unused", emptySet(), "standing")
+        )
+        val prompt = "blonde hair, (sitting:1.2), (smile:1.6)"
+        val inferred = GeneratedImagePresetPolicy.inferCardStatesFromPrompt(prompt, roster)
+        assertEquals(mapOf("hair" to 1, "pose" to 2, "look" to 3), inferred)
+        val source = GeneratedImagePresetPolicy.sourceFrom(
+            storedCards = emptyMap(),
+            imageTags = setOf("金髪"),
+            roster = roster,
+            width = 720,
+            height = 1280,
+            steps = 20,
+            sampler = "Euler a",
+            thumbnail = "http://pc/a.png",
+            prompt = prompt
+        )!!
+        assertEquals(3, source.cardStates.size)
+        assertEquals(2, source.cardStates["pose"])
+    }
+
+    @Test
+    fun longerPromptIsMatchedBeforeItsSubstring() {
+        val inferred = GeneratedImagePresetPolicy.inferCardStatesFromPrompt(
+            "very long blonde hair, blonde hair",
+            listOf(
+                GeneratedImagePresetPolicy.InferableCard("short", emptySet(), "blonde hair"),
+                GeneratedImagePresetPolicy.InferableCard("long", emptySet(), "very long blonde hair")
+            )
+        )
+        assertEquals(mapOf("long" to 1, "short" to 1), inferred)
+    }
+
+    @Test
     fun infersCardsWhoseTagsAreAllOnTheImage() {
         val inferred = GeneratedImagePresetPolicy.inferCardStates(
             imageTags = setOf("金髪", "幼女", " tail "),

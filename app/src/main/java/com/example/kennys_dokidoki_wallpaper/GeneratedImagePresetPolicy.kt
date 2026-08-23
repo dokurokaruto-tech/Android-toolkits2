@@ -18,7 +18,8 @@ object GeneratedImagePresetPolicy {
 
     data class InferableCard(
         val id: String,
-        val appliedTags: Set<String>
+        val appliedTags: Set<String>,
+        val mainPrompt: String = ""
     )
 
     fun inferCardStates(
@@ -37,13 +38,51 @@ object GeneratedImagePresetPolicy {
         return result
     }
 
+    /**
+     * 完成プロンプトからカードと選択強度を復元する。
+     * 長いプロンプトから順に食い、部分一致で別カードを誤認しない。
+     */
+    fun inferCardStatesFromPrompt(
+        prompt: String,
+        roster: Collection<InferableCard>
+    ): Map<String, Int> {
+        var remaining = prompt
+        if (remaining.isBlank()) return emptyMap()
+        val result = linkedMapOf<String, Int>()
+        roster.filter { it.mainPrompt.trim().isNotEmpty() }
+            .sortedByDescending { it.mainPrompt.trim().length }
+            .forEach { card ->
+                val text = card.mainPrompt.trim()
+                val weighted3 = "($text:1.6)"
+                val weighted2 = "($text:1.2)"
+                val level = when {
+                    remaining.contains(weighted3) -> 3
+                    remaining.contains(weighted2) -> 2
+                    remaining.contains(text) -> 1
+                    else -> return@forEach
+                }
+                val token = when (level) {
+                    3 -> weighted3
+                    2 -> weighted2
+                    else -> text
+                }
+                remaining = remaining.replaceFirst(token, "")
+                result[card.id] = level
+            }
+        return result
+    }
+
     fun resolveCardStates(
         stored: Map<String, Int>,
         imageTags: Set<String>,
-        roster: Collection<InferableCard>
+        roster: Collection<InferableCard>,
+        prompt: String? = null
     ): Map<String, Int> {
-        return stored.filter { it.key.isNotBlank() && it.value in 1..3 }
-            .ifEmpty { inferCardStates(imageTags, roster) }
+        val kept = stored.filter { it.key.isNotBlank() && it.value in 1..3 }
+        if (kept.isNotEmpty()) return kept
+        val fromPrompt = inferCardStatesFromPrompt(prompt.orEmpty(), roster)
+        if (fromPrompt.isNotEmpty()) return fromPrompt
+        return inferCardStates(imageTags, roster)
     }
 
     fun sourceFrom(
@@ -54,9 +93,10 @@ object GeneratedImagePresetPolicy {
         height: Int?,
         steps: Int?,
         sampler: String?,
-        thumbnail: String
+        thumbnail: String,
+        prompt: String? = null
     ): Source? {
-        val cards = resolveCardStates(storedCards, imageTags, roster)
+        val cards = resolveCardStates(storedCards, imageTags, roster, prompt)
         if (cards.isEmpty()) return null
         return Source(
             cardStates = cards,

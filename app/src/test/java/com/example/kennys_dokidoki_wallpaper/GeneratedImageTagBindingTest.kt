@@ -58,6 +58,7 @@ class GeneratedImageTagBindingTest {
         assertEquals(listOf("金髪", "幼女", "ワンピース"), prepared[0].tags)
         assertEquals(prepared[0].tags, prepared[1].tags)
         assertEquals(mapOf("c1" to 1, "c2" to 2), prepared[0].cardStates)
+        assertEquals(prepared[0].cardStates, prepared[1].cardStates)
         assertTrue(prepared[0].prompt.contains("(dress:1.2)"))
     }
 

@@ -48,7 +48,8 @@ object GeneratedImageDraftStore {
         width: Int? = null,
         height: Int? = null,
         steps: Int? = null,
-        sampler: String? = null
+        sampler: String? = null,
+        prompt: String? = null
     ) {
         val incoming = GeneratedImageTagBinding.collect(listOf(generatedTags))
         val key = keyFor(uri)
@@ -67,7 +68,8 @@ object GeneratedImageDraftStore {
             width = width ?: existing?.width,
             height = height ?: existing?.height,
             steps = steps ?: existing?.steps,
-            sampler = sampler ?: existing?.sampler
+            sampler = sampler ?: existing?.sampler,
+            prompt = prompt?.takeIf { it.isNotBlank() } ?: existing?.prompt
         )
         if (existing == next) return
         upsert(context, key, next)
@@ -93,7 +95,8 @@ object GeneratedImageDraftStore {
                 width = existing?.width,
                 height = existing?.height,
                 steps = existing?.steps,
-                sampler = existing?.sampler
+                sampler = existing?.sampler,
+                prompt = existing?.prompt
             )
         )
         val chatId = entry.linkedChatId
@@ -147,7 +150,8 @@ object GeneratedImageDraftStore {
                 draft.width,
                 draft.height,
                 draft.steps,
-                draft.sampler
+                draft.sampler,
+                draft.prompt
             )
         }
         if (!plan.chatId.isNullOrBlank()) {
@@ -229,7 +233,8 @@ object GeneratedImageDraftStore {
                         width = item.optInt("width", 0).takeIf { it > 0 },
                         height = item.optInt("height", 0).takeIf { it > 0 },
                         steps = item.optInt("steps", 0).takeIf { it > 0 },
-                        sampler = item.optString("sampler").takeIf { it.isNotBlank() && it != "null" }
+                        sampler = item.optString("sampler").takeIf { it.isNotBlank() && it != "null" },
+                        prompt = item.optString("prompt").takeIf { it.isNotBlank() && it != "null" }
                     )
                 }
             }
@@ -246,6 +251,14 @@ object GeneratedImageDraftStore {
                 put("tags", JSONArray().also { array -> draft.tags.forEach { array.put(it) } })
                 put("description", draft.description ?: JSONObject.NULL)
                 put("linkedChatId", draft.linkedChatId ?: JSONObject.NULL)
+                put("cardStates", JSONObject().also { states ->
+                    draft.cardStates.forEach { (id, level) -> states.put(id, level) }
+                })
+                put("width", draft.width ?: JSONObject.NULL)
+                put("height", draft.height ?: JSONObject.NULL)
+                put("steps", draft.steps ?: JSONObject.NULL)
+                put("sampler", draft.sampler ?: JSONObject.NULL)
+                put("prompt", draft.prompt ?: JSONObject.NULL)
             })
         }
         AtomicFiles.writeUtf8(draftsFile(context), obj.toString())

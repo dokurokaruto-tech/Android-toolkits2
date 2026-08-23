@@ -40,7 +40,8 @@ data class AgentGeneratedImage(
     val width: Int? = null,
     val height: Int? = null,
     val steps: Int? = null,
-    val sampler: String? = null
+    val sampler: String? = null,
+    val prompt: String? = null
 )
 
 data class AgentJobState(
@@ -287,7 +288,8 @@ object GenerationAgentClient {
                         width = parameters?.optInt("width", 0)?.takeIf { it > 0 },
                         height = parameters?.optInt("height", 0)?.takeIf { it > 0 },
                         steps = parameters?.optInt("steps", 0)?.takeIf { it > 0 },
-                        sampler = parameters?.optString("sampler_name")?.takeIf { it.isNotBlank() }
+                        sampler = parameters?.optString("sampler_name")?.takeIf { it.isNotBlank() },
+                        prompt = parameters?.optString("prompt")?.takeIf { it.isNotBlank() }
                     )
                 )
             }

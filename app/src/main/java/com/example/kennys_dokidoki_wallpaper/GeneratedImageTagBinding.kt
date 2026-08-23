@@ -129,7 +129,8 @@ object GeneratedImageTagBinding {
                 PreparedImage(
                     prompt = prompt,
                     negativePrompt = negative,
-                    tags = collect(chosen.map { it.first.appliedTags }).toList()
+                    tags = collect(chosen.map { it.first.appliedTags }).toList(),
+                    cardStates = chosen.associate { it.first.id to it.second }
                 )
             )
         }

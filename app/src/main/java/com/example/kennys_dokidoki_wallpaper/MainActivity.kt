@@ -1070,16 +1070,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         }
                         val tagsByUrl = GeneratedImageTagBinding.tagsForCompletedUrls(completed.imageUrls, preparedForUrls).toMap()
                         val cardsByUrl = GeneratedImageTagBinding.cardStatesForCompletedUrls(completed.imageUrls, preparedForUrls).toMap()
-                        completed.imageUrls.forEach { url ->
+                        completed.imageUrls.forEachIndexed { order, url ->
+                            val prepared = GeneratedImageTagBinding.taskIndexFromUrl(url)
+                                ?.let { preparedForUrls.getOrNull(it - 1) }
+                                ?: preparedForUrls.getOrNull(order)
                             GeneratedImageDraftStore.seedGeneratedSource(
                                 this@MainActivity,
                                 Uri.parse(url),
-                                tagsByUrl[url].orEmpty(),
-                                cardsByUrl[url].orEmpty(),
+                                tagsByUrl[url] ?: prepared?.tags.orEmpty(),
+                                cardsByUrl[url] ?: prepared?.cardStates.orEmpty(),
                                 startSnapshot.width,
                                 startSnapshot.height,
                                 startSnapshot.steps,
-                                startSnapshot.sampler
+                                startSnapshot.sampler,
+                                prepared?.prompt
                             )
                         }
                         Toast.makeText(

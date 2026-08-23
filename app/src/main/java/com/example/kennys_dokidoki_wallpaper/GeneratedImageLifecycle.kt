@@ -12,7 +12,8 @@ object GeneratedImageLifecycle {
         val width: Int? = null,
         val height: Int? = null,
         val steps: Int? = null,
-        val sampler: String? = null
+        val sampler: String? = null,
+        val prompt: String? = null
     )
 
     data class ImportPlan(

@@ -17,7 +17,7 @@ object GeneratedImagePresetFactory {
             ?: DataManager.allImages.find { it.uri.toString() == uri.toString() }?.tags
             ?: emptySet()
         val roster = PromptCardManager.promptCards.map {
-            GeneratedImagePresetPolicy.InferableCard(it.id, it.appliedTags.toSet())
+            GeneratedImagePresetPolicy.InferableCard(it.id, it.appliedTags.toSet(), it.mainPrompt)
         }
         val source = GeneratedImagePresetPolicy.sourceFrom(
             storedCards = draft?.cardStates.orEmpty(),
@@ -27,7 +27,8 @@ object GeneratedImagePresetFactory {
             height = draft?.height,
             steps = draft?.steps,
             sampler = draft?.sampler,
-            thumbnail = (thumbnailUri ?: uri).toString()
+            thumbnail = (thumbnailUri ?: uri).toString(),
+            prompt = draft?.prompt
         )
         if (source == null) {
             Toast.makeText(context, "この画像に使われたカードが分からない。新しく生成した画像なら残る。", Toast.LENGTH_LONG).show()
