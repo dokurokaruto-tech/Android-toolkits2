@@ -1050,7 +1050,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             // 閉じても、指定枚数がPCの永続キューに残って最後まで生成される。
             GenerationProgressManager.startGeneration(batchMode = true, total = totalImages.coerceAtLeast(1))
             startActivity(Intent(this, GenerationProgressActivity::class.java))
-            Toast.makeText(this, "計 ${totalImages}枚をPCへ送信します。", Toast.LENGTH_SHORT).show()
 
             lifecycleScope.launch {
                 val requests = preparedImages.map { prepared ->
