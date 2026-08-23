@@ -62,7 +62,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var selectedStripAdapter: SelectedCardStripAdapter
     private lateinit var selectedStrip: CollapsibleCardStrip
     private var isStripCollapsed = false
-    private var stripTouchStartY = 0f
     private lateinit var recyclerSelectedCards: RecyclerView
     private var lastStripPad = -1
     private lateinit var btnSavePreset: Button
@@ -959,28 +958,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             settingsPrefs.edit().putBoolean(BuilderStripStatePolicy.KEY_COLLAPSED, collapsed).apply()
         }
         selectedStrip.applyCollapsed(isStripCollapsed, animate = false)
-        recyclerSelectedCards.addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
-            override fun onInterceptTouchEvent(rv: RecyclerView, e: android.view.MotionEvent): Boolean {
-                if (selectedStrip.isCollapsed) {
-                    if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN || e.actionMasked == android.view.MotionEvent.ACTION_UP) {
-                        selectedStrip.expand()
-                    }
-                    return true
-                }
-                when (e.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN -> stripTouchStartY = e.rawY
-                    android.view.MotionEvent.ACTION_MOVE -> {
-                        if (e.rawY - stripTouchStartY > 80f) {
-                            selectedStrip.collapse()
-                            return true
-                        }
-                    }
-                }
-                return false
-            }
-            override fun onTouchEvent(rv: RecyclerView, e: android.view.MotionEvent) {}
-            override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {}
-        })
         updateSelectedCardStrip()
 
         // undo/redo ボタン

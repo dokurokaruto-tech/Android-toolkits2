@@ -538,11 +538,22 @@
                         android:layout_width="match_parent"
                         android:layout_height="44dp">
 
-                        <View
-                            android:layout_width="40dp"
-                            android:layout_height="5dp"
+                        <FrameLayout
+                            android:id="@+id/builder_strip_handle"
+                            android:layout_width="72dp"
+                            android:layout_height="match_parent"
                             android:layout_gravity="center"
-                            android:background="@drawable/bg_grabber" />
+                            android:clickable="true"
+                            android:contentDescription="カード一覧の開閉"
+                            android:focusable="true"
+                            tools:ignore="HardcodedText">
+
+                            <View
+                                android:layout_width="40dp"
+                                android:layout_height="5dp"
+                                android:layout_gravity="center"
+                                android:background="@drawable/bg_grabber" />
+                        </FrameLayout>
 
                         <LinearLayout
                             android:id="@+id/layout_builder_history"
