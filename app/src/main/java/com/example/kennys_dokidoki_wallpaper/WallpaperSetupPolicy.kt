@@ -6,8 +6,6 @@ package com.example.kennys_dokidoki_wallpaper
  * 以前聞いたかどうかは見ない。再インストールでデータが残っても同じ。
  */
 object WallpaperSetupPolicy {
-    const val PREFS_NAME = "settings"
-    const val KEY_PROMPTED = "live_wallpaper_setup_prompted_v1"
     const val TITLE = "ライブ壁紙にしますか？"
     const val MESSAGE =
         "このアプリをホーム画面の壁紙として使うには、システムの壁紙設定で一度選ぶ必要がある。今設定する？"
