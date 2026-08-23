@@ -422,8 +422,8 @@ object GenerationAgentClient {
     }
 
     /**
-     * Generates a card thumbnail on the PC and returns only its remote URI. No image bytes
-     * are written to Android storage; Glide displays this URI with disk caching disabled.
+     * Generates a card thumbnail on the PC and returns its remote URI.
+     * ThumbnailBinder then downloads the compressed JPEG and stores it on device.
      */
     suspend fun generateThumbnail(
         context: Context,

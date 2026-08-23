@@ -86,6 +86,7 @@ object ThumbnailGenerationCoordinator {
     }
 
     fun ensureWatching(context: Context) {
+        ThumbnailLocalCache.enqueuePending(context)
         if (watchJob?.isActive == true) return
         if (!GenerationAgentClient.hasPendingJob(context)) return
         val app = context.applicationContext

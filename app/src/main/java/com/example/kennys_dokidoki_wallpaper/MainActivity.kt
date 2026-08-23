@@ -489,6 +489,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onResume()
         DataManager.loadData(this)
         TagManager.loadTags(this)
+        ThumbnailLocalCache.enqueuePending(this)
         applyQuickFilter()
         imageSetAdapter.notifyDataSetChanged()
         tagPromptAdapter.refreshItemsFromManager()

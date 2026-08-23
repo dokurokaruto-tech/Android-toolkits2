@@ -6,6 +6,7 @@ import android.net.Uri
 /**
  * 完成したサムネイルURLをカード／プリセットへ載せる。
  * 対象がまだ無いときは pending に残し、保存時に回収する。
+ * リモートURLは圧縮JPEGを端末へ保存してから、そのローカルURIへ差し替える。
  */
 object ThumbnailBinder {
     fun interface Listener {
@@ -43,7 +44,8 @@ object ThumbnailBinder {
         var cardsDirty = false
         var presetsDirty = false
         ThumbnailBindPolicy.pairUrls(urls, targets).forEach { (target, url) ->
-            val uri = Uri.parse(url)
+            val uri = Uri.parse(ThumbnailLocalCachePolicy.toMobileThumbnailUrl(url) ?: url)
+            persistRemote(context, target, uri)
             when (applyLoaded(context, target, uri)) {
                 ApplyResult.CARD -> {
                     cardsDirty = true
@@ -70,6 +72,7 @@ object ThumbnailBinder {
     fun applyOne(context: Context, target: ThumbnailBindPolicy.Target, uri: Uri): Boolean {
         PromptCardManager.loadCards(context)
         PresetManager.loadPresets(context)
+        persistRemote(context, target, uri)
         return when (applyLoaded(context, target, uri)) {
             ApplyResult.CARD -> {
                 PromptCardManager.saveCards(context)
@@ -95,6 +98,12 @@ object ThumbnailBinder {
 
     private enum class ApplyResult { CARD, PRESET, PENDING, UNCHANGED }
 
+    private fun persistRemote(context: Context, target: ThumbnailBindPolicy.Target, uri: Uri) {
+        if (ThumbnailLocalCachePolicy.needsLocalCopy(uri.toString())) {
+            ThumbnailLocalCache.enqueue(context, target, uri)
+        }
+    }
+
     private fun applyLoaded(
         context: Context,
         target: ThumbnailBindPolicy.Target,
@@ -107,7 +116,16 @@ object ThumbnailBinder {
                 if (card == null) {
                     ThumbnailBindStore.putPending(context, target, uri)
                     ApplyResult.PENDING
-                } else if (card.thumbnailUri?.toString() == uri.toString()) {
+                } else if (
+                    card.thumbnailUri?.toString() == uri.toString() ||
+                    (
+                        ThumbnailLocalCachePolicy.needsLocalCopy(uri.toString()) &&
+                            ThumbnailLocalCachePolicy.shouldKeepCurrent(
+                                card.thumbnailUri?.toString(),
+                                uri.toString()
+                            )
+                        )
+                ) {
                     ThumbnailBindStore.consumePending(context, target)
                     ApplyResult.UNCHANGED
                 } else {
@@ -121,7 +139,16 @@ object ThumbnailBinder {
                 if (preset == null) {
                     ThumbnailBindStore.putPending(context, target, uri)
                     ApplyResult.PENDING
-                } else if (preset.thumbnailUri?.toString() == uri.toString()) {
+                } else if (
+                    preset.thumbnailUri?.toString() == uri.toString() ||
+                    (
+                        ThumbnailLocalCachePolicy.needsLocalCopy(uri.toString()) &&
+                            ThumbnailLocalCachePolicy.shouldKeepCurrent(
+                                preset.thumbnailUri?.toString(),
+                                uri.toString()
+                            )
+                        )
+                ) {
                     ThumbnailBindStore.consumePending(context, target)
                     ApplyResult.UNCHANGED
                 } else {

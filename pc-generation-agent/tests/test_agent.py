@@ -201,10 +201,18 @@ class AgentIntegrationTest(unittest.TestCase):
         self.assertEqual("completed", state["status"])
         self.assertEqual(1, len(state["images"]))
         self.assertIn("/api/v1/thumbnail-files/", state["images"][0]["url"])
+        self.assertIn("/api/v1/mobile-thumbnails/", state["images"][0]["thumbnail_url"])
         with urllib.request.urlopen(
             self.base + state["images"][0]["url"] + "?token=secret", timeout=5
         ) as response:
             self.assertEqual(PNG, response.read())
+        with urllib.request.urlopen(
+            self.base + state["images"][0]["thumbnail_url"] + "?token=secret", timeout=5
+        ) as response:
+            self.assertEqual("image/jpeg", response.headers.get_content_type())
+            thumbnail = Image.open(io.BytesIO(response.read()))
+            self.assertLessEqual(thumbnail.width, 480)
+            self.assertLessEqual(thumbnail.height, 854)
         _, dates = self.request("/api/v1/library/dates")
         self.assertEqual([], dates["dates"])
 

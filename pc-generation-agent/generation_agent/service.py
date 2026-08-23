@@ -201,7 +201,7 @@ class GenerationService:
         return f"/api/v1/mobile-thumbnails/{quote(date)}/{quote(name)}"
 
     def mobile_thumbnail_file(self, date: str, name: str) -> Path | None:
-        source = self.resolve_file(date, name)
+        source = self.resolve_file(date, name) or self.resolve_thumbnail_file(date, name)
         if source is None:
             return None
         stat = source.stat()
@@ -370,6 +370,19 @@ class GenerationService:
             return self.file_url(date, name)
         return None
 
+    @staticmethod
+    def _date_name(output_path: str) -> tuple[str, str] | None:
+        parts = output_path.replace("\\", "/").split("/")
+        if len(parts) == 2:
+            date, name = parts
+        elif len(parts) == 3:
+            _, date, name = parts
+        else:
+            return None
+        if not _DATE.fullmatch(date) or not name:
+            return None
+        return date, name
+
     def public_job(self, job: dict[str, Any]) -> dict[str, Any]:
         total = max(1, int(job["total"]))
         terminal = job["status"] in {"completed", "partial_failed", "failed", "canceled"}
@@ -378,7 +391,11 @@ class GenerationService:
         for output_path in self.database.completed_outputs(str(job["id"])):
             url = self.output_url(output_path)
             if url:
-                images.append({"url": url, "output_path": output_path})
+                item = {"url": url, "output_path": output_path}
+                date_name = self._date_name(output_path)
+                if date_name is not None:
+                    item["thumbnail_url"] = self.mobile_thumbnail_url(*date_name)
+                images.append(item)
         return {
             "id": job["id"],
             "status": job["status"],
