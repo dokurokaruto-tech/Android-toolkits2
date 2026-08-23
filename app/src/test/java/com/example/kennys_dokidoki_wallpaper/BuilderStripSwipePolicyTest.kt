@@ -54,7 +54,42 @@ class BuilderStripSwipePolicyTest {
         assertTrue(
             BuilderStripSwipePolicy.shouldIntercept(
                 collapsed = true,
-                axis = BuilderStripSwipePolicy.Axis.NONE
+                axis = BuilderStripSwipePolicy.Axis.NONE,
+                hit = BuilderStripSwipePolicy.Hit.CARD
+            )
+        )
+    }
+
+    @Test
+    fun onlyHandleAndCardsAcceptSwipe() {
+        assertTrue(BuilderStripSwipePolicy.contains(12f, 8f, 10f, 0f, 40f, 20f))
+        assertFalse(BuilderStripSwipePolicy.contains(9f, 8f, 10f, 0f, 40f, 20f))
+        assertEquals(
+            BuilderStripSwipePolicy.Hit.HANDLE,
+            BuilderStripSwipePolicy.hit(onHistory = false, onHandle = true, onCard = true)
+        )
+        assertEquals(
+            BuilderStripSwipePolicy.Hit.CARD,
+            BuilderStripSwipePolicy.hit(onHistory = false, onHandle = false, onCard = true)
+        )
+        assertEquals(
+            BuilderStripSwipePolicy.Hit.HISTORY,
+            BuilderStripSwipePolicy.hit(onHistory = true, onHandle = true, onCard = true)
+        )
+        assertEquals(
+            BuilderStripSwipePolicy.Hit.NONE,
+            BuilderStripSwipePolicy.hit(onHistory = false, onHandle = false, onCard = false)
+        )
+        assertTrue(BuilderStripSwipePolicy.acceptsSwipe(BuilderStripSwipePolicy.Hit.HANDLE))
+        assertTrue(BuilderStripSwipePolicy.acceptsSwipe(BuilderStripSwipePolicy.Hit.CARD))
+        assertFalse(BuilderStripSwipePolicy.acceptsSwipe(BuilderStripSwipePolicy.Hit.NONE))
+        assertFalse(BuilderStripSwipePolicy.acceptsSwipe(BuilderStripSwipePolicy.Hit.HISTORY))
+        assertTrue(BuilderStripSwipePolicy.acceptsGesture(BuilderStripSwipePolicy.Hit.HISTORY))
+        assertFalse(
+            BuilderStripSwipePolicy.shouldIntercept(
+                collapsed = true,
+                axis = BuilderStripSwipePolicy.Axis.VERTICAL,
+                hit = BuilderStripSwipePolicy.Hit.NONE
             )
         )
     }

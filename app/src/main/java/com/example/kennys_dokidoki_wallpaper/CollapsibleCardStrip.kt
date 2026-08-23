@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
  * 画像生成ビルダー画面の下部にオーバーレイする「選択中カード」ストリップ。
  *
  * - 背景は透明。レイアウトスペースを取らず、コンテンツの上に浮く。
+ * - スワイプ判定は中央ハンドルと、実在するカードの上だけ。余白は裏へ通す。
  * - 最初に上下と判定したら開閉だけ。最初に左右と判定したらカード送りだけ。
  * - 折りたたみ中のタップは「展開」のみ（選択解除しない）
  * - 履歴ボタンはカードの真上のヘッダーに置き、畳んでもカードに重ねず一緒に下へ残る。
@@ -35,7 +36,27 @@ class CollapsibleCardStrip @JvmOverloads constructor(
     private var downRawY = 0f
     private var startTranslationY = 0f
     private var axis = BuilderStripSwipePolicy.Axis.NONE
+    private var hit = BuilderStripSwipePolicy.Hit.NONE
     private var isDragging = false
+    private var gestureActive = false
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                hit = resolveHit(ev)
+                gestureActive = BuilderStripSwipePolicy.acceptsGesture(hit)
+                if (!gestureActive) return false
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (!gestureActive) return false
+                val handled = super.dispatchTouchEvent(ev)
+                gestureActive = false
+                return handled
+            }
+            else -> if (!gestureActive) return false
+        }
+        return super.dispatchTouchEvent(ev)
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
@@ -43,7 +64,7 @@ class CollapsibleCardStrip @JvmOverloads constructor(
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-        if (isTouchOnHistoryControls(ev)) return false
+        if (!BuilderStripSwipePolicy.acceptsSwipe(hit)) return false
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 rememberDown(ev)
@@ -51,7 +72,7 @@ class CollapsibleCardStrip @JvmOverloads constructor(
             }
             MotionEvent.ACTION_MOVE -> {
                 lockAxis(ev)
-                if (BuilderStripSwipePolicy.shouldIntercept(isCollapsed, axis)) {
+                if (BuilderStripSwipePolicy.shouldIntercept(isCollapsed, axis, hit)) {
                     isDragging = BuilderStripSwipePolicy.shouldMoveVertically(axis)
                     applyVerticalDrag(ev)
                     parent?.requestDisallowInterceptTouchEvent(true)
@@ -64,7 +85,7 @@ class CollapsibleCardStrip @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (isTouchOnHistoryControls(event)) return false
+        if (!BuilderStripSwipePolicy.acceptsSwipe(hit)) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 rememberDown(event)
@@ -177,13 +198,33 @@ class CollapsibleCardStrip @JvmOverloads constructor(
         )
     }
 
-    private fun isTouchOnHistoryControls(ev: MotionEvent): Boolean {
-        val bar = findViewById<View>(R.id.layout_builder_history) ?: return false
-        if (bar.visibility != VISIBLE) return false
+    private fun resolveHit(ev: MotionEvent): BuilderStripSwipePolicy.Hit =
+        BuilderStripSwipePolicy.hit(
+            onHistory = isTouchOnView(ev, findViewById(R.id.layout_builder_history)),
+            onHandle = isTouchOnView(ev, findViewById(R.id.builder_strip_handle)),
+            onCard = isTouchOnCard(ev)
+        )
+
+    private fun isTouchOnCard(ev: MotionEvent): Boolean {
+        val rv = findViewById<RecyclerView>(R.id.recycler_selected_cards) ?: return false
+        for (index in 0 until rv.childCount) {
+            val child = rv.getChildAt(index)
+            if (child.visibility == VISIBLE && isTouchOnView(ev, child)) return true
+        }
+        return false
+    }
+
+    private fun isTouchOnView(ev: MotionEvent, view: View?): Boolean {
+        if (view == null || view.visibility != VISIBLE) return false
         val loc = IntArray(2)
-        bar.getLocationOnScreen(loc)
-        val x = ev.rawX
-        val y = ev.rawY
-        return x >= loc[0] && x < loc[0] + bar.width && y >= loc[1] && y < loc[1] + bar.height
+        view.getLocationOnScreen(loc)
+        return BuilderStripSwipePolicy.contains(
+            ev.rawX,
+            ev.rawY,
+            loc[0].toFloat(),
+            loc[1].toFloat(),
+            (loc[0] + view.width).toFloat(),
+            (loc[1] + view.height).toFloat()
+        )
     }
 }
