@@ -680,7 +680,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT, 0
         ) {
             override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
-           : RecyclerView.ViewHolder): Boolean {
                 val fromPos = viewHolder.adapterPosition
                 val toPos = target.adapterPosition
                 java.util.Collections.swap(DataManager.imageSetList, fromPos, toPos)
