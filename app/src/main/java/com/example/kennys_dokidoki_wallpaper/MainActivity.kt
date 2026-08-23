@@ -1177,7 +1177,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun showEditPresetDialog(preset: Preset) {
         val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_prompt_card)
-        val etCategory = dialogView.findViewById<EditText>(R.id.et_card_category)
+        val etCategory = dialogView.findViewById<AutoCompleteTextView>(R.id.et_card_category)
         val etLabel = dialogView.findViewById<EditText>(R.id.et_card_label)
         val etMainPrompt = dialogView.findViewById<EditText>(R.id.et_main_prompt)
         val etNegativePrompt = dialogView.findViewById<EditText>(R.id.et_negative_prompt)
@@ -1549,27 +1549,39 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun bindPresetCategoryPicker(field: EditText, selected: String) {
-        val categories = PresetSavePolicy.selectableCategories(PresetManager.categoryOrder + listOf(selected))
+    private fun bindPresetCategoryPicker(field: AutoCompleteTextView, selected: String) {
+        bindCategoryDropdown(
+            field,
+            PresetSavePolicy.selectableCategories(PresetManager.categoryOrder + listOf(selected)),
+            selected.ifBlank { PresetSavePolicy.defaultCategory(PresetManager.categoryOrder) }
+        )
+    }
+
+    private fun bindPromptCardCategoryPicker(field: AutoCompleteTextView, selected: String) {
+        bindCategoryDropdown(
+            field,
+            CategoryPickerPolicy.selectable(PromptCardManager.categoryOrder, selected),
+            selected
+        )
+    }
+
+    private fun bindCategoryDropdown(
+        field: AutoCompleteTextView,
+        categories: List<String>,
+        selected: String
+    ) {
+        val options = CategoryPickerPolicy.selectable(categories, selected)
+        val current = CategoryPickerPolicy.defaultSelected(options, selected)
+        field.setAdapter(ArrayAdapter(field.context, android.R.layout.simple_dropdown_item_1line, options))
+        field.setText(current, false)
         field.keyListener = null
-        field.isFocusable = false
-        field.isClickable = true
-        field.isCursorVisible = false
-        field.setText(selected.takeIf { it.isNotBlank() } ?: PresetSavePolicy.defaultCategory(categories))
-        field.setOnClickListener {
-            AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-                .setTitle("カテゴリー")
-                .setItems(categories.toTypedArray()) { _, which ->
-                    field.setText(categories[which])
-                }
-                .show()
-        }
+        field.setOnClickListener { field.showDropDown() }
     }
 
     private fun showAddPresetDialog() {
         val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_prompt_card)
         val etName = dialogView.findViewById<EditText>(R.id.et_card_label)
-        val etCategory = dialogView.findViewById<EditText>(R.id.et_card_category)
+        val etCategory = dialogView.findViewById<AutoCompleteTextView>(R.id.et_card_category)
         val btnCancel = dialogView.findViewById<Button>(R.id.btn_cancel_edit)
         val btnSave = dialogView.findViewById<Button>(R.id.btn_save_card)
         dialogView.findViewById<View>(R.id.et_main_prompt).visibility = View.GONE
@@ -1935,7 +1947,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun showEditPromptCardDialog(card: PromptCard?, initialCategory: String = "未分類") {
         val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_prompt_card)
-        val etCategory = dialogView.findViewById<EditText>(R.id.et_card_category)
+        val etCategory = dialogView.findViewById<AutoCompleteTextView>(R.id.et_card_category)
         val etLabel = dialogView.findViewById<EditText>(R.id.et_card_label)
         val etMainPrompt = dialogView.findViewById<EditText>(R.id.et_main_prompt)
         val etNegativePrompt = dialogView.findViewById<EditText>(R.id.et_negative_prompt)
@@ -1958,7 +1970,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         var boundCardId = card?.id
 
         if (card != null) {
-            etCategory.setText(card.category)
+            bindPromptCardCategoryPicker(etCategory, card.category)
             etLabel.setText(card.label)
             etMainPrompt.setText(card.mainPrompt)
             etNegativePrompt.setText(card.negativePrompt)
@@ -1970,7 +1982,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             sbRandomProbability.value = card.randomizerProbability.toFloat()
             btnDelete.visibility = View.VISIBLE
         } else {
-            etCategory.setText(initialCategory)
+            bindPromptCardCategoryPicker(etCategory, initialCategory)
             tempCardThumbnailUri = null
             loadThumbnailPreview(null)
             cbUseRandomizer.isChecked = false

@@ -12,8 +12,12 @@ class Md3PopupDialogTest {
     }
 
     @Test
-    fun tallContentIsCappedSoItStaysAPopup() {
-        assertEquals(860, Md3PopupDialog.popupHeight(1000, 2000))
-        assertEquals(400, Md3PopupDialog.popupHeight(1000, 400))
+    fun editorsShareATallUnifiedHeight() {
+        val screen = 2400
+        val height = Md3PopupDialog.popupHeight(screen)
+        assertEquals(2208, height)
+        assertEquals(height, Md3PopupDialog.popupHeight(screen))
+        assertTrue(height < screen)
+        assertTrue(height >= (screen * 0.90f).toInt())
     }
 }

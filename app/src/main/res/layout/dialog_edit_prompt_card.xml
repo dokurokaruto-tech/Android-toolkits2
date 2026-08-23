@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:background="?attr/colorSurface"
     android:fillViewport="true"
     android:overScrollMode="ifContentScrolls">
@@ -98,9 +98,10 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- カテゴリー -->
+        <!-- カテゴリー（既存一覧からの選択） -->
         <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:id="@+id/til_card_category"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
@@ -111,10 +112,11 @@
             app:boxCornerRadiusTopStart="16dp"
             app:hintTextColor="?attr/colorPrimary">
 
-            <com.google.android.material.textfield.TextInputEditText
+            <AutoCompleteTextView
                 android:id="@+id/et_card_category"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:inputType="none"
                 android:textColor="?attr/colorOnSurface"
                 android:textSize="14sp" />
         </com.google.android.material.textfield.TextInputLayout>
@@ -213,7 +215,7 @@
                 android:layout_height="wrap_content"
                 android:textColor="?attr/colorOnSurface"
                 android:textSize="14sp"
-                android:minLines="2"
+                android:minLines="4"
                 android:gravity="top" />
         </com.google.android.material.textfield.TextInputLayout>
 
