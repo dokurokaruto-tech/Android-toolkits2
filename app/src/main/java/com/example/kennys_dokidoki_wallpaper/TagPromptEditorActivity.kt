@@ -22,6 +22,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDialog
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
@@ -56,7 +57,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
     
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
 
-    private var hybridDialog: AlertDialog? = null
+    private var hybridDialog: AppCompatDialog? = null
     private var ivDialogImage: ImageView? = null
     private var selectedImageUri: Uri? = null
 
