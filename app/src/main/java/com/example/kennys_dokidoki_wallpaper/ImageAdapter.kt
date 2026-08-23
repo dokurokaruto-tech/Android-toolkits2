@@ -94,7 +94,10 @@ class ImageAdapter(
         val gridImageUri = entry.thumbnailUri ?: entry.uri
         Glide.with(holder.imageView.context)
             .load(gridImageUri)
-            .override(400, 711)
+            .override(
+                ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+                ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
+            )
             .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(gridImageUri))
             .centerCrop()
             .into(holder.imageView)

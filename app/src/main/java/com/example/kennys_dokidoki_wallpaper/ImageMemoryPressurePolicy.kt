@@ -17,6 +17,17 @@ object ImageMemoryPressurePolicy {
 
     const val GRID_BINDS_PER_CYCLE = 18
     const val CYCLE_MIN_INTERVAL_MS = 12_000L
+    const val HEARTBEAT_MS = 10_000L
+
+    const val GRID_THUMB_WIDTH = 280
+    const val GRID_THUMB_HEIGHT = 498
+    const val CARD_THUMB_WIDTH = 240
+    const val CARD_THUMB_HEIGHT = 360
+
+    const val GLIDE_MEMORY_MAX_BYTES = 24L * 1024 * 1024
+    const val GLIDE_BITMAP_POOL_MAX_BYTES = 12L * 1024 * 1024
+    const val GLIDE_DISK_MAX_BYTES = 64L * 1024 * 1024
+    const val THUMB_DISK_MAX_BYTES = 80L * 1024 * 1024
 
     const val TRIM_RUNNING_MODERATE = 5
     const val TRIM_RUNNING_LOW = 10
@@ -85,6 +96,18 @@ object ImageMemoryPressurePolicy {
         if (bindsSinceLast >= GRID_BINDS_PER_CYCLE) return true
         return elapsedMs >= CYCLE_MIN_INTERVAL_MS && bindsSinceLast > 0
     }
+
+    fun shouldRunHeartbeat(elapsedMs: Long): Boolean = elapsedMs >= HEARTBEAT_MS
+
+    fun shouldSweepDisk(band: Band): Boolean = band == Band.HOT || band == Band.CRITICAL
+
+    fun shouldClearGlideDisk(band: Band): Boolean = band == Band.CRITICAL
+
+    fun glideMemoryBytes(calculatorBytes: Long): Long =
+        calculatorBytes.coerceAtMost(GLIDE_MEMORY_MAX_BYTES).coerceAtLeast(8L * 1024 * 1024)
+
+    fun glideBitmapPoolBytes(calculatorBytes: Long): Long =
+        calculatorBytes.coerceAtMost(GLIDE_BITMAP_POOL_MAX_BYTES).coerceAtLeast(4L * 1024 * 1024)
 
     fun keepKeys(current: String?, neighbors: Collection<String>): Set<String> {
         val keys = LinkedHashSet<String>()

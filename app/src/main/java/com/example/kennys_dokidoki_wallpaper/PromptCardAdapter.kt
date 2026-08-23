@@ -171,12 +171,18 @@ class PromptCardAdapter(
                 if (ImageStoragePolicy.canDisplayWithoutNetwork(card.thumbnailUri)) {
                     Glide.with(holder.ivThumbnail.context)
                         .load(card.thumbnailUri)
+                        .override(
+                            ImageMemoryPressurePolicy.CARD_THUMB_WIDTH,
+                            ImageMemoryPressurePolicy.CARD_THUMB_HEIGHT
+                        )
                         .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(card.thumbnailUri))
+                        .centerCrop()
                         .into(holder.ivThumbnail)
                 } else {
                     Glide.with(holder.ivThumbnail.context).clear(holder.ivThumbnail)
                     holder.ivThumbnail.setImageResource(android.R.drawable.ic_menu_gallery)
                 }
+                ImageMemoryGovernor.onGridBind(holder.ivThumbnail.context)
 
                 // Randomizer indicator
                 val isIncluded = PromptCardManager.randomizerIncludedIds.contains(card.id)
@@ -247,6 +253,13 @@ class PromptCardAdapter(
             }
             else -> holder.selectionOverlay.visibility = View.GONE
         }
+    }
+
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        if (holder is CardViewHolder) {
+            Glide.with(holder.ivThumbnail.context).clear(holder.ivThumbnail)
+        }
+        super.onViewRecycled(holder)
     }
 
     override fun getItemCount() = items.size

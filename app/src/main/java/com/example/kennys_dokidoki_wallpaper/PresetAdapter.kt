@@ -136,6 +136,10 @@ class PresetAdapter(
                 if (ImageStoragePolicy.canDisplayWithoutNetwork(preset.thumbnailUri)) {
                     Glide.with(holder.ivThumbnail)
                         .load(preset.thumbnailUri)
+                        .override(
+                            ImageMemoryPressurePolicy.CARD_THUMB_WIDTH,
+                            ImageMemoryPressurePolicy.CARD_THUMB_HEIGHT
+                        )
                         .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(preset.thumbnailUri))
                         .centerCrop()
                         .into(holder.ivThumbnail)
@@ -143,6 +147,7 @@ class PresetAdapter(
                     Glide.with(holder.ivThumbnail).clear(holder.ivThumbnail)
                     holder.ivThumbnail.setImageDrawable(null)
                 }
+                ImageMemoryGovernor.onGridBind(holder.ivThumbnail.context)
 
                 val matches = preset.id in matchingPresetIds
                 val density = holder.itemView.resources.displayMetrics.density

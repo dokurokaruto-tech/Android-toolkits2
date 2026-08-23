@@ -87,6 +87,18 @@ class ImageMemoryPressurePolicyTest {
     }
 
     @Test
+    fun heartbeatAndDiskSweepFollowPressure() {
+        assertTrue(ImageMemoryPressurePolicy.shouldRunHeartbeat(10_000))
+        assertFalse(ImageMemoryPressurePolicy.shouldRunHeartbeat(1_000))
+        assertFalse(ImageMemoryPressurePolicy.shouldSweepDisk(ImageMemoryPressurePolicy.Band.CALM))
+        assertTrue(ImageMemoryPressurePolicy.shouldSweepDisk(ImageMemoryPressurePolicy.Band.HOT))
+        assertTrue(ImageMemoryPressurePolicy.shouldClearGlideDisk(ImageMemoryPressurePolicy.Band.CRITICAL))
+        assertFalse(ImageMemoryPressurePolicy.shouldClearGlideDisk(ImageMemoryPressurePolicy.Band.WARM))
+        assertEquals(24L * 1024 * 1024, ImageMemoryPressurePolicy.glideMemoryBytes(80L * 1024 * 1024))
+        assertEquals(8L * 1024 * 1024, ImageMemoryPressurePolicy.glideMemoryBytes(1_000))
+    }
+
+    @Test
     fun keepKeysSkipBlanks() {
         assertEquals(
             setOf("current", "side"),

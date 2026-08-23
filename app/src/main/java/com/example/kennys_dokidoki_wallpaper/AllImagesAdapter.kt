@@ -98,11 +98,14 @@ class AllImagesAdapter(
         val entry = images[position]
         val context = holder.itemView.context
         
-        // ★ アプリ内のサムネイルは「クロップを無視」してオリジナル画像を表示する
+        val gridUri = entry.thumbnailUri ?: entry.uri
         Glide.with(holder.imageView.context)
-            .load(entry.uri) // displayUri ではなくオリジナル (uri) を強制使用！
-            .override(400, 711)
-            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .load(gridUri)
+            .override(
+                ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+                ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
+            )
+            .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(gridUri, DiskCacheStrategy.RESOURCE))
             .centerCrop()
             .into(holder.imageView)
         ImageMemoryGovernor.onGridBind(holder.imageView.context)

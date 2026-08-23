@@ -27,12 +27,17 @@ class ChatSetImageAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val entry = images[position]
+        val gridUri = entry.thumbnailUri ?: entry.uri
         Glide.with(holder.thumb.context)
-            .load(entry.uri)
-            .override(360, 360)
-            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .load(gridUri)
+            .override(
+                ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+                ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
+            )
+            .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(gridUri, DiskCacheStrategy.RESOURCE))
             .centerCrop()
             .into(holder.thumb)
+        ImageMemoryGovernor.onGridBind(holder.thumb.context)
 
         val isCurrent = currentUri != null && entry.uri.toString() == currentUri
         holder.currentBorder.visibility = if (isCurrent) View.VISIBLE else View.GONE
@@ -43,6 +48,11 @@ class ChatSetImageAdapter(
             if (!ChatSetImagePicker.canSelect(images.size, pos)) return@setOnClickListener
             onPick(pos, images[pos])
         }
+    }
+
+    override fun onViewRecycled(holder: ViewHolder) {
+        Glide.with(holder.thumb.context).clear(holder.thumb)
+        super.onViewRecycled(holder)
     }
 
     override fun getItemCount(): Int = images.size

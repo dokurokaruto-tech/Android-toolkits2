@@ -131,6 +131,44 @@ object ThumbnailLocalCachePolicy {
         return sample
     }
 
+    data class DiskFile(val name: String, val bytes: Long, val lastModified: Long)
+
+    fun keepPrefixes(cardIds: Collection<String>, presetIds: Collection<String>): Set<String> {
+        return buildSet {
+            cardIds.forEach { add(managedPrefix("card", it)) }
+            presetIds.forEach { add(managedPrefix("preset", it)) }
+        }
+    }
+
+    fun filesToDelete(
+        files: List<DiskFile>,
+        keepPrefixes: Set<String>,
+        maxBytes: Long = ImageMemoryPressurePolicy.THUMB_DISK_MAX_BYTES
+    ): List<String> {
+        val managed = files.filter { isManagedFileName(it.name) }
+        val orphans = if (keepPrefixes.isEmpty()) {
+            emptyList()
+        } else {
+            managed.filter { file -> keepPrefixes.none { file.name.startsWith(it) } }
+        }
+        val keepers = if (keepPrefixes.isEmpty()) {
+            managed
+        } else {
+            managed.filter { file -> keepPrefixes.any { file.name.startsWith(it) } }
+        }
+            .sortedBy { it.lastModified }
+            .toMutableList()
+        var total = keepers.fold(0L) { acc, file -> acc + file.bytes }
+        val overflow = mutableListOf<String>()
+        val budget = maxBytes.coerceAtLeast(0L)
+        while (keepers.size > 1 && total > budget) {
+            val dropped = keepers.removeAt(0)
+            total -= dropped.bytes
+            overflow += dropped.name
+        }
+        return orphans.map { it.name } + overflow
+    }
+
     fun collectPending(
         cards: List<Pair<String, String?>>,
         presets: List<Pair<String, String?>>

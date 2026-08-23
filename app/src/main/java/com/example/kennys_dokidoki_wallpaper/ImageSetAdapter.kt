@@ -73,14 +73,18 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
         if (displayEntries.isNotEmpty()) {
             val safeIndex = lastIndex.coerceIn(0, displayEntries.size - 1)
             val selectedEntry = displayEntries[safeIndex]
-            val imageToLoad = selectedEntry.uri
+            val imageToLoad = selectedEntry.thumbnailUri ?: selectedEntry.uri
             
             Glide.with(holder.thumbnail.context)
                 .load(imageToLoad)
-                .override(600, 1066)
-                .diskCacheStrategy(DiskCacheStrategy.ALL)
+                .override(
+                    ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+                    ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
+                )
+                .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(imageToLoad, DiskCacheStrategy.RESOURCE))
                 .centerCrop()
                 .into(holder.thumbnail)
+            ImageMemoryGovernor.onGridBind(holder.thumbnail.context)
                 
             holder.iconCropped.visibility = if (selectedEntry.cropRect != null || selectedEntry.croppedUri != null) View.VISIBLE else View.GONE
         } else {
@@ -230,6 +234,11 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
             }
             .setNegativeButton("キャンセル", null)
             .show()
+    }
+
+    override fun onViewRecycled(holder: ViewHolder) {
+        Glide.with(holder.thumbnail.context).clear(holder.thumbnail)
+        super.onViewRecycled(holder)
     }
 
     override fun getItemCount() = sets.size

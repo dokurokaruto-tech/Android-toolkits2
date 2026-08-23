@@ -64,6 +64,7 @@ class SelectedCardStripAdapter(
                 .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(card.thumbnailUri))
                 .centerCrop()
                 .into(holder.thumb)
+            ImageMemoryGovernor.onGridBind(holder.thumb.context)
         } else {
             Glide.with(holder.thumb).clear(holder.thumb)
             holder.thumb.setImageResource(android.R.drawable.ic_menu_gallery)
@@ -83,6 +84,11 @@ class SelectedCardStripAdapter(
             onLongClick(card)
             true
         }
+    }
+
+    override fun onViewRecycled(holder: VH) {
+        Glide.with(holder.thumb).clear(holder.thumb)
+        super.onViewRecycled(holder)
     }
 
     override fun getItemCount() = items.size

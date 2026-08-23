@@ -19,7 +19,7 @@ import java.util.LinkedHashMap
 import kotlin.coroutines.coroutineContext
 
 /**
- * Session-only encoded original image cache. It keeps at most 50 images and never writes
+ * Session-only encoded original image cache. It keeps the current working set and never writes
  * them to disk. Downloads are owned by this cache, not by a viewer Activity: turning a
  * page or closing the viewer stops waiting but the transfer finishes in the background.
  */

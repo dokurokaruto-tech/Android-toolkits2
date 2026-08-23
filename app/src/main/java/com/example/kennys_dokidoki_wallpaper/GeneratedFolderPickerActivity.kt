@@ -375,15 +375,25 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                 val uri = Uri.parse(folder.thumbnail.toString())
                 Glide.with(holder.thumbnail)
                     .load(folder.thumbnail)
+                    .override(
+                        ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+                        ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
+                    )
                     .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(uri))
                     .centerCrop()
                     .into(holder.thumbnail)
+                ImageMemoryGovernor.onGridBind(holder.thumbnail.context)
             } else {
                 Glide.with(holder.thumbnail).clear(holder.thumbnail)
                 holder.thumbnail.setImageResource(R.drawable.ic_md3_gallery)
                 holder.thumbnail.scaleType = ImageView.ScaleType.CENTER_INSIDE
             }
             holder.card.setOnClickListener { onClick(folder) }
+        }
+
+        override fun onViewRecycled(holder: ViewHolder) {
+            Glide.with(holder.thumbnail).clear(holder.thumbnail)
+            super.onViewRecycled(holder)
         }
 
         override fun getItemCount(): Int = folders.size

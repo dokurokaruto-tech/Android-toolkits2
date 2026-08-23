@@ -115,4 +115,26 @@ class ThumbnailLocalCachePolicyTest {
         )
         assertNull(ThumbnailLocalCachePolicy.remoteRef("http://pc/api/v1/jobs/abc"))
     }
+
+    @Test
+    fun diskCycleDropsOrphansThenOldestWhenOverBudget() {
+        val keep = ThumbnailLocalCachePolicy.keepPrefixes(listOf("alive"), listOf("p1"))
+        assertTrue(keep.contains("card_alive_"))
+        assertTrue(keep.contains("preset_p1_"))
+        val files = listOf(
+            ThumbnailLocalCachePolicy.DiskFile("card_dead_aaa.jpg", 40, 1),
+            ThumbnailLocalCachePolicy.DiskFile("card_alive_bbb.jpg", 40, 2),
+            ThumbnailLocalCachePolicy.DiskFile("card_alive_ccc.jpg", 40, 3),
+            ThumbnailLocalCachePolicy.DiskFile("notes.txt", 10, 1)
+        )
+        val deleted = ThumbnailLocalCachePolicy.filesToDelete(files, keep, maxBytes = 50)
+        assertTrue(deleted.contains("card_dead_aaa.jpg"))
+        assertTrue(deleted.contains("card_alive_bbb.jpg"))
+        assertFalse(deleted.contains("card_alive_ccc.jpg"))
+        assertFalse(deleted.contains("notes.txt"))
+        assertTrue(
+            ThumbnailLocalCachePolicy.filesToDelete(files, emptySet(), maxBytes = 10_000)
+                .isEmpty()
+        )
+    }
 }

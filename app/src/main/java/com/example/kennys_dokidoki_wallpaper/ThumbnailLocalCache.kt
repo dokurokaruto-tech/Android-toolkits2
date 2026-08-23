@@ -88,6 +88,25 @@ object ThumbnailLocalCache {
         }
     }
 
+    fun prune(context: Context) {
+        val dir = File(context.filesDir, ThumbnailLocalCachePolicy.DIR_NAME)
+        if (!dir.isDirectory) return
+        val listed = dir.listFiles() ?: return
+        val keep = ThumbnailLocalCachePolicy.keepPrefixes(
+            PromptCardManager.promptCards.map { it.id },
+            PresetManager.presets.map { it.id }
+        )
+        val doomed = ThumbnailLocalCachePolicy.filesToDelete(
+            listed.map { file ->
+                ThumbnailLocalCachePolicy.DiskFile(file.name, file.length(), file.lastModified())
+            },
+            keep
+        ).toSet()
+        listed.forEach { file ->
+            if (file.name in doomed) file.delete()
+        }
+    }
+
     fun enqueuePending(context: Context) {
         val app = context.applicationContext
         currentPending().forEach { (target, url) ->

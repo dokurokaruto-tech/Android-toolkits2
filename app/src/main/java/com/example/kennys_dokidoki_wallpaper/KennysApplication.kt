@@ -21,6 +21,7 @@ class KennysApplication : Application() {
             .edit()
             .putBoolean("is_chat_active", false)
             .apply()
+        ImageMemoryGovernor.start(this)
     }
 
     override fun onTrimMemory(level: Int) {
