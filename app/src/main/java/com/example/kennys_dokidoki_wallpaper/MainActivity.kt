@@ -823,10 +823,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         )
         
-        btnSwitchColumns.text = "${promptCardColumnCount}列"
+        updateColumnSwitchButton()
         btnSwitchColumns.setOnClickListener {
             promptCardColumnCount = if (promptCardColumnCount >= 4) 2 else promptCardColumnCount + 1
-            btnSwitchColumns.text = "${promptCardColumnCount}列"
+            updateColumnSwitchButton()
             (recyclerViewPromptCards.layoutManager as GridLayoutManager).spanCount = promptCardColumnCount
             (recyclerViewPresets.layoutManager as GridLayoutManager).apply {
                 spanCount = promptCardColumnCount
@@ -1502,6 +1502,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         builderHistoryCursor++
         applyBuilderSnapshot(builderHistory[builderHistoryCursor])
         Toast.makeText(this, "やり直しました", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateColumnSwitchButton() {
+        if (!::btnSwitchColumns.isInitialized) return
+        btnSwitchColumns.contentDescription = "カードの列数（いま ${promptCardColumnCount} 列）"
     }
 
     private fun updateUndoRedoButtons() {
