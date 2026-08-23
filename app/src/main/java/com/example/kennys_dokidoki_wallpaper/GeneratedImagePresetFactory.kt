@@ -42,10 +42,19 @@ object GeneratedImagePresetFactory {
             return true
         }
         val randomCount = source.randomPickedIds.size
-        val categories = source.randomEnabledCategories.joinToString("、").ifEmpty { "個別ランダマイザー" }
+        val categories = source.randomEnabledCategories.joinToString("、")
+        val categoryLine = if (categories.isNotEmpty()) {
+            "オンだったカテゴリー: $categories"
+        } else {
+            "個別ランダマイザーで当たったカードがある。"
+        }
         AlertDialog.Builder(context, R.style.Theme_Kennys_dokidoki_wallpaper)
             .setTitle(PresetSavePolicy.FROM_IMAGE_MENU_LABEL)
-            .setMessage("ランダマイザー（$categories）で当たったカードが ${randomCount} 枚ある。")
+            .setMessage(
+                "$categoryLine\n当たったカードは ${randomCount} 枚。\n\n" +
+                    "「${PresetSavePolicy.FROM_IMAGE_INDIVIDUAL_LABEL}」はこの画像どおり全部を個別選択にする。\n" +
+                    "「${PresetSavePolicy.FROM_IMAGE_RANDOMIZER_LABEL}」は当たりを外し、ランダマイザーONだけ残す。"
+            )
             .setPositiveButton(PresetSavePolicy.FROM_IMAGE_INDIVIDUAL_LABEL) { _, _ ->
                 commit(context, source, GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS)
             }

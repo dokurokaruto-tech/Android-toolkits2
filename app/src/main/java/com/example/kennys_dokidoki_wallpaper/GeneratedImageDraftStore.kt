@@ -273,6 +273,8 @@ object GeneratedImageDraftStore {
                 put("steps", draft.steps ?: JSONObject.NULL)
                 put("sampler", draft.sampler ?: JSONObject.NULL)
                 put("prompt", draft.prompt ?: JSONObject.NULL)
+                put("randomPickedIds", GeneratedImageTagBinding.encodeStringSet(draft.randomPickedIds))
+                put("randomEnabledCategories", GeneratedImageTagBinding.encodeStringSet(draft.randomEnabledCategories))
             })
         }
         AtomicFiles.writeUtf8(draftsFile(context), obj.toString())

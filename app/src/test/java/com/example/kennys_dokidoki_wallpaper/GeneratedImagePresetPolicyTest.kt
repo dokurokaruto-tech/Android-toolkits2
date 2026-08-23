@@ -76,7 +76,6 @@ class GeneratedImagePresetPolicyTest {
     }
 
     @Test
-    @Test
     fun randomizerModeDropsPickedCardsAndKeepsCategories() {
         val source = GeneratedImagePresetPolicy.sourceFrom(
             storedCards = mapOf("fixed" to 2, "rolled" to 1),
@@ -108,6 +107,7 @@ class GeneratedImagePresetPolicyTest {
         )
     }
 
+    @Test
     fun missingSourceReturnsNull() {
         assertNull(
             GeneratedImagePresetPolicy.sourceFrom(

@@ -86,6 +86,28 @@ class GeneratedImageTagBindingTest {
     }
 
     @Test
+    fun `category randomizer records the pick separately from explicit cards`() {
+        val base = frozen("c1", "キャラ", "girl", setOf("金髪"))
+        val hairA = frozen("h1", "髪", "long hair", setOf("ロング"))
+        val hairB = frozen("h2", "髪", "short hair", setOf("ショート"))
+        val snapshot = GeneratedImageTagBinding.Snapshot(
+            selected = listOf(base to 2),
+            roster = listOf(base, hairA, hairB),
+            randomEnabledCategories = setOf("髪"),
+            randomizerIncludedIds = setOf("h1", "h2"),
+            width = 720,
+            height = 1280,
+            steps = 20,
+            sampler = "Euler a",
+            batchCount = 1
+        )
+        val prepared = GeneratedImageTagBinding.buildPreparedImages(snapshot, chance = { 0 }, pickIndex = { 1 })
+        assertEquals(mapOf("c1" to 2, "h2" to 1), prepared.single().cardStates)
+        assertEquals(setOf("h2"), prepared.single().randomPickedIds)
+        assertEquals(setOf("髪"), prepared.single().randomEnabledCategories)
+    }
+
+    @Test
     fun `completed urls keep tags even if a middle task failed`() {
         val prepared = listOf(
             GeneratedImageTagBinding.PreparedImage("one", "", listOf("A")),

@@ -632,6 +632,8 @@ class GenerationService:
             "tags": [str(tag).strip() for tag in tags if str(tag).strip()] if isinstance(tags, list) else [],
             "card_states": card_states if isinstance(card_states, dict) else {},
             "parameters": parameters if isinstance(parameters, dict) else {},
+            "random_picked_ids": metadata.get("random_picked_ids") if isinstance(metadata.get("random_picked_ids"), list) else [],
+            "random_categories": metadata.get("random_categories") if isinstance(metadata.get("random_categories"), list) else [],
         }
 
     def _write_metadata(

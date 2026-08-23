@@ -303,7 +303,9 @@ object GenerationAgentClient {
                         height = parameters?.optInt("height", 0)?.takeIf { it > 0 },
                         steps = parameters?.optInt("steps", 0)?.takeIf { it > 0 },
                         sampler = parameters?.optString("sampler_name")?.takeIf { it.isNotBlank() },
-                        prompt = parameters?.optString("prompt")?.takeIf { it.isNotBlank() }
+                        prompt = parameters?.optString("prompt")?.takeIf { it.isNotBlank() },
+                        randomPickedIds = GeneratedImageTagBinding.parseStringSet(item.optJSONArray("random_picked_ids")),
+                        randomEnabledCategories = GeneratedImageTagBinding.parseStringSet(item.optJSONArray("random_categories"))
                     )
                 )
             }

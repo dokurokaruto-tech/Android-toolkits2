@@ -92,12 +92,13 @@ object GeneratedImageTagBinding {
     ): List<PreparedImage> {
         val prepared = mutableListOf<PreparedImage>()
         repeat(snapshot.batchCount.coerceAtLeast(1)) {
-            val explicitIds = snapshot.selected.map { it.first.id }.toSet()
             val chosen = snapshot.selected.toMutableList()
+            val randomPicked = linkedSetOf<String>()
             snapshot.roster.forEach { card ->
                 if (card.useIndividualRandomizer && chosen.none { it.first.id == card.id }) {
                     if (chance() < card.randomizerProbability) {
                         chosen.add(card to 1)
+                        randomPicked.add(card.id)
                     }
                 }
             }
@@ -112,6 +113,7 @@ object GeneratedImageTagBinding {
                     val card = pool[pickIndex(pool.size).coerceIn(0, pool.lastIndex)]
                     if (chosen.none { it.first.id == card.id }) {
                         chosen.add(card to 1)
+                        randomPicked.add(card.id)
                     }
                 }
             }
@@ -133,7 +135,9 @@ object GeneratedImageTagBinding {
                     prompt = prompt,
                     negativePrompt = negative,
                     tags = collect(chosen.map { it.first.appliedTags }).toList(),
-                    cardStates = chosen.associate { it.first.id to it.second }
+                    cardStates = chosen.associate { it.first.id to it.second },
+                    randomPickedIds = randomPicked,
+                    randomEnabledCategories = snapshot.randomEnabledCategories
                 )
             )
         }
