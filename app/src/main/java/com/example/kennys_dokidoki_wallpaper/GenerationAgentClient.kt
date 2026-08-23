@@ -72,6 +72,8 @@ object GenerationAgentClient {
     private const val ACTIVE_JOB_TAGS_KEY = "generation_agent_active_job_tags"
     private const val ACTIVE_JOB_CARDS_KEY = "generation_agent_active_job_cards"
     private const val ACTIVE_JOB_RANDOM_KEY = "generation_agent_active_job_random"
+    private const val ACTIVE_JOB_KIND_KEY = "generation_agent_active_job_kind"
+    private const val ACTIVE_JOB_THUMB_TARGETS_KEY = "generation_agent_active_job_thumb_targets"
     private const val LAST_GOOD_URL_KEY = "remote_server_url_last_good"
     private const val ALT_URL_KEY = "remote_server_url_alts"
     private const val TAG = "GenerationAgent"
@@ -125,6 +127,13 @@ object GenerationAgentClient {
 
     fun hasPendingJob(context: Context): Boolean =
         !settings(context).getString(ACTIVE_JOB_KEY, null).isNullOrBlank()
+
+    fun isThumbnailJob(context: Context): Boolean =
+        settings(context).getString(ACTIVE_JOB_KIND_KEY, ThumbnailBindPolicy.JOB_KIND_IMAGE) ==
+            ThumbnailBindPolicy.JOB_KIND_THUMBNAIL
+
+    fun pendingThumbnailTargets(context: Context): List<ThumbnailBindPolicy.Target> =
+        ThumbnailBindPolicy.decodeTargets(settings(context).getString(ACTIVE_JOB_THUMB_TARGETS_KEY, null))
 
     suspend fun isAvailable(context: Context): Boolean {
         val diagnosis = probe(context)
@@ -190,7 +199,9 @@ object GenerationAgentClient {
     suspend fun submit(
         context: Context,
         requests: List<AgentGenerationRequest>,
-        persistForReconnect: Boolean = true
+        persistForReconnect: Boolean = true,
+        jobKind: String = ThumbnailBindPolicy.JOB_KIND_IMAGE,
+        thumbnailTargets: List<ThumbnailBindPolicy.Target> = emptyList()
     ): AgentJobState = withContext(Dispatchers.IO) {
         require(requests.isNotEmpty()) { "生成リクエストが空です" }
         val tasks = JSONArray()
@@ -226,8 +237,9 @@ object GenerationAgentClient {
         if (persistForReconnect) {
             // Synchronous commit closes the tiny crash window between PC acceptance and local reconnect state.
             // Tags are stored with the job so a later reconnect can still bind them after the app died.
-            settings(context).edit()
+            val editor = settings(context).edit()
                 .putString(ACTIVE_JOB_KEY, state.id)
+                .putString(ACTIVE_JOB_KIND_KEY, jobKind)
                 .putString(ACTIVE_JOB_TAGS_KEY, GeneratedImageTagBinding.encodeTagLists(requests.map { it.tags }))
                 .putString(ACTIVE_JOB_CARDS_KEY, GeneratedImageTagBinding.encodeCardStateLists(requests.map { it.cardStates }))
                 .putString(
@@ -237,7 +249,12 @@ object GenerationAgentClient {
                         requests.map { it.randomEnabledCategories }
                     )
                 )
-                .commit()
+            if (jobKind == ThumbnailBindPolicy.JOB_KIND_THUMBNAIL) {
+                editor.putString(ACTIVE_JOB_THUMB_TARGETS_KEY, ThumbnailBindPolicy.encodeTargets(thumbnailTargets))
+            } else {
+                editor.remove(ACTIVE_JOB_THUMB_TARGETS_KEY)
+            }
+            editor.commit()
         }
         seedCompletedUrls(context, state.imageUrls)
         state
@@ -421,13 +438,13 @@ object GenerationAgentClient {
         val accepted = submit(
             context,
             listOf(request.copy(purpose = "thumbnail")),
-            persistForReconnect = false
+            persistForReconnect = true,
+            jobKind = ThumbnailBindPolicy.JOB_KIND_THUMBNAIL
         )
         val completed = monitor(
             context,
             initial = accepted,
-            silent = true,
-            clearReconnectState = false
+            silent = false
         )
         val url = completed.imageUrls.firstOrNull()
             ?: throw IOException(completed.error ?: "PCにサムネイルが保存されませんでした")
@@ -456,6 +473,10 @@ object GenerationAgentClient {
 
     private fun seedCompletedUrls(context: Context, urls: List<String>) {
         if (urls.isEmpty()) return
+        if (isThumbnailJob(context)) {
+            ThumbnailBinder.applyCompleted(context, urls, pendingThumbnailTargets(context))
+            return
+        }
         val tagLists = GeneratedImageTagBinding.decodeTagLists(settings(context).getString(ACTIVE_JOB_TAGS_KEY, null))
         val cardLists = GeneratedImageTagBinding.decodeCardStateLists(settings(context).getString(ACTIVE_JOB_CARDS_KEY, null))
         val randomLists = GeneratedImageTagBinding.decodeRandomMetaLists(settings(context).getString(ACTIVE_JOB_RANDOM_KEY, null))
@@ -495,6 +516,8 @@ object GenerationAgentClient {
             .remove(ACTIVE_JOB_TAGS_KEY)
             .remove(ACTIVE_JOB_CARDS_KEY)
             .remove(ACTIVE_JOB_RANDOM_KEY)
+            .remove(ACTIVE_JOB_KIND_KEY)
+            .remove(ACTIVE_JOB_THUMB_TARGETS_KEY)
             .apply()
     }
 

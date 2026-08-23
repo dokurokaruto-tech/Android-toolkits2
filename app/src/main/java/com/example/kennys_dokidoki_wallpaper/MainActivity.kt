@@ -411,9 +411,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         // アプリを閉じている間もPC側で続いたジョブへ再接続する。
         // 問い合わせが終わるまで生成ボタンを新規受付に使わせず、二重送信を防ぐ。
         if (GenerationAgentClient.hasPendingJob(this)) {
-            GenerationProgressManager.startGeneration(batchMode = true, total = 1)
+            GenerationProgressManager.startGeneration(
+                batchMode = true,
+                total = 1,
+                silent = false
+            )
+            if (!GenerationProgressActivity.isPipActive) {
+                startActivity(Intent(this, GenerationProgressActivity::class.java))
+            }
         }
-        lifecycleScope.launch { GenerationAgentClient.resumePendingJob(this@MainActivity) }
+        ThumbnailGenerationCoordinator.ensureWatching(this)
 
         getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(this)
         getSharedPreferences("settings", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(this)
@@ -884,6 +891,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         recyclerViewPresets.isNestedScrollingEnabled = false
         recyclerViewPresets.adapter = presetAdapter
         refreshPresetMatchHighlight()
+        ThumbnailBinder.addListener { _, _ ->
+            if (::promptCardAdapter.isInitialized) {
+                promptCardAdapter.updateList(PromptCardManager.promptCards)
+            }
+            if (::presetAdapter.isInitialized) {
+                presetAdapter.updateList(PresetManager.presets)
+            }
+        }
 
         presetItemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.Callback() {
             override fun getMovementFlags(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder): Int {
@@ -1190,49 +1205,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         loadThumbnailPreview(preset.thumbnailUri)
         btnDelete.visibility = View.VISIBLE
 
+        val previewListener = ThumbnailBinder.Listener { target, uri ->
+            if (target.kind == ThumbnailBindPolicy.KIND_PRESET && target.id == preset.id) {
+                tempCardThumbnailUri = uri
+                loadThumbnailPreview(uri)
+            }
+        }
+        ThumbnailBinder.addListener(previewListener)
+
         btnGenerateThumbnail.setOnClickListener {
-            lifecycleScope.launch {
-                Toast.makeText(this@MainActivity, "プリセット用のサムネイルを生成します。", Toast.LENGTH_SHORT).show()
-                
-                // プリセットに保存されているカードだけでプロンプトを組み立てるわ
-                val presetCards = preset.activePromptStates.mapNotNull { (id, level) ->
-                    PromptCardManager.promptCards.find { it.id == id }?.let { it to level }
+            val presetCards = preset.activePromptStates.mapNotNull { (id, level) ->
+                PromptCardManager.promptCards.find { it.id == id }?.let { it to level }
+            }
+            if (presetCards.isEmpty()) {
+                Toast.makeText(this, "このプリセットにはカードが含まれていません。", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val finalMainPrompt = presetCards.joinToString(", ") { (card, level) ->
+                when (level) {
+                    2 -> "(${card.mainPrompt}:1.2)"
+                    3 -> "(${card.mainPrompt}:1.6)"
+                    else -> card.mainPrompt
                 }
-
-                if (presetCards.isEmpty()) {
-                    Toast.makeText(this@MainActivity, "このプリセットにはカードが含まれていません。", Toast.LENGTH_SHORT).show()
-                    return@launch
-                }
-
-                val finalMainPrompt = presetCards.joinToString(", ") { (card, level) ->
-                    when (level) {
-                        2 -> "(${card.mainPrompt}:1.2)"
-                        3 -> "(${card.mainPrompt}:1.6)"
-                        else -> card.mainPrompt
-                    }
-                }.trim()
-                val finalNegativePrompt = presetCards.map { it.first.negativePrompt }
-                    .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
-
-                val uri = generatePcThumbnail(
-                    prompt = finalMainPrompt,
-                    negativePrompt = finalNegativePrompt,
-                    steps = preset.steps,
-                    sampler = preset.sampler
+            }.trim()
+            val finalNegativePrompt = presetCards.map { it.first.negativePrompt }
+                .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
+            val started = ThumbnailGenerationCoordinator.start(
+                this,
+                listOf(
+                    ThumbnailBindPolicy.Item(
+                        ThumbnailBindPolicy.Target.preset(preset.id),
+                        thumbnailRequest(finalMainPrompt, finalNegativePrompt, preset.steps, preset.sampler)
+                    )
                 )
-                if (uri != null) {
-                    // 画像本体はPCに置き、プリセットにはリモートURIだけを保存する。
-                    preset.thumbnailUri = uri
-                    tempCardThumbnailUri = uri
-                    PresetManager.savePresets(this@MainActivity)
-                    presetAdapter.notifyDataSetChanged()
-                    loadThumbnailPreview(uri)
-                    Toast.makeText(this@MainActivity, "PCにサムネイルを保存しました。", Toast.LENGTH_SHORT).show()
-                }
+            )
+            if (started) {
+                Toast.makeText(this, "通常生成と同じPiPでサムネイルを作る。終わったら自動で紐づける。", Toast.LENGTH_LONG).show()
             }
         }
 
         val dialog = AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper).setView(dialogView).create()
+        dialog.setOnDismissListener { ThumbnailBinder.removeListener(previewListener) }
 
         btnPickThumbnail.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -1281,7 +1294,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             preset.name = label
             preset.category = category
-            preset.thumbnailUri = tempCardThumbnailUri
+            preset.thumbnailUri = ThumbnailBinder.resolveForSave(
+                this,
+                ThumbnailBindPolicy.KIND_PRESET,
+                preset.id,
+                tempCardThumbnailUri
+            )
             PresetManager.savePresets(this)
             presetAdapter.updateList(PresetManager.presets)
             dialog.dismiss()
@@ -1784,25 +1802,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .setPositiveButton("生成開始") { _, _ ->
                 val targetCards = cards.filterIndexed { index, _ -> checkedItems[index] }
                 if (targetCards.isEmpty()) return@setPositiveButton
-                
-                lifecycleScope.launch {
-                    Toast.makeText(this@MainActivity, "${targetCards.size}件のサムネイル生成を開始します。", Toast.LENGTH_SHORT).show()
-                    var count = 0
-                    for (card in targetCards) {
-                        val (p, np) = getConcatenatedPromptForCard(card.mainPrompt, card.negativePrompt)
-                        val uri = generatePcThumbnail(p, np)
-                        if (uri != null) {
-                            card.thumbnailUri = uri
-                            count++
-                            promptCardAdapter.notifyDataSetChanged()
-                            // 1枚ごとにリモートURIを保存し、途中終了でも完成分を残す。
-                            PromptCardManager.saveCards(this@MainActivity)
-                        } else {
-                            Log.e("BulkThumb", "Failed to generate for: ${card.label}")
-                        }
-                    }
-                    PromptCardManager.saveCards(this@MainActivity)
-                    Toast.makeText(this@MainActivity, "${count}件のサムネイル生成が完了しました。", Toast.LENGTH_LONG).show()
+                val items = targetCards.map { card ->
+                    val (p, np) = getConcatenatedPromptForCard(card.mainPrompt, card.negativePrompt)
+                    ThumbnailBindPolicy.Item(
+                        ThumbnailBindPolicy.Target.card(card.id),
+                        thumbnailRequest(p, np)
+                    )
+                }
+                if (ThumbnailGenerationCoordinator.start(this, items)) {
+                    Toast.makeText(
+                        this,
+                        "${items.size}件をPiPで生成する。1枚終わるごとに自動で紐づける。",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
             .setNegativeButton("キャンセル", null)
@@ -1965,6 +1977,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val sbRandomProbability = dialogView.findViewById<com.google.android.material.slider.Slider>(R.id.sb_random_probability)
 
         val tempAppliedTags = mutableSetOf<String>()
+        var boundCardId = card?.id
 
         if (card != null) {
             etCategory.setText(card.category)
@@ -2034,6 +2047,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
+        val previewListener = ThumbnailBinder.Listener { target, uri ->
+            if (target.kind == ThumbnailBindPolicy.KIND_CARD && target.id == boundCardId) {
+                tempCardThumbnailUri = uri
+                loadThumbnailPreview(uri)
+            }
+        }
+        ThumbnailBinder.addListener(previewListener)
+
         btnGenerateThumbnail.setOnClickListener {
             val pMain = etMainPrompt.text.toString().trim()
             val pNeg = etNegativePrompt.text.toString().trim()
@@ -2041,22 +2062,26 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 Toast.makeText(this, "プロンプトを入力してください。", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            
-            lifecycleScope.launch {
-                Toast.makeText(this@MainActivity, "サムネイルを錬成中よ...", Toast.LENGTH_SHORT).show()
-                val (p, np) = getConcatenatedPromptForCard(pMain, pNeg)
-                val uri = generatePcThumbnail(p, np)
-                if (uri != null) {
-                    tempCardThumbnailUri = uri
-                    loadThumbnailPreview(uri)
-                    Toast.makeText(this@MainActivity, "PCにサムネイルを保存しました。", Toast.LENGTH_SHORT).show()
-                }
+            if (boundCardId == null) boundCardId = UUID.randomUUID().toString()
+            val (p, np) = getConcatenatedPromptForCard(pMain, pNeg)
+            val started = ThumbnailGenerationCoordinator.start(
+                this,
+                listOf(
+                    ThumbnailBindPolicy.Item(
+                        ThumbnailBindPolicy.Target.card(boundCardId!!),
+                        thumbnailRequest(p, np)
+                    )
+                )
+            )
+            if (started) {
+                Toast.makeText(this, "通常生成と同じPiPでサムネイルを作る。終わったら自動で紐づける。", Toast.LENGTH_LONG).show()
             }
         }
 
         val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setView(dialogView)
             .create()
+        dialog.setOnDismissListener { ThumbnailBinder.removeListener(previewListener) }
 
         btnPickThumbnail.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -2084,12 +2109,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 return@setOnClickListener
             }
             if (card == null) {
+                val newId = boundCardId ?: UUID.randomUUID().toString()
                 val newCard = PromptCard(
-                    id = UUID.randomUUID().toString(),
+                    id = newId,
                     label = label,
                     mainPrompt = etMainPrompt.text.toString().trim(),
                     negativePrompt = etNegativePrompt.text.toString().trim(),
-                    thumbnailUri = tempCardThumbnailUri,
+                    thumbnailUri = ThumbnailBinder.resolveForSave(
+                        this,
+                        ThumbnailBindPolicy.KIND_CARD,
+                        newId,
+                        tempCardThumbnailUri
+                    ),
                     category = category,
                     appliedTags = tempAppliedTags,
                     useIndividualRandomizer = cbUseRandomizer.isChecked,
@@ -2101,7 +2132,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 card.category = category
                 card.mainPrompt = etMainPrompt.text.toString().trim()
                 card.negativePrompt = etNegativePrompt.text.toString().trim()
-                card.thumbnailUri = tempCardThumbnailUri
+                card.thumbnailUri = ThumbnailBinder.resolveForSave(
+                    this,
+                    ThumbnailBindPolicy.KIND_CARD,
+                    card.id,
+                    tempCardThumbnailUri
+                )
                 card.appliedTags.clear()
                 card.appliedTags.addAll(tempAppliedTags)
                 card.useIndividualRandomizer = cbUseRandomizer.isChecked
@@ -2195,39 +2231,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
 
 
-    /** Generates and stores a card thumbnail on the PC; Android keeps only its remote URI. */
-    private suspend fun generatePcThumbnail(
+    private fun thumbnailRequest(
         prompt: String,
         negativePrompt: String,
-        width: Int = 1080,
-        height: Int = 1920,
         steps: Int = 20,
         sampler: String = "Euler a"
-    ): Uri? {
-        return try {
-            GenerationAgentClient.generateThumbnail(
-                this,
-                AgentGenerationRequest(
-                    prompt = prompt,
-                    negativePrompt = negativePrompt,
-                    width = width,
-                    height = height,
-                    steps = steps,
-                    samplerName = sampler,
-                    purpose = "thumbnail"
-                )
-            )
-        } catch (error: Exception) {
-            if (error is CancellationException) throw error
-            Log.e("PcThumbnail", "PC thumbnail generation failed", error)
-            AgentConnectionUi.showDiagnosis(
-                this,
-                AgentConnectionLog.last ?: AgentConnectionClassifier.fromException(error),
-                "サムネイル生成の接続失敗"
-            )
-            null
-        }
-    }
+    ): AgentGenerationRequest = AgentGenerationRequest(
+        prompt = prompt,
+        negativePrompt = negativePrompt,
+        width = 1080,
+        height = 1920,
+        steps = steps,
+        samplerName = sampler,
+        purpose = "thumbnail"
+    )
 
     private fun showGenerationErrorDialog() {
         val errorText = StabilityManager.lastErrorText()
@@ -2994,6 +3011,28 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val sortedList = if (isSortAscending) DataManager.allImages.toList() else DataManager.allImages.reversed()
             val pinned = ImageListOrdering.pinToFront(sortedList, listOf(home, chat)) { it.uri.toString() }
             allImagesAdapter.updateList(pinned)
+            btnQuickSort.text = "クイックソート"
+            btnQuickSort.setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
+            tvFilterCount.text = "${pinned.size} 枚"
+            updateActiveImageHighlight()
+            return
+        }
+        btnQuickSort.text = "フィルタ中: $target"
+        btnQuickSort.setTextColor(android.graphics.Color.parseColor("#FFCC00"))
+        val filteredList = if (target.startsWith("[ジャンル] ")) {
+            val categoryTags = TagManager.categories.find { it.name == target.substringAfter("[ジャンル] ") }?.tags?.toSet() ?: emptySet()
+            DataManager.allImages.filter { entry -> (entry.tags.any { it in categoryTags }) == currentFilterHas }
+        } else {
+            DataManager.allImages.filter { entry -> entry.tags.contains(target) == currentFilterHas }
+        }
+        val finalOrderedList = if (isSortAscending) filteredList else filteredList.reversed()
+        val pinned = ImageListOrdering.pinToFront(finalOrderedList, listOf(home, chat)) { it.uri.toString() }
+        allImagesAdapter.updateList(pinned)
+        tvFilterCount.text = "${pinned.size} 枚"
+        updateActiveImageHighlight()
+    }
+}
+updateList(pinned)
             btnQuickSort.text = "クイックソート"
             btnQuickSort.setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
             tvFilterCount.text = "${pinned.size} 枚"
