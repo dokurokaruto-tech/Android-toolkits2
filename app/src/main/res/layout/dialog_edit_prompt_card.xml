@@ -159,26 +159,38 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/tv_main_prompt_label"
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="4dp"
-                    android:text="メインプロンプト"
-                    android:textAppearance="?attr/textAppearanceLabelLarge"
-                    android:textColor="?attr/colorOnSurfaceVariant"
-                    tools:ignore="HardcodedText" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_ai_convert_prompt_card"
-                    style="@style/Widget.Material3.Button.TonalButton.Icon"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="end"
                     android:layout_marginBottom="8dp"
-                    android:text="自然言語から変換"
-                    app:icon="@drawable/ic_md3_auto_awesome"
-                    tools:ignore="HardcodedText" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/tv_main_prompt_label"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="メインプロンプト"
+                        android:textAppearance="?attr/textAppearanceLabelLarge"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        tools:ignore="HardcodedText" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_ai_convert_prompt_card"
+                        style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:contentDescription="AIで置き換える"
+                        android:minWidth="48dp"
+                        android:minHeight="48dp"
+                        android:padding="0dp"
+                        app:icon="@drawable/ic_md3_auto_awesome"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp"
+                        app:iconSize="26dp"
+                        tools:ignore="HardcodedText" />
+                </LinearLayout>
 
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/til_main_prompt"

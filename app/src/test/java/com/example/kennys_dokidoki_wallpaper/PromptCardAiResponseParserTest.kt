@@ -38,4 +38,26 @@ class PromptCardAiResponseParserTest {
         assertTrue(withExisting.contains("old main"))
         assertTrue(withExisting.contains("old negative"))
     }
+
+    @Test
+    fun cardLabelIsIncludedOnlyWhenRequested() {
+        val withLabel = PromptCardAiGenerator.buildUserPrompt(
+            naturalLanguage = "走る",
+            existingMain = "",
+            existingNegative = "",
+            useExisting = false,
+            cardLabel = "黒髪の少女",
+            useLabel = true
+        )
+        val withoutLabel = PromptCardAiGenerator.buildUserPrompt(
+            naturalLanguage = "走る",
+            existingMain = "",
+            existingNegative = "",
+            useExisting = false,
+            cardLabel = "黒髪の少女",
+            useLabel = false
+        )
+        assertTrue(withLabel.contains("黒髪の少女"))
+        assertFalse(withoutLabel.contains("黒髪の少女"))
+    }
 }

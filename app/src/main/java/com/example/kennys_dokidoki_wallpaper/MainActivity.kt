@@ -2032,6 +2032,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         btnAiConvertPrompt.setOnClickListener {
             PromptCardAiDialog(this).show(
+                cardLabel = etLabel.text.toString(),
                 existingMain = etMainPrompt.text.toString(),
                 existingNegative = etNegativePrompt.text.toString()
             ) { converted ->

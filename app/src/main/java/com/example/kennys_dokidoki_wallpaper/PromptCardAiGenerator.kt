@@ -33,31 +33,10 @@ object PromptCardAiGenerator {
     private const val PREF_CHOICE = "prompt_card_ai_llm_choice"
     private const val GROK_MODEL = "grok-4-1-fast-non-reasoning"
 
-    private val systemPrompt = """
-        You convert Japanese or English natural-language image descriptions into MINIMAL Stable Diffusion prompts.
-        Return exactly one JSON object and no markdown:
-        {"main_prompt":"comma-separated English visual tags","negative_prompt":"comma-separated English negative tags"}
-
-        ABSOLUTE RULE: output only the smallest set of essential visual elements explicitly stated by the user.
-        Translate stated nouns, attributes, actions, and relationships. Do not enrich, beautify, or complete the scene.
-        Never infer time of day, weather, location, background, lighting, camera, composition, art style, mood, or colors unless explicitly stated.
-        Never add quality boilerplate such as masterpiece, best quality, high quality, detailed, 8k, 4k, HDR, sharp focus, cinematic, or photorealistic unless that exact idea was explicitly requested.
-        Keep negative_prompt empty unless the user explicitly says to exclude or avoid something, or asks to preserve an existing negative prompt.
-        Preserve existing LoRA tokens or weighted syntax only when an existing prompt is supplied.
-        Bind every adjective, size, color, and intensity directly to the noun it describes in the SAME comma-separated phrase.
-        Never output a free-floating modifier such as "very huge, horse" or "red, horse" because it can affect every subject.
-
-        Minimal examples:
-        User: 馬
-        Output: {"main_prompt":"horse","negative_prompt":""}
-        User: 大きい馬
-        Output: {"main_prompt":"very huge horse","negative_prompt":""}
-        User: 赤い馬が走っている
-        Output: {"main_prompt":"red horse, running","negative_prompt":""}
-        Do not turn 大きい馬 into "very huge, horse".
-        Do not turn 馬 into "horse, morning, field, sunlight, masterpiece, 8k".
-        Never add commentary, explanations, or JSON fields other than main_prompt and negative_prompt.
-    """.trimIndent()
+    private fun activeSystemPrompt(override: String?): String {
+        val edited = override?.trim().orEmpty()
+        return edited.ifEmpty { PromptCardInstructionPolicy.DEFAULT_PROMPT }
+    }
 
     fun loadCachedChoices(context: Context): List<PromptCardLlmChoice> {
         val result = mutableListOf(
@@ -139,14 +118,25 @@ object PromptCardAiGenerator {
         naturalLanguage: String,
         existingMain: String,
         existingNegative: String,
-        useExisting: Boolean
+        useExisting: Boolean,
+        cardLabel: String = "",
+        useLabel: Boolean = false,
+        systemPrompt: String? = null
     ): PromptCardAiResult {
-        require(naturalLanguage.isNotBlank()) { "自然言語の説明を入力してください" }
-        val userPrompt = buildUserPrompt(naturalLanguage, existingMain, existingNegative, useExisting)
+        require(naturalLanguage.isNotBlank() || useLabel || useExisting) { PromptCardAiCopy.NEED_INPUT }
+        val instruction = activeSystemPrompt(systemPrompt)
+        val userPrompt = buildUserPrompt(
+            naturalLanguage = naturalLanguage,
+            existingMain = existingMain,
+            existingNegative = existingNegative,
+            useExisting = useExisting,
+            cardLabel = cardLabel,
+            useLabel = useLabel
+        )
         val raw = when (choice.provider) {
-            PromptCardLlmProvider.XAI -> generateXai(context, choice.modelId, userPrompt)
-            PromptCardLlmProvider.OPENROUTER -> generateOpenRouter(context, choice.modelId, userPrompt)
-            PromptCardLlmProvider.LOCAL -> generateLocal(context, choice.modelId, userPrompt)
+            PromptCardLlmProvider.XAI -> generateXai(context, choice.modelId, userPrompt, instruction)
+            PromptCardLlmProvider.OPENROUTER -> generateOpenRouter(context, choice.modelId, userPrompt, instruction)
+            PromptCardLlmProvider.LOCAL -> generateLocal(context, choice.modelId, userPrompt, instruction)
         }
         val minimized = PromptCardPromptMinimalizer.minimize(
             result = PromptCardAiResponseParser.parse(raw),
@@ -164,12 +154,20 @@ object PromptCardAiGenerator {
         naturalLanguage: String,
         existingMain: String,
         existingNegative: String,
-        useExisting: Boolean
+        useExisting: Boolean,
+        cardLabel: String = "",
+        useLabel: Boolean = false
     ): String = buildString {
         appendLine("Convert this description using only its explicitly stated essential elements.")
         appendLine("Do not add plausible context or generic quality tags.")
-        appendLine("Description:")
-        appendLine(naturalLanguage.trim())
+        if (useLabel && cardLabel.isNotBlank()) {
+            appendLine("Card name:")
+            appendLine(cardLabel.trim())
+        }
+        if (naturalLanguage.isNotBlank()) {
+            appendLine("Description:")
+            appendLine(naturalLanguage.trim())
+        }
         if (useExisting) {
             appendLine()
             appendLine("Existing main prompt to preserve and improve:")
@@ -179,23 +177,39 @@ object PromptCardAiGenerator {
         }
     }
 
-    private suspend fun generateXai(context: Context, model: String, userPrompt: String): String {
+    private suspend fun generateXai(
+        context: Context,
+        model: String,
+        userPrompt: String,
+        systemPrompt: String
+    ): String {
         var key = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
             .getString("xai_api_key", "")?.trim().orEmpty()
         if (key.isBlank()) throw IllegalStateException("xAI APIキーが設定されていません")
         if (!key.startsWith("xai-")) key = "xai-$key"
-        return cloudCompletion("https://api.x.ai/v1/chat/completions", key, model, userPrompt)
+        return cloudCompletion("https://api.x.ai/v1/chat/completions", key, model, userPrompt, systemPrompt)
     }
 
-    private suspend fun generateOpenRouter(context: Context, model: String, userPrompt: String): String {
+    private suspend fun generateOpenRouter(
+        context: Context,
+        model: String,
+        userPrompt: String,
+        systemPrompt: String
+    ): String {
         val key = OpenRouterManager.getActiveApiKey(context)
             ?: throw IllegalStateException("OpenRouter APIキーが設定されていません")
-        val result = cloudCompletion("https://openrouter.ai/api/v1/chat/completions", key, model, userPrompt)
+        val result = cloudCompletion("https://openrouter.ai/api/v1/chat/completions", key, model, userPrompt, systemPrompt)
         OpenRouterManager.incrementUsage(context, key)
         return result
     }
 
-    private suspend fun cloudCompletion(url: String, key: String, model: String, userPrompt: String): String =
+    private suspend fun cloudCompletion(
+        url: String,
+        key: String,
+        model: String,
+        userPrompt: String,
+        systemPrompt: String
+    ): String =
         withContext(Dispatchers.IO) {
             val body = JSONObject().apply {
                 put("model", model)
@@ -226,7 +240,12 @@ object PromptCardAiGenerator {
             }
         }
 
-    private suspend fun generateLocal(context: Context, modelName: String, userPrompt: String): String {
+    private suspend fun generateLocal(
+        context: Context,
+        modelName: String,
+        userPrompt: String,
+        systemPrompt: String
+    ): String {
         val model = LocalModelManager.getAllModels(context).firstOrNull { it.name == modelName }
             ?: throw IllegalStateException("ローカルモデル『$modelName』が見つかりません")
         LocalModelManager.setSelectedModel(context, model.name)
