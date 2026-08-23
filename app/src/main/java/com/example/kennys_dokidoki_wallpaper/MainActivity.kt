@@ -1214,7 +1214,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }.trim()
             val finalNegativePrompt = presetCards.map { it.first.negativePrompt }
                 .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
-            val started = ThumbnailGenerationCoordinator.start(
+            ThumbnailGenerationCoordinator.start(
                 this,
                 listOf(
                     ThumbnailBindPolicy.Item(
@@ -1223,9 +1223,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     )
                 )
             )
-            if (started) {
-                Toast.makeText(this, "通常生成と同じPiPでサムネイルを作る。終わったら自動で紐づける。", Toast.LENGTH_LONG).show()
-            }
         }
 
         val dialog = Md3PopupDialog.show(this, dialogView)
@@ -1726,13 +1723,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     thumbnailRequest(p, np)
                 )
             }
-            if (ThumbnailGenerationCoordinator.start(this, items)) {
-                Toast.makeText(
-                    this,
-                    "${items.size}件をPiPで生成する。1枚終わるごとに自動で紐づける。",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            ThumbnailGenerationCoordinator.start(this, items)
         }
     }
 
@@ -1752,13 +1743,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 Toast.makeText(this, "カードが入っていないプリセットは作れない。", Toast.LENGTH_SHORT).show()
                 return@show
             }
-            if (ThumbnailGenerationCoordinator.start(this, items)) {
-                Toast.makeText(
-                    this,
-                    "${items.size}件をPiPで生成する。1枚終わるごとに自動で紐づける。",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            ThumbnailGenerationCoordinator.start(this, items)
         }
     }
 
@@ -2000,7 +1985,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             if (boundCardId == null) boundCardId = UUID.randomUUID().toString()
             val (p, np) = getConcatenatedPromptForCard(pMain, pNeg)
-            val started = ThumbnailGenerationCoordinator.start(
+            ThumbnailGenerationCoordinator.start(
                 this,
                 listOf(
                     ThumbnailBindPolicy.Item(
@@ -2009,9 +1994,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     )
                 )
             )
-            if (started) {
-                Toast.makeText(this, "通常生成と同じPiPでサムネイルを作る。終わったら自動で紐づける。", Toast.LENGTH_LONG).show()
-            }
         }
 
         val dialog = Md3PopupDialog.show(this, dialogView)

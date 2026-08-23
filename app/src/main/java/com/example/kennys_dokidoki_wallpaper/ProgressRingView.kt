@@ -14,12 +14,12 @@ import android.view.View
  * 中断ボタン（生成中のボタン）の形に沿った 角丸四角形 の進捗バーオーバーレイ。
  *
  * - ボタンそのもののデザインは変えず、上から重ねて配置する前提。
- * - ボタンの角丸四角形の外形に沿って、**下中央から反時計回り**に明るい線が進み、
+ * - ボタンの角丸四角形の外形に沿って、**上中央から時計回り**に明るい線が進み、
  *   進捗100%で一周する。
  * - 進捗0%では薄いトラック（背景の角丸四角形）のみ。
  *
- * 反時計回りの定義（この実装）：
- *   下中央 → 右へ（底辺）→ 右上へ → 左へ（上辺）→ 左下へ → 下中央へ戻る
+ * 時計回りの定義（この実装）：
+ *   上中央 → 右へ（上辺）→ 右下へ → 左へ（底辺）→ 左上へ → 上中央へ戻る
  */
 class ProgressRingView @JvmOverloads constructor(
     context: Context,
@@ -90,7 +90,7 @@ class ProgressRingView @JvmOverloads constructor(
         // 背景トラック（全体）
         canvas.drawPath(outlinePath, trackPaint)
 
-        // 進捗：パス先頭(下中央)から 長さ=周長×progress だけ切り出す（反時計回りに進む）
+        // 進捗：パス先頭(上中央)から 長さ=周長×progress だけ切り出す（時計回りに進む）
         if (progress > 0f) {
             pathMeasure.setPath(outlinePath, false)
             val total = pathMeasure.length
@@ -104,8 +104,8 @@ class ProgressRingView @JvmOverloads constructor(
     }
 
     /**
-     * rect の角丸四角形を「下中央」から「反時計回り」にたどるパスを構築する。
-     * 角の円弧はすべて負のsweep(-90°)=画面上の反時計回りで描く。
+     * rect の角丸四角形を「上中央」から「時計回り」にたどるパスを構築する。
+     * 角の円弧はすべて正のsweep(+90°)=画面上の時計回りで描く。
      */
     private fun buildRoundedRectOutline(path: Path, rect: RectF, radius: Float) {
         val l = rect.left
@@ -114,16 +114,16 @@ class ProgressRingView @JvmOverloads constructor(
         val b = rect.bottom
         val cx = (l + r) / 2f
 
-        path.moveTo(cx, b)
-        path.lineTo(r - radius, b)
-        path.arcTo(RectF(r - 2f * radius, b - 2f * radius, r, b), 90f, -90f, false)
-        path.lineTo(r, t + radius)
-        path.arcTo(RectF(r - 2f * radius, t, r, t + 2f * radius), 0f, -90f, false)
-        path.lineTo(l + radius, t)
-        path.arcTo(RectF(l, t, l + 2f * radius, t + 2f * radius), 270f, -90f, false)
-        path.lineTo(l, b - radius)
-        path.arcTo(RectF(l, b - 2f * radius, l + 2f * radius, b), 180f, -90f, false)
-        path.lineTo(cx, b)
+        path.moveTo(cx, t)
+        path.lineTo(r - radius, t)
+        path.arcTo(RectF(r - 2f * radius, t, r, t + 2f * radius), 270f, 90f, false)
+        path.lineTo(r, b - radius)
+        path.arcTo(RectF(r - 2f * radius, b - 2f * radius, r, b), 0f, 90f, false)
+        path.lineTo(l + radius, b)
+        path.arcTo(RectF(l, b - 2f * radius, l + 2f * radius, b), 90f, 90f, false)
+        path.lineTo(l, t + radius)
+        path.arcTo(RectF(l, t, l + 2f * radius, t + 2f * radius), 180f, 90f, false)
+        path.lineTo(cx, t)
         path.close()
     }
 }

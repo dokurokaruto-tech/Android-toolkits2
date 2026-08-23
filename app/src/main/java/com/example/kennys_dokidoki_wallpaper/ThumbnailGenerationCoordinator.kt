@@ -62,11 +62,6 @@ object ThumbnailGenerationCoordinator {
                     jobKind = ThumbnailBindPolicy.JOB_KIND_THUMBNAIL,
                     thumbnailTargets = targets
                 )
-                Toast.makeText(
-                    app,
-                    "PCがサムネイル ${accepted.total} 枚を受け付けた。終わったら自動で紐づける。",
-                    Toast.LENGTH_LONG
-                ).show()
                 val completed = GenerationAgentClient.monitor(app, accepted, silent = false)
                 val bound = ThumbnailBinder.applyCompleted(app, completed.imageUrls, targets)
                 Toast.makeText(
