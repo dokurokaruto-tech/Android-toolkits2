@@ -3032,25 +3032,4 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         updateActiveImageHighlight()
     }
 }
-updateList(pinned)
-            btnQuickSort.text = "クイックソート"
-            btnQuickSort.setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
-            tvFilterCount.text = "${pinned.size} 枚"
-            updateActiveImageHighlight()
-            return
-        }
-        btnQuickSort.text = "フィルタ中: $target"
-        btnQuickSort.setTextColor(android.graphics.Color.parseColor("#FFCC00"))
-        val filteredList = if (target.startsWith("[ジャンル] ")) {
-            val categoryTags = TagManager.categories.find { it.name == target.substringAfter("[ジャンル] ") }?.tags?.toSet() ?: emptySet()
-            DataManager.allImages.filter { entry -> (entry.tags.any { it in categoryTags }) == currentFilterHas }
-        } else {
-            DataManager.allImages.filter { entry -> entry.tags.contains(target) == currentFilterHas }
-        }
-        val finalOrderedList = if (isSortAscending) filteredList else filteredList.reversed()
-        val pinned = ImageListOrdering.pinToFront(finalOrderedList, listOf(home, chat)) { it.uri.toString() }
-        allImagesAdapter.updateList(pinned)
-        tvFilterCount.text = "${pinned.size} 枚"
-        updateActiveImageHighlight()
-    }
-}
+
