@@ -72,10 +72,20 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                     false
                 )
             )
-            return
+        } else {
+            loadFolders(reportRemoteFailure = true)
         }
+        observeLiveFolders()
+    }
 
-        loadFolders(reportRemoteFailure = true)
+    override fun onStart() {
+        super.onStart()
+        GeneratedLibraryLiveUpdate.bind(this, GenerationPipExpandPolicy.todayDate())
+    }
+
+    override fun onStop() {
+        GeneratedLibraryLiveUpdate.unbind()
+        super.onStop()
     }
 
     override fun onResume() {
@@ -85,6 +95,28 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
             setLoading(false)
             loadFolders(reportRemoteFailure = false)
         }
+    }
+
+    private fun observeLiveFolders() {
+        lifecycleScope.launch {
+            GeneratedLibraryLiveUpdate.snapshot.collect { snapshot ->
+                if (snapshot.folders.isEmpty() || !::recyclerView.isInitialized) return@collect
+                applyRemoteFolders(snapshot.folders)
+            }
+        }
+    }
+
+    private fun applyRemoteFolders(remote: List<AgentGeneratedFolder>) {
+        val items = remote.map {
+            FolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date)
+        }
+        val remoteNames = remote.map { it.name }.toSet()
+        val local = loadLocalFolders().map {
+            if (it.name in remoteNames) it.copy(name = "${it.name} (端末)") else it
+        }
+        val combined = items + local
+        recyclerView.adapter = FolderAdapter(combined, ::onFolderSelected)
+        emptyState.visibility = if (combined.isEmpty()) View.VISIBLE else View.GONE
     }
 
     private fun loadFolders(reportRemoteFailure: Boolean) {

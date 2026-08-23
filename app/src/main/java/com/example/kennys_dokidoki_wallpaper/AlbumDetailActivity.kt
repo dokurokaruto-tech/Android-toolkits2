@@ -159,6 +159,76 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
         val dataPrefs = getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE)
         dataPrefs.registerOnSharedPreferenceChangeListener(this)
+        observeLiveLibrary()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (isGeneratedViewer && isRemoteGenerated && GenerationPipExpandPolicy.shouldAutoOpen(remoteDate)) {
+            GeneratedLibraryLiveUpdate.bind(this, remoteDate)
+        }
+    }
+
+    override fun onStop() {
+        if (isGeneratedViewer && isRemoteGenerated) {
+            GeneratedLibraryLiveUpdate.unbind()
+        }
+        super.onStop()
+    }
+
+    private fun observeLiveLibrary() {
+        if (!isGeneratedViewer) return
+        lifecycleScope.launch {
+            if (isRemoteGenerated) {
+                GeneratedLibraryLiveUpdate.snapshot.collect { snapshot ->
+                    if (snapshot.date != remoteDate) return@collect
+                    applyRemoteSnapshot(snapshot.images)
+                }
+            } else {
+                var lastBatch = -1
+                var wasGenerating = false
+                GenerationProgressManager.state.collect { state ->
+                    val finished = wasGenerating && !state.isGenerating
+                    val progressed = state.isGenerating && state.currentBatch != lastBatch
+                    wasGenerating = state.isGenerating
+                    lastBatch = state.currentBatch
+                    if (finished || progressed) {
+                        loadImages()
+                        if (::imageAdapter.isInitialized) imageAdapter.notifyDataSetChanged()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun applyRemoteSnapshot(incoming: List<AgentGeneratedImage>) {
+        val extras = intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS").orEmpty()
+        val merged = GeneratedLibraryMergePolicy.prependNewUrls(extras, incoming.map { it.url })
+        if (merged == extras && extras.isNotEmpty()) return
+        val thumbs = ArrayList<String>()
+        val tags = ArrayList<String>()
+        val byUrl = incoming.associateBy { it.url }
+        merged.forEach { url ->
+            val existingIndex = extras.indexOf(url)
+            val image = byUrl[url]
+            thumbs.add(
+                image?.thumbnailUrl
+                    ?: intent.getStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS")
+                        ?.getOrNull(existingIndex)
+                        .orEmpty()
+            )
+            tags.add(
+                image?.let { GeneratedImageTagBinding.encodeTagList(it.tags) }
+                    ?: intent.getStringArrayListExtra("VIRTUAL_ALBUM_TAGS")
+                        ?.getOrNull(existingIndex)
+                        .orEmpty()
+            )
+        }
+        intent.putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(merged))
+        intent.putStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS", thumbs)
+        intent.putStringArrayListExtra("VIRTUAL_ALBUM_TAGS", tags)
+        loadImages()
+        if (::imageAdapter.isInitialized) imageAdapter.notifyDataSetChanged()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

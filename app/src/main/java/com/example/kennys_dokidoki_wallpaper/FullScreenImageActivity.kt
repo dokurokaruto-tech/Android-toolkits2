@@ -47,6 +47,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     private var isClosing = false
     private var isGeneratedViewer = false
     private var isRemoteGenerated = false
+    private var remoteDate: String = ""
     private lateinit var viewerChromeBar: View
     private lateinit var btnStartTempChat: View
     private lateinit var btnDeleteImage: View
@@ -82,11 +83,65 @@ class FullScreenImageActivity : AppCompatActivity() {
         isGeneratedViewer = intent.getBooleanExtra("FROM_GENERATED_VIEWER", false) ||
             intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS") != null
         isRemoteGenerated = intent.getBooleanExtra("REMOTE_GENERATED", false)
+        remoteDate = intent.getStringExtra("REMOTE_DATE").orEmpty()
 
         loadImages()
         showImage()
         setupViewerActions()
         setupPageTurnTouches()
+        observeLiveLibrary()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (isGeneratedViewer && isRemoteGenerated && GenerationPipExpandPolicy.shouldAutoOpen(remoteDate)) {
+            GeneratedLibraryLiveUpdate.bind(this, remoteDate)
+        }
+    }
+
+    override fun onStop() {
+        if (isGeneratedViewer && isRemoteGenerated) {
+            GeneratedLibraryLiveUpdate.unbind()
+        }
+        super.onStop()
+    }
+
+    private fun observeLiveLibrary() {
+        if (!isGeneratedViewer || !isRemoteGenerated || !GenerationPipExpandPolicy.shouldAutoOpen(remoteDate)) return
+        lifecycleScope.launch {
+            GeneratedLibraryLiveUpdate.snapshot.collect { snapshot ->
+                if (isClosing || snapshot.date != remoteDate) return@collect
+                applyIncomingRemoteImages(snapshot.images)
+            }
+        }
+    }
+
+    private fun applyIncomingRemoteImages(incoming: List<AgentGeneratedImage>) {
+        val existing = currentEntries.map { it.uri.toString() }
+        val merged = GeneratedLibraryMergePolicy.prependNewUrls(existing, incoming.map { it.url })
+        if (merged == existing) return
+        val added = merged.size - existing.size
+        val byUrl = incoming.associateBy { it.url }
+        currentEntries.clear()
+        merged.forEach { url ->
+            val image = byUrl[url]
+            currentEntries.add(
+                GeneratedImageDraftStore.entryFor(
+                    this,
+                    Uri.parse(url),
+                    image?.thumbnailUrl?.let(Uri::parse),
+                    image?.tags.orEmpty()
+                )
+            )
+        }
+        currentIndex = GeneratedLibraryMergePolicy.shiftIndexAfterPrepend(
+            currentIndex,
+            existing.size,
+            added
+        ).coerceAtMost(currentEntries.lastIndex.coerceAtLeast(0))
+        if (!isClosing) {
+            tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}"
+        }
     }
 
     private fun setupPageTurnTouches() {
@@ -182,9 +237,62 @@ class FullScreenImageActivity : AppCompatActivity() {
         val summary = view.findViewById<android.widget.TextView>(R.id.tv_replay_summary)
         val promptView = view.findViewById<android.widget.TextView>(R.id.tv_replay_prompt)
         val stepsField = view.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_replay_steps)
+        val presetRow = view.findViewById<android.widget.LinearLayout>(R.id.ll_replay_step_presets)
         summary.text = GeneratedImageReplayPolicy.summary(recipe)
         promptView.text = recipe.prompt
         stepsField.setText(recipe.steps.toString())
+        val prefs = getSharedPreferences(ReplayStepPresetPolicy.PREFS_NAME, Context.MODE_PRIVATE)
+        var presets = ReplayStepPresetPolicy.parse(prefs.getString(ReplayStepPresetPolicy.KEY, null))
+        fun persist() {
+            prefs.edit().putString(ReplayStepPresetPolicy.KEY, ReplayStepPresetPolicy.encode(presets)).apply()
+        }
+        fun paintPresets() {
+            presetRow.removeAllViews()
+            val selected = GeneratedImageReplayPolicy.clampSteps(stepsField.text?.toString()?.toIntOrNull())
+            presets.forEach { value ->
+                val chip = com.google.android.material.button.MaterialButton(
+                    md3,
+                    null,
+                    com.google.android.material.R.attr.materialButtonOutlinedStyle
+                ).apply {
+                    text = value.toString()
+                    isCheckable = true
+                    isChecked = value == selected
+                    minimumHeight = 0
+                    minHeight = (36 * resources.displayMetrics.density).toInt()
+                    textSize = 13f
+                    setPadding(
+                        (14 * resources.displayMetrics.density).toInt(),
+                        0,
+                        (14 * resources.displayMetrics.density).toInt(),
+                        0
+                    )
+                    setOnClickListener {
+                        stepsField.setText(value.toString())
+                        paintPresets()
+                    }
+                }
+                val lp = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                lp.marginEnd = (6 * resources.displayMetrics.density).toInt()
+                presetRow.addView(chip, lp)
+            }
+        }
+        paintPresets()
+        view.findViewById<View>(R.id.btn_replay_add_step_preset).setOnClickListener {
+            val steps = GeneratedImageReplayPolicy.clampSteps(stepsField.text?.toString()?.toIntOrNull())
+            presets = ReplayStepPresetPolicy.add(presets, steps)
+            persist()
+            paintPresets()
+        }
+        view.findViewById<View>(R.id.btn_replay_remove_step_preset).setOnClickListener {
+            val steps = GeneratedImageReplayPolicy.clampSteps(stepsField.text?.toString()?.toIntOrNull())
+            presets = ReplayStepPresetPolicy.remove(presets, steps)
+            persist()
+            paintPresets()
+        }
         val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(
             md3,
             com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog
@@ -199,61 +307,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     }
 
     private fun startReplayGeneration(recipe: GeneratedImageReplayPolicy.Recipe, steps: Int) {
-        if (GenerationProgressManager.state.value.isGenerating) {
-            Toast.makeText(this, GeneratedImageReplayPolicy.BUSY, Toast.LENGTH_SHORT).show()
-            return
-        }
-        val request = GeneratedImageReplayPolicy.request(recipe, steps)
-        GenerationProgressManager.startGeneration(batchMode = true, total = 1)
-        startActivity(Intent(this, GenerationProgressActivity::class.java))
-        lifecycleScope.launch {
-            val probe = GenerationAgentClient.probe(this@FullScreenImageActivity)
-            if (probe.code != AgentConnectionClassifier.OK &&
-                probe.code != AgentConnectionClassifier.SD_DOWN
-            ) {
-                GenerationProgressManager.endGeneration(force = true)
-                AgentConnectionUi.showDiagnosis(
-                    this@FullScreenImageActivity,
-                    probe,
-                    "PC生成エージェントに接続できない"
-                )
-                return@launch
-            }
-            try {
-                val accepted = GenerationAgentClient.submit(this@FullScreenImageActivity, listOf(request))
-                val completed = GenerationAgentClient.monitor(this@FullScreenImageActivity, accepted)
-                completed.imageUrls.forEach { url ->
-                    GeneratedImageDraftStore.seedGeneratedSource(
-                        this@FullScreenImageActivity,
-                        android.net.Uri.parse(url),
-                        request.tags,
-                        request.cardStates,
-                        request.width,
-                        request.height,
-                        request.steps,
-                        request.samplerName,
-                        request.prompt,
-                        request.randomPickedIds,
-                        request.randomEnabledCategories,
-                        request.seed,
-                        request.negativePrompt
-                    )
-                }
-                Toast.makeText(
-                    this@FullScreenImageActivity,
-                    "PC生成完了: ${completed.completed}/${completed.total}枚（閲覧から確認できます）",
-                    Toast.LENGTH_LONG
-                ).show()
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                GenerationProgressManager.endGeneration(force = true)
-                AgentConnectionUi.showDiagnosis(
-                    this@FullScreenImageActivity,
-                    AgentConnectionLog.last ?: AgentConnectionClassifier.fromException(error),
-                    "PC生成エージェントとの通信に失敗"
-                )
-            }
-        }
+        ImageGenerationCoordinator.start(this, listOf(GeneratedImageReplayPolicy.request(recipe, steps)))
     }
 
     private fun confirmDeleteCurrentImage() {
