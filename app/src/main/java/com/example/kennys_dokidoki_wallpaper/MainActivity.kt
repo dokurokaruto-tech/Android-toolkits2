@@ -1176,7 +1176,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun showEditPresetDialog(preset: Preset) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_prompt_card, null)
+        val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_prompt_card)
         val etCategory = dialogView.findViewById<EditText>(R.id.et_card_category)
         val etLabel = dialogView.findViewById<EditText>(R.id.et_card_label)
         val etMainPrompt = dialogView.findViewById<EditText>(R.id.et_main_prompt)
@@ -1257,7 +1257,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
-        val dialog = AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper).setView(dialogView).create()
+        val dialog = Md3PopupDialog.show(this, dialogView)
         dialog.setOnDismissListener { ThumbnailBinder.removeListener(previewListener) }
 
         btnPickThumbnail.setOnClickListener {
@@ -1317,8 +1317,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             presetAdapter.updateList(PresetManager.presets)
             dialog.dismiss()
         }
-
-        dialog.show()
     }
 
     private fun scheduleBuilderSelectionUiRefresh() {
@@ -1569,9 +1567,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun showAddPresetDialog() {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_edit_prompt_card, null)
+        val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_prompt_card)
         val etName = dialogView.findViewById<EditText>(R.id.et_card_label)
         val etCategory = dialogView.findViewById<EditText>(R.id.et_card_category)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btn_cancel_edit)
+        val btnSave = dialogView.findViewById<Button>(R.id.btn_save_card)
         dialogView.findViewById<View>(R.id.et_main_prompt).visibility = View.GONE
         dialogView.findViewById<View>(R.id.tv_main_prompt_label).visibility = View.GONE
         dialogView.findViewById<View>(R.id.til_main_prompt).visibility = View.GONE
@@ -1587,38 +1587,37 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         dialogView.findViewById<View>(R.id.ll_randomizer_block).visibility = View.GONE
         dialogView.findViewById<View>(R.id.btn_overwrite_preset_selection).visibility = View.GONE
         dialogView.findViewById<View>(R.id.btn_delete_card).visibility = View.GONE
-        dialogView.findViewById<View>(R.id.btn_cancel_edit).visibility = View.GONE
-        dialogView.findViewById<View>(R.id.btn_save_card).visibility = View.GONE
         dialogView.findViewById<TextView>(R.id.tv_dialog_title).text = "現在の状態をプリセット保存"
         etName.hint = "プリセット名"
         etName.setText(PresetSavePolicy.defaultName(genWidth, genHeight))
         bindPresetCategoryPicker(etCategory, PresetSavePolicy.defaultCategory(PresetManager.categoryOrder))
-
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setView(dialogView)
-            .setPositiveButton("保存") { _, _ ->
-                val name = etName.text.toString().trim()
-                val category = etCategory.text.toString().trim()
-                    .ifEmpty { PresetSavePolicy.defaultCategory(PresetManager.categoryOrder) }
-                if (name.isNotEmpty()) {
-                    val preset = Preset(
-                        id = UUID.randomUUID().toString(),
-                        name = name,
-                        category = category,
-                        activePromptStates = PromptCardManager.selectionLevels.toMap(),
-                        width = genWidth,
-                        height = genHeight,
-                        steps = genSteps,
-                        batchCount = genBatchCount,
-                        sampler = genSampler,
-                        randomEnabledCategories = PromptCardManager.randomEnabledCategories.toSet()
-                    )
-                    PresetManager.addPreset(this, preset)
-                    presetAdapter.updateList(PresetManager.presets)
-                    Toast.makeText(this, "プリセットを保存しました。", Toast.LENGTH_SHORT).show()
-                }
+        val dialog = Md3PopupDialog.show(this, dialogView)
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        btnSave.setOnClickListener {
+            val name = etName.text.toString().trim()
+            val category = etCategory.text.toString().trim()
+                .ifEmpty { PresetSavePolicy.defaultCategory(PresetManager.categoryOrder) }
+            if (name.isEmpty()) {
+                Toast.makeText(this, "名称を入力してください。", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
-            .setNegativeButton("キャンセル", null).show()
+            val preset = Preset(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                category = category,
+                activePromptStates = PromptCardManager.selectionLevels.toMap(),
+                width = genWidth,
+                height = genHeight,
+                steps = genSteps,
+                batchCount = genBatchCount,
+                sampler = genSampler,
+                randomEnabledCategories = PromptCardManager.randomEnabledCategories.toSet()
+            )
+            PresetManager.addPreset(this, preset)
+            presetAdapter.updateList(PresetManager.presets)
+            Toast.makeText(this, "プリセットを保存しました。", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
     }
 
     private fun applyPreset(preset: Preset) {
@@ -1935,7 +1934,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun showEditPromptCardDialog(card: PromptCard?, initialCategory: String = "未分類") {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_prompt_card, null)
+        val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_prompt_card)
         val etCategory = dialogView.findViewById<EditText>(R.id.et_card_category)
         val etLabel = dialogView.findViewById<EditText>(R.id.et_card_label)
         val etMainPrompt = dialogView.findViewById<EditText>(R.id.et_main_prompt)
@@ -2057,9 +2056,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
-        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-            .setView(dialogView)
-            .create()
+        val dialog = Md3PopupDialog.show(this, dialogView)
         dialog.setOnDismissListener { ThumbnailBinder.removeListener(previewListener) }
 
         btnPickThumbnail.setOnClickListener {
@@ -2126,8 +2123,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             promptCardAdapter.updateList(PromptCardManager.promptCards)
             dialog.dismiss()
         }
-
-        dialog.show()
     }
 
     private fun showResetBuilderDialog() {
