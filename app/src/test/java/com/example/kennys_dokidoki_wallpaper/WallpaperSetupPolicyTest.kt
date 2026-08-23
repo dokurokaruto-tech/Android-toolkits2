@@ -6,11 +6,11 @@ import org.junit.Test
 
 class WallpaperSetupPolicyTest {
     @Test
-    fun promptOnlyWhenNotActiveAndNotAsked() {
-        assertTrue(WallpaperSetupPolicy.shouldPrompt(alreadyActive = false, alreadyPrompted = false))
-        assertFalse(WallpaperSetupPolicy.shouldPrompt(alreadyActive = true, alreadyPrompted = false))
-        assertFalse(WallpaperSetupPolicy.shouldPrompt(alreadyActive = false, alreadyPrompted = true))
-        assertFalse(WallpaperSetupPolicy.shouldPrompt(alreadyActive = true, alreadyPrompted = true))
+    fun promptWhenHomeWallpaperIsNotThisApp() {
+        assertTrue(WallpaperSetupPolicy.shouldPrompt(alreadyActive = false, askedThisSession = false))
+        assertFalse(WallpaperSetupPolicy.shouldPrompt(alreadyActive = true, askedThisSession = false))
+        assertFalse(WallpaperSetupPolicy.shouldPrompt(alreadyActive = false, askedThisSession = true))
+        assertTrue(WallpaperSetupPolicy.shouldPrompt(alreadyActive = false))
     }
 
     @Test
@@ -35,6 +35,14 @@ class WallpaperSetupPolicyTest {
             WallpaperSetupPolicy.isOurWallpaper(
                 null,
                 null,
+                "com.example.kennys_dokidoki_wallpaper",
+                "com.example.kennys_dokidoki_wallpaper.MyWallpaperService"
+            )
+        )
+        assertTrue(
+            WallpaperSetupPolicy.isOurWallpaper(
+                "com.example.kennys_dokidoki_wallpaper",
+                ".MyWallpaperService",
                 "com.example.kennys_dokidoki_wallpaper",
                 "com.example.kennys_dokidoki_wallpaper.MyWallpaperService"
             )

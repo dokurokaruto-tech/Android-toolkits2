@@ -2,42 +2,37 @@ package com.example.kennys_dokidoki_wallpaper
 
 import android.app.Activity
 import android.app.WallpaperManager
+import android.app.WallpaperInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /** 起動時にライブ壁紙へ誘導する。勝手に切り替える権限は通常ない。 */
 object WallpaperSetupCoordinator {
+    @Volatile
+    private var askedThisSession = false
+
     fun offerIfNeeded(activity: Activity) {
-        if (activity.isFinishing) return
-        val prefs = activity.getSharedPreferences(WallpaperSetupPolicy.PREFS_NAME, Context.MODE_PRIVATE)
-        val alreadyPrompted = prefs.getBoolean(WallpaperSetupPolicy.KEY_PROMPTED, false)
+        if (activity.isFinishing || activity.isDestroyed) return
         val active = isOurWallpaperActive(activity)
-        if (active) {
-            markPrompted(activity)
-            return
-        }
-        if (!WallpaperSetupPolicy.shouldPrompt(alreadyActive = false, alreadyPrompted = alreadyPrompted)) {
+        if (!WallpaperSetupPolicy.shouldPrompt(alreadyActive = active, askedThisSession = askedThisSession)) {
             return
         }
         if (tryEnableSilently(activity) && isOurWallpaperActive(activity)) {
-            markPrompted(activity)
+            askedThisSession = true
             Toast.makeText(activity, "ライブ壁紙に設定した。", Toast.LENGTH_SHORT).show()
             return
         }
-        markPrompted(activity)
+        askedThisSession = true
         showPrompt(activity)
     }
 
     fun isOurWallpaperActive(context: Context): Boolean {
-        val info = try {
-            WallpaperManager.getInstance(context).wallpaperInfo
-        } catch (_: Exception) {
-            null
-        }
+        val info = homeWallpaperInfo(context)
         return WallpaperSetupPolicy.isOurWallpaper(
             info?.packageName,
             info?.serviceName,
@@ -56,6 +51,27 @@ object WallpaperSetupCoordinator {
         context.startActivity(intent)
     }
 
+    private fun homeWallpaperInfo(context: Context): WallpaperInfo? {
+        val manager = try {
+            WallpaperManager.getInstance(context)
+        } catch (_: Exception) {
+            return null
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                val method = manager.javaClass.getMethod("getWallpaperInfo", Int::class.javaPrimitiveType)
+                val flagged = method.invoke(manager, WallpaperManager.FLAG_SYSTEM) as? WallpaperInfo
+                if (flagged != null) return flagged
+            } catch (_: Exception) {
+            }
+        }
+        return try {
+            manager.wallpaperInfo
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun tryEnableSilently(context: Context): Boolean {
         return try {
             val manager = WallpaperManager.getInstance(context)
@@ -65,13 +81,6 @@ object WallpaperSetupCoordinator {
         } catch (_: Exception) {
             false
         }
-    }
-
-    private fun markPrompted(context: Context) {
-        context.getSharedPreferences(WallpaperSetupPolicy.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(WallpaperSetupPolicy.KEY_PROMPTED, true)
-            .apply()
     }
 
     private fun showPrompt(activity: Activity) {

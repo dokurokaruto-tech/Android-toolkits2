@@ -428,9 +428,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
         ThumbnailGenerationCoordinator.ensureWatching(this)
-        if (!GenerationAgentClient.hasPendingJob(this)) {
-            window.decorView.post { WallpaperSetupCoordinator.offerIfNeeded(this) }
-        }
+        // 生成ジョブの有無や以前の「聞いた」記録は見ない。
+        // いまホーム壁紙でなければ、インストール直後の最初の画面で必ず出す。
+        window.decorView.post { WallpaperSetupCoordinator.offerIfNeeded(this) }
 
         getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(this)
         getSharedPreferences("settings", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(this)

@@ -2,7 +2,8 @@ package com.example.kennys_dokidoki_wallpaper
 
 /**
  * ライブ壁紙の登録は、通常のアプリからは勝手に切り替えられない。
- * すでにこのアプリが壁紙なら何もしない。そうでなければ一度だけ尋ねる。
+ * いまホームの壁紙がこのアプリでなければ、起動の最初の画面で尋ねる。
+ * 以前聞いたかどうかは見ない。再インストールでデータが残っても同じ。
  */
 object WallpaperSetupPolicy {
     const val PREFS_NAME = "settings"
@@ -13,17 +14,20 @@ object WallpaperSetupPolicy {
     const val POSITIVE = "設定する"
     const val NEGATIVE = "あとで"
 
-    fun shouldPrompt(alreadyActive: Boolean, alreadyPrompted: Boolean): Boolean =
-        !alreadyActive && !alreadyPrompted
+    fun shouldPrompt(alreadyActive: Boolean, askedThisSession: Boolean = false): Boolean =
+        !alreadyActive && !askedThisSession
 
     fun isOurWallpaper(
         servicePackage: String?,
         serviceClass: String?,
         appPackage: String,
         expectedClass: String
-    ): Boolean =
-        !servicePackage.isNullOrBlank() &&
-            !serviceClass.isNullOrBlank() &&
-            servicePackage == appPackage &&
-            serviceClass == expectedClass
+    ): Boolean {
+        if (servicePackage.isNullOrBlank() || serviceClass.isNullOrBlank()) return false
+        if (servicePackage != appPackage) return false
+        val expectedSimple = expectedClass.substringAfterLast('.')
+        return serviceClass == expectedClass ||
+            serviceClass.endsWith(".$expectedSimple") ||
+            serviceClass == expectedSimple
+    }
 }
