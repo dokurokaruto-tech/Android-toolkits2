@@ -11,6 +11,7 @@ object ThumbnailLocalCachePolicy {
     const val MAX_WIDTH = 480
     const val MAX_HEIGHT = 854
     const val JPEG_QUALITY = 72
+    const val MAX_IN_FLIGHT = 2
 
     private val REMOTE_FILE = Regex(
         """/api/v1/(?:files|thumbnail-files|mobile-thumbnails)/([^/?#]+)/([^/?#]+)"""
@@ -109,6 +110,26 @@ object ThumbnailLocalCachePolicy {
             bytes[0] == 0xFF.toByte() &&
             bytes[1] == 0xD8.toByte() &&
             bytes[2] == 0xFF.toByte()
+
+    fun shouldAdoptLocal(currentUri: String?, localUri: String?): Boolean {
+        if (localUri.isNullOrBlank()) return false
+        if (!needsLocalCopy(currentUri)) return false
+        return currentUri != localUri
+    }
+
+    fun decodeSampleSize(
+        width: Int,
+        height: Int,
+        maxWidth: Int = MAX_WIDTH,
+        maxHeight: Int = MAX_HEIGHT
+    ): Int {
+        if (width <= 0 || height <= 0) return 1
+        var sample = 1
+        while (width / sample > maxWidth * 2 || height / sample > maxHeight * 2) {
+            sample *= 2
+        }
+        return sample
+    }
 
     fun collectPending(
         cards: List<Pair<String, String?>>,

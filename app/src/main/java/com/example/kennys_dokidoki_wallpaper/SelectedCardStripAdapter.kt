@@ -57,7 +57,7 @@ class SelectedCardStripAdapter(
         val (card, level) = items[position]
         holder.label.text = card.label
 
-        if (card.thumbnailUri != null) {
+        if (ImageStoragePolicy.canDisplayWithoutNetwork(card.thumbnailUri)) {
             Glide.with(holder.thumb)
                 .load(card.thumbnailUri)
                 .override(144, 208)
@@ -65,6 +65,7 @@ class SelectedCardStripAdapter(
                 .centerCrop()
                 .into(holder.thumb)
         } else {
+            Glide.with(holder.thumb).clear(holder.thumb)
             holder.thumb.setImageResource(android.R.drawable.ic_menu_gallery)
         }
 

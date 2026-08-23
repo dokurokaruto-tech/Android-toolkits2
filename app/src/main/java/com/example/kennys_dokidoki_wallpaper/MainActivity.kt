@@ -387,6 +387,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         TagManager.loadTags(this)
         PromptCardManager.loadCards(this)
         PresetManager.loadPresets(this)
+        ThumbnailLocalCache.adoptExisting(this)
         
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         isSortAscending = settingsPrefs.getBoolean("sort_ascending", true)
@@ -489,7 +490,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onResume()
         DataManager.loadData(this)
         TagManager.loadTags(this)
-        ThumbnailLocalCache.enqueuePending(this)
         applyQuickFilter()
         imageSetAdapter.notifyDataSetChanged()
         tagPromptAdapter.refreshItemsFromManager()
@@ -680,6 +680,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT, 0
         ) {
             override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
+           : RecyclerView.ViewHolder): Boolean {
                 val fromPos = viewHolder.adapterPosition
                 val toPos = target.adapterPosition
                 java.util.Collections.swap(DataManager.imageSetList, fromPos, toPos)
@@ -895,12 +896,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         recyclerViewPresets.isNestedScrollingEnabled = false
         recyclerViewPresets.adapter = presetAdapter
         refreshPresetMatchHighlight()
-        ThumbnailBinder.addListener { _, _ ->
-            if (::promptCardAdapter.isInitialized) {
-                promptCardAdapter.updateList(PromptCardManager.promptCards)
-            }
-            if (::presetAdapter.isInitialized) {
-                presetAdapter.updateList(PresetManager.presets)
+        ThumbnailBinder.addListener { target, _ ->
+            when (target.kind) {
+                ThumbnailBindPolicy.KIND_CARD -> {
+                    if (::promptCardAdapter.isInitialized) {
+                        promptCardAdapter.notifyCardChanged(target.id)
+                    }
+                    if (::selectedStripAdapter.isInitialized) {
+                        updateSelectedCardStrip()
+                    }
+                }
+                ThumbnailBindPolicy.KIND_PRESET -> {
+                    if (::presetAdapter.isInitialized) {
+                        presetAdapter.notifyPresetChanged(target.id)
+                    }
+                }
             }
         }
 

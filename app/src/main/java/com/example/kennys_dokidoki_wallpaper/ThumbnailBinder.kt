@@ -38,14 +38,14 @@ object ThumbnailBinder {
 
     fun applyCompleted(context: Context, urls: List<String>, targets: List<ThumbnailBindPolicy.Target>): Int {
         if (urls.isEmpty() || targets.isEmpty()) return 0
-        PromptCardManager.loadCards(context)
-        PresetManager.loadPresets(context)
         var bound = 0
         var cardsDirty = false
         var presetsDirty = false
         ThumbnailBindPolicy.pairUrls(urls, targets).forEach { (target, url) ->
-            val uri = Uri.parse(ThumbnailLocalCachePolicy.toMobileThumbnailUrl(url) ?: url)
-            persistRemote(context, target, uri)
+            val remote = Uri.parse(ThumbnailLocalCachePolicy.toMobileThumbnailUrl(url) ?: url)
+            val local = ThumbnailLocalCache.existingLocal(context, target, remote.toString())
+            val uri = local ?: remote
+            if (local == null) persistRemote(context, target, remote)
             when (applyLoaded(context, target, uri)) {
                 ApplyResult.CARD -> {
                     cardsDirty = true
@@ -70,8 +70,6 @@ object ThumbnailBinder {
     }
 
     fun applyOne(context: Context, target: ThumbnailBindPolicy.Target, uri: Uri): Boolean {
-        PromptCardManager.loadCards(context)
-        PresetManager.loadPresets(context)
         persistRemote(context, target, uri)
         return when (applyLoaded(context, target, uri)) {
             ApplyResult.CARD -> {
@@ -91,12 +89,30 @@ object ThumbnailBinder {
         }
     }
 
+    fun replaceWithLocal(
+        context: Context,
+        target: ThumbnailBindPolicy.Target,
+        local: Uri,
+        persist: Boolean
+    ): ApplyResult {
+        val result = applyLoaded(context, target, local)
+        if (persist) {
+            when (result) {
+                ApplyResult.CARD -> PromptCardManager.saveCards(context)
+                ApplyResult.PRESET -> PresetManager.savePresets(context)
+                else -> Unit
+            }
+            if (result != ApplyResult.UNCHANGED) notifyBound(target, local)
+        }
+        return result
+    }
+
     fun resolveForSave(context: Context, kind: String, id: String, fallback: Uri?): Uri? {
         val target = ThumbnailBindPolicy.parseTarget(kind, id) ?: return fallback
         return fallback ?: ThumbnailBindStore.consumePending(context, target)
     }
 
-    private enum class ApplyResult { CARD, PRESET, PENDING, UNCHANGED }
+    enum class ApplyResult { CARD, PRESET, PENDING, UNCHANGED }
 
     private fun persistRemote(context: Context, target: ThumbnailBindPolicy.Target, uri: Uri) {
         if (ThumbnailLocalCachePolicy.needsLocalCopy(uri.toString())) {

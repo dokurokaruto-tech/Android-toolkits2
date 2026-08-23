@@ -51,8 +51,8 @@ class BulkThumbnailAdapter(
     }
 
     private fun bindThumb(view: ImageView, raw: String?) {
-        if (BulkThumbnailPickerPolicy.hasThumbnail(raw)) {
-            val uri = Uri.parse(raw)
+        val uri = raw?.trim()?.takeIf { it.isNotEmpty() }?.let(Uri::parse)
+        if (ImageStoragePolicy.canDisplayWithoutNetwork(uri)) {
             view.imageTintList = null
             Glide.with(view)
                 .load(uri)

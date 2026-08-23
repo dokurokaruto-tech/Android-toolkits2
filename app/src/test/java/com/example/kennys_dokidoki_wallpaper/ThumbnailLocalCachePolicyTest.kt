@@ -77,6 +77,24 @@ class ThumbnailLocalCachePolicyTest {
     }
 
     @Test
+    fun adoptsOnlyWhenCurrentUriIsStillRemote() {
+        val local = "file:///data/card_thumbnails/card_a_1.jpg"
+        assertTrue(
+            ThumbnailLocalCachePolicy.shouldAdoptLocal(
+                "http://pc/api/v1/mobile-thumbnails/2026-08-23/a.png",
+                local
+            )
+        )
+        assertFalse(ThumbnailLocalCachePolicy.shouldAdoptLocal(local, local))
+        assertFalse(ThumbnailLocalCachePolicy.shouldAdoptLocal(null, local))
+        assertFalse(ThumbnailLocalCachePolicy.shouldAdoptLocal("http://pc/a.png", null))
+        assertEquals(2, ThumbnailLocalCachePolicy.MAX_IN_FLIGHT)
+        assertEquals(2, ThumbnailLocalCachePolicy.decodeSampleSize(1920, 3414))
+        assertEquals(4, ThumbnailLocalCachePolicy.decodeSampleSize(3840, 6828))
+        assertEquals(1, ThumbnailLocalCachePolicy.decodeSampleSize(480, 854))
+    }
+
+    @Test
     fun collectsOnlyRemoteCardAndPresetUris() {
         val pending = ThumbnailLocalCachePolicy.collectPending(
             listOf(

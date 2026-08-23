@@ -119,7 +119,7 @@ class PresetAdapter(
                 holder.tvName.text = preset.name
                 holder.tvDetails.text = "${preset.width}x${preset.height} | Steps:${preset.steps} | Cards:${preset.activePromptStates.size}"
                 
-                if (preset.thumbnailUri != null) {
+                if (ImageStoragePolicy.canDisplayWithoutNetwork(preset.thumbnailUri)) {
                     Glide.with(holder.ivThumbnail)
                         .load(preset.thumbnailUri)
                         .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(preset.thumbnailUri))
@@ -176,6 +176,11 @@ class PresetAdapter(
         presets = newList
         buildItems()
         notifyDataSetChanged()
+    }
+
+    fun notifyPresetChanged(presetId: String) {
+        val position = items.indexOfFirst { it is AdapterItem.PresetItem && it.preset.id == presetId }
+        if (position >= 0) notifyItemChanged(position)
     }
 
     fun getSpanSize(position: Int, columns: Int): Int {

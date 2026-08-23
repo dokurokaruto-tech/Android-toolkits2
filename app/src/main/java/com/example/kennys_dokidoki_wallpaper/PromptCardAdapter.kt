@@ -168,12 +168,13 @@ class PromptCardAdapter(
                 val card = cardItem.card
                 holder.tvLabel.text = card.label
                 
-                if (card.thumbnailUri != null) {
+                if (ImageStoragePolicy.canDisplayWithoutNetwork(card.thumbnailUri)) {
                     Glide.with(holder.ivThumbnail.context)
                         .load(card.thumbnailUri)
                         .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(card.thumbnailUri))
                         .into(holder.ivThumbnail)
                 } else {
+                    Glide.with(holder.ivThumbnail.context).clear(holder.ivThumbnail)
                     holder.ivThumbnail.setImageResource(android.R.drawable.ic_menu_gallery)
                 }
 
