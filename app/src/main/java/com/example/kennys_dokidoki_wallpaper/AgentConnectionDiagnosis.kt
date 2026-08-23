@@ -50,6 +50,12 @@ object AgentConnectionClassifier {
                 "設定 → PC生成エージェントの接続設定で、PC画面の ANDROID APP URL を保存する。",
                 raw, target, path
             )
+            isConnectTimeout(error, text) -> diagnosis(
+                CONNECT_TIMEOUT, "接続そのものが時間内に完了しない",
+                "HTTP以前。相手のポートまでTCPが届いていない（LAN切断・スリープ・ファイアウォール）。",
+                "同じWi-Fiか、PCがスリープしていないか、start-agent.bat が起動中かを見る。予備URLに Tailscale の 100.x を入れておく。",
+                raw, target, path
+            )
             isTimeout(error, text) -> diagnosis(
                 TIMEOUT, "応答が時間内に返ってこない",
                 "TCPは出せたが、相手が制限時間内に返事しなかった（WinError 10060 と同じ系統）。",

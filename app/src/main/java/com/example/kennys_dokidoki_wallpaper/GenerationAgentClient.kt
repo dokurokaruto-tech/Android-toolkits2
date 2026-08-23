@@ -120,7 +120,7 @@ object GenerationAgentClient {
     }
 
     /** 接続先へ /health を叩き、成功でも失敗でも原因を残す。予備URLがあれば順に試す。 */
-    suspend fun probe(context: Context): AgentConnectionDiagnosis = withContext(Dispatchers.IO) {
+    suspend fun probe(context: Context, action: String = "接続テスト"): AgentConnectionDiagnosis = withContext(Dispatchers.IO) {
         val bases = candidateBases(context)
         if (bases.isEmpty()) {
             val diagnosis = AgentConnectionClassifier.fromException(
@@ -128,7 +128,7 @@ object GenerationAgentClient {
                 "(未設定)",
                 "/api/v1/health"
             )
-            AgentConnectionLog.record(context, "接続テスト", diagnosis)
+            AgentConnectionLog.record(context, action, diagnosis)
             return@withContext diagnosis
         }
         val reports = mutableListOf<String>()
@@ -148,7 +148,7 @@ object GenerationAgentClient {
                         )
                     } else result
                 }
-                AgentConnectionLog.record(context, "接続テスト", diagnosis)
+                AgentConnectionLog.record(context, action, diagnosis)
                 return@withContext diagnosis
             } catch (error: Exception) {
                 val diagnosis = AgentConnectionClassifier.fromException(
@@ -158,7 +158,7 @@ object GenerationAgentClient {
                 )
                 reports.add("${AgentConnectionClassifier.redactUrl(base)} → ${diagnosis.code}")
                 lastFail = diagnosis
-                AgentConnectionLog.record(context, "接続テスト ${diagnosis.code}", diagnosis)
+                AgentConnectionLog.record(context, "$action ${diagnosis.code}", diagnosis)
             }
         }
         val failed = lastFail ?: AgentConnectionClassifier.fromException(
@@ -170,7 +170,7 @@ object GenerationAgentClient {
             reason = failed.reason + " 試した接続先: " + reports.joinToString(" / "),
             nextStep = failed.nextStep
         )
-        AgentConnectionLog.record(context, "接続テスト", combined)
+        AgentConnectionLog.record(context, action, combined)
         combined
     }
 

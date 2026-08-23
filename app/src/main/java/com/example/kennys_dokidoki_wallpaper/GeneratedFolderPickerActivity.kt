@@ -58,7 +58,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
             includedRoot.getChildAt(1).visibility = View.GONE
         }
 
-        loadFolders()
+        loadFolders(reportRemoteFailure = true)
     }
 
     override fun onStart() {
@@ -71,7 +71,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         if (awaitingAlbumReturn) {
             awaitingAlbumReturn = false
             setLoading(false)
-            loadFolders()
+            loadFolders(reportRemoteFailure = false)
         }
     }
 
@@ -83,29 +83,58 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         )
     }
 
-    private fun loadFolders() {
+    private fun loadFolders(reportRemoteFailure: Boolean) {
         setLoading(true)
         lifecycleScope.launch {
+            var remoteFailure: AgentConnectionDiagnosis? = null
             val items = try {
-                if (GenerationAgentClient.isAvailable(this@GeneratedFolderPickerActivity)) {
-                    val remote = GenerationAgentClient.fetchFolders(this@GeneratedFolderPickerActivity).map {
-                        FolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date)
+                val probe = GenerationAgentClient.probe(this@GeneratedFolderPickerActivity, "閲覧")
+                if (probe.code == AgentConnectionClassifier.OK ||
+                    probe.code == AgentConnectionClassifier.SD_DOWN
+                ) {
+                    try {
+                        val remote = GenerationAgentClient.fetchFolders(this@GeneratedFolderPickerActivity).map {
+                            FolderItem(it.date, it.count, it.thumbnailUrl, remoteDate = it.date)
+                        }
+                        val remoteNames = remote.map { it.name }.toSet()
+                        val local = loadLocalFolders().map {
+                            if (it.name in remoteNames) it.copy(name = "${it.name} (端末)") else it
+                        }
+                        remote + local
+                    } catch (error: Exception) {
+                        remoteFailure = AgentConnectionLog.last
+                            ?: AgentConnectionClassifier.fromException(error)
+                        loadLocalFolders()
                     }
-                    val remoteNames = remote.map { it.name }.toSet()
-                    val local = loadLocalFolders().map {
-                        if (it.name in remoteNames) it.copy(name = "${it.name} (端末)") else it
-                    }
-                    remote + local
                 } else {
+                    remoteFailure = probe
                     loadLocalFolders()
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                remoteFailure = AgentConnectionLog.last
+                    ?: AgentConnectionClassifier.fromException(error)
                 loadLocalFolders()
             }
 
             recyclerView.adapter = FolderAdapter(items, ::onFolderSelected)
-            emptyText.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+            if (items.isEmpty()) {
+                emptyText.visibility = View.VISIBLE
+                emptyText.text = if (remoteFailure != null) {
+                    "PCから日付フォルダを取れなかった。\n[${remoteFailure.code}] ${remoteFailure.title}"
+                } else {
+                    "まだ画像が生成されていません。\nPC生成エージェントの接続を確認してください。"
+                }
+            } else {
+                emptyText.visibility = View.GONE
+            }
             setLoading(false)
+            if (reportRemoteFailure && remoteFailure != null) {
+                AgentConnectionUi.showDiagnosis(
+                    this@GeneratedFolderPickerActivity,
+                    remoteFailure,
+                    "PCの閲覧一覧を取得できない"
+                )
+            }
         }
     }
 
