@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -81,27 +82,27 @@ class FullScreenImageActivity : AppCompatActivity() {
         loadImages()
         showImage()
         setupViewerActions()
+        setupPageTurnTouches()
+    }
 
-        val leftClick = View.OnClickListener {
-            if (currentEntries.isNotEmpty()) {
-                currentIndex = if (currentIndex > 0) currentIndex - 1 else currentEntries.lastIndex
-                showImage()
-            }
+    private fun setupPageTurnTouches() {
+        val slop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+        val tracker = ViewerPageTurnTracker(slop) { goLeft ->
+            turnPage(goLeft)
         }
-        val rightClick = View.OnClickListener {
-            if (currentEntries.isNotEmpty()) {
-                currentIndex = if (currentIndex < currentEntries.lastIndex) currentIndex + 1 else 0
-                showImage()
-            }
+        findViewById<View>(R.id.zone_left).setOnTouchListener(tracker.listenerForLeftZone())
+        findViewById<View>(R.id.zone_right).setOnTouchListener(tracker.listenerForRightZone())
+        findViewById<View>(R.id.blank_space_handler).setOnTouchListener(tracker.listenerForFullWidth())
+    }
+
+    private fun turnPage(goLeft: Boolean) {
+        if (currentEntries.isEmpty()) return
+        currentIndex = if (goLeft) {
+            if (currentIndex > 0) currentIndex - 1 else currentEntries.lastIndex
+        } else {
+            if (currentIndex < currentEntries.lastIndex) currentIndex + 1 else 0
         }
-        findViewById<View>(R.id.zone_left).setOnClickListener(leftClick)
-        findViewById<View>(R.id.zone_right).setOnClickListener(rightClick)
-        findViewById<View>(R.id.blank_space_handler).setOnTouchListener { view, event ->
-            if (event.action == android.view.MotionEvent.ACTION_UP) {
-                if (event.x < view.width / 2f) leftClick.onClick(view) else rightClick.onClick(view)
-            }
-            true
-        }
+        showImage()
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
