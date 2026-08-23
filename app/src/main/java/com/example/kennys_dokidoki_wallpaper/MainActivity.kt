@@ -980,14 +980,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         builderHistoryCursor = 0
         updateUndoRedoButtons()
 
-        // 中断ボタンの周りに進捗バーを重ねる（ボタン本体のデザインは変えない）
         generationRing = ProgressRingView(this).apply {
             isClickable = false
             isFocusable = false
             visibility = View.GONE
+            elevation = 8f * resources.displayMetrics.density
         }
-        (layoutBuilder as FrameLayout).addView(generationRing)
-        // ボタン位置が変わったら（テキスト変化/PiP復活ボタンの出し入れ等）リングも追従
+        findViewById<GenerationButtonHost>(R.id.generate_button_host).addView(generationRing)
         btnGenerateConcatenatedTop.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             syncGenerationRing()
         }
@@ -1514,60 +1513,36 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         btnRedo.alpha = if (canRedo) 1f else 0.35f
     }
 
-    /**
-     * 進捗バー(角丸四角形)を中断ボタンに重ねる。
-     * 横方向の見た目は従来のままにし、縦方向だけは線とボタンの間に隙間が
-     * 一切できない位置へ置く。ストローク中心がボタンの上下端と一致する。
-     */
     private fun syncGenerationRing() {
         if (!::generationRing.isInitialized) return
         val btn = btnGenerateConcatenatedTop
         if (btn.width == 0 || btn.height == 0) return
-        val btnLoc = IntArray(2)
-        val rootLoc = IntArray(2)
-        btn.getLocationInWindow(btnLoc)
-        layoutBuilder.getLocationInWindow(rootLoc)
-        val relX = btnLoc[0] - rootLoc[0]
-        val relY = btnLoc[1] - rootLoc[1]
-
-        val density = resources.displayMetrics.density
-        val strokeWidth = 4f * density
-        val horizontalGap = 2f * density
-        // 横幅は従来値を維持する。
-        val horizontalMargin = (strokeWidth + horizontalGap).toInt()
-        // PathはView端からstrokeWidth/2だけ内側に描かれるため、この余白なら
-        // Pathの上下端がボタンの上下端に一致し、空白がなくなる。
-        val verticalMargin = (strokeWidth / 2f).toInt()
-
         val matBtn = btn as? com.google.android.material.button.MaterialButton
-        // MaterialButtonのView領域にはタップしやすさ用の上下insetが含まれる。
-        // 色の付いた実際のボタン形状を基準にしないと、そのinsetが空白に見える。
-        val buttonInsetTop = matBtn?.insetTop ?: 0
-        val buttonInsetBottom = matBtn?.insetBottom ?: 0
-        val visibleButtonHeight = (btn.height - buttonInsetTop - buttonInsetBottom).coerceAtLeast(1)
-        val rawCorner = matBtn?.cornerRadius?.toFloat() ?: -1f
-        val buttonCorner = if (rawCorner > 0f) rawCorner else (visibleButtonHeight / 2f)
-        val horizontalPathExpansion = horizontalMargin - strokeWidth / 2f
-        generationRing.setCornerRadii(
-            horizontalPx = buttonCorner + horizontalPathExpansion,
-            verticalPx = buttonCorner
+        val density = resources.displayMetrics.density
+        val spec = GenerationRingLayoutPolicy.layout(
+            buttonWidth = btn.width,
+            buttonHeight = btn.height,
+            insetLeft = matBtn?.insetLeft ?: 0,
+            insetTop = matBtn?.insetTop ?: 0,
+            insetRight = matBtn?.insetRight ?: 0,
+            insetBottom = matBtn?.insetBottom ?: 0,
+            buttonCornerRadius = matBtn?.cornerRadius?.toFloat() ?: 0f,
+            strokeWidth = 4f * density,
+            gap = 1.5f * density
         )
-
-        val width = btn.width + 2 * horizontalMargin
-        val height = visibleButtonHeight + 2 * verticalMargin
-        val left = relX - horizontalMargin
-        val top = relY + buttonInsetTop - verticalMargin
+        generationRing.setCornerRadius(spec.cornerRadius)
         val lp = generationRing.layoutParams
         if (lp is FrameLayout.LayoutParams) {
-            lp.width = width
-            lp.height = height
-            lp.leftMargin = left
-            lp.topMargin = top
+            lp.width = spec.width
+            lp.height = spec.height
+            lp.leftMargin = spec.left
+            lp.topMargin = spec.top
+            lp.gravity = android.view.Gravity.NO_GRAVITY
             generationRing.layoutParams = lp
         } else {
-            generationRing.layoutParams = FrameLayout.LayoutParams(width, height).apply {
-                leftMargin = left
-                topMargin = top
+            generationRing.layoutParams = FrameLayout.LayoutParams(spec.width, spec.height).apply {
+                leftMargin = spec.left
+                topMargin = spec.top
             }
         }
     }

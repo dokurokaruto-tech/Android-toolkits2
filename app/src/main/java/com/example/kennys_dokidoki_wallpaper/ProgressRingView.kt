@@ -7,6 +7,7 @@ import android.graphics.Path
 import android.graphics.PathMeasure
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
 
 /**
@@ -27,8 +28,15 @@ class ProgressRingView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
 
     private var progress = 0f // 0.0 .. 1.0
-    private var cornerRadiusX = 0f // px
-    private var cornerRadiusY = 0f // px
+    private var cornerRadius = 0f // px
+
+    init {
+        isClickable = false
+        isFocusable = false
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean = false
 
     private val density = resources.displayMetrics.density
 
@@ -59,14 +67,9 @@ class ProgressRingView @JvmOverloads constructor(
         }
     }
 
-    /**
-     * ボタンとリングの角を合わせる。リングは横方向だけボタンより広いため、
-     * X/Yを分けることで上下の密着を保ったまま角の接点を揃える。
-     */
-    fun setCornerRadii(horizontalPx: Float, verticalPx: Float) {
-        if (horizontalPx != cornerRadiusX || verticalPx != cornerRadiusY) {
-            cornerRadiusX = horizontalPx
-            cornerRadiusY = verticalPx
+    fun setCornerRadius(radiusPx: Float) {
+        if (radiusPx != cornerRadius) {
+            cornerRadius = radiusPx
             invalidate()
         }
     }
@@ -79,12 +82,10 @@ class ProgressRingView @JvmOverloads constructor(
         val h = height.toFloat()
         if (w <= inset * 2f || h <= inset * 2f) return
         val rect = RectF(inset, inset, w - inset, h - inset)
-        val radiusX = cornerRadiusX.coerceIn(0f, rect.width() / 2f)
-        val radiusY = cornerRadiusY.coerceIn(0f, rect.height() / 2f)
+        val radius = cornerRadius.coerceIn(0f, minOf(rect.width(), rect.height()) / 2f)
 
-        // 下中央から反時計回りの角丸四角形パスを構築
         outlinePath.reset()
-        buildRoundedRectOutline(outlinePath, rect, radiusX, radiusY)
+        buildRoundedRectOutline(outlinePath, rect, radius)
 
         // 背景トラック（全体）
         canvas.drawPath(outlinePath, trackPaint)
@@ -106,29 +107,22 @@ class ProgressRingView @JvmOverloads constructor(
      * rect の角丸四角形を「下中央」から「反時計回り」にたどるパスを構築する。
      * 角の円弧はすべて負のsweep(-90°)=画面上の反時計回りで描く。
      */
-    private fun buildRoundedRectOutline(path: Path, rect: RectF, radiusX: Float, radiusY: Float) {
+    private fun buildRoundedRectOutline(path: Path, rect: RectF, radius: Float) {
         val l = rect.left
         val t = rect.top
         val r = rect.right
         val b = rect.bottom
         val cx = (l + r) / 2f
 
-        // 下中央から出発
         path.moveTo(cx, b)
-        // 下辺を右へ
-        path.lineTo(r - radiusX, b)
-        // 横長リングでもボタンへ密着できるよう、角は楕円弧で描く。
-        path.arcTo(RectF(r - 2f * radiusX, b - 2f * radiusY, r, b), 90f, -90f, false)
-        // 右辺を上へ
-        path.lineTo(r, t + radiusY)
-        path.arcTo(RectF(r - 2f * radiusX, t, r, t + 2f * radiusY), 0f, -90f, false)
-        // 上辺を左へ
-        path.lineTo(l + radiusX, t)
-        path.arcTo(RectF(l, t, l + 2f * radiusX, t + 2f * radiusY), 270f, -90f, false)
-        // 左辺を下へ
-        path.lineTo(l, b - radiusY)
-        path.arcTo(RectF(l, b - 2f * radiusY, l + 2f * radiusX, b), 180f, -90f, false)
-        // 下辺を右へ、出発点へ戻る
+        path.lineTo(r - radius, b)
+        path.arcTo(RectF(r - 2f * radius, b - 2f * radius, r, b), 90f, -90f, false)
+        path.lineTo(r, t + radius)
+        path.arcTo(RectF(r - 2f * radius, t, r, t + 2f * radius), 0f, -90f, false)
+        path.lineTo(l + radius, t)
+        path.arcTo(RectF(l, t, l + 2f * radius, t + 2f * radius), 270f, -90f, false)
+        path.lineTo(l, b - radius)
+        path.arcTo(RectF(l, b - 2f * radius, l + 2f * radius, b), 180f, -90f, false)
         path.lineTo(cx, b)
         path.close()
     }

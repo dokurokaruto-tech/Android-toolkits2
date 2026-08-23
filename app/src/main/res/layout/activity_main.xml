@@ -222,16 +222,22 @@
             android:id="@+id/layout_builder"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:visibility="gone">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 android:orientation="vertical">
 
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 app:cardCornerRadius="0dp"
                 app:cardElevation="3dp"
                 app:strokeWidth="0dp"
@@ -240,12 +246,16 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
                     android:orientation="vertical">
 
                     <LinearLayout
                         android:id="@+id/ll_builder_top"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
                         android:paddingStart="20dp"
@@ -296,16 +306,25 @@
                             android:textColor="?attr/colorPrimary"
                             tools:ignore="HardcodedText" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_generate_concatenated_top"
-                            style="@style/Widget.Material3.Button.Icon"
+                        <com.example.kennys_dokidoki_wallpaper.GenerationButtonHost
+                            android:id="@+id/generate_button_host"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="生成"
-                            android:textColor="?attr/colorOnPrimary"
-                            app:icon="@drawable/ic_md3_auto_awesome"
-                            app:iconTint="?attr/colorOnPrimary"
-                            tools:ignore="HardcodedText" />
+                            android:clipChildren="false"
+                            android:clipToPadding="false">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btn_generate_concatenated_top"
+                                style="@style/Widget.Material3.Button.Icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="top|start"
+                                android:text="生成"
+                                android:textColor="?attr/colorOnPrimary"
+                                app:icon="@drawable/ic_md3_auto_awesome"
+                                app:iconTint="?attr/colorOnPrimary"
+                                tools:ignore="HardcodedText" />
+                        </com.example.kennys_dokidoki_wallpaper.GenerationButtonHost>
                     </LinearLayout>
 
                     <LinearLayout
