@@ -1346,6 +1346,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         )
         selectedStripAdapter.update(sorted)
         centerSelectedStrip()
+        if (::selectedStrip.isInitialized) selectedStrip.refreshPeek()
         if (::btnGenerateConcatenatedTop.isInitialized) {
             val hasSelection = sorted.isNotEmpty() || PromptCardManager.randomEnabledCategories.isNotEmpty()
             btnGenerateConcatenatedTop.isEnabled = hasSelection

@@ -12,7 +12,7 @@ import kotlin.math.abs
  * 画像生成ビルダー画面の下部にオーバーレイする「選択中カード」ストリップ。
  *
  * - 背景は透明。レイアウトスペースを取らず、コンテンツの上に浮く。
- * - 上から下にスワイプ → 折りたたみ（履歴ボタンとグラバーだけ残る）
+ * - 上から下にスワイプ → 折りたたみ（履歴・グラバーとカード上端だけ残る）
  * - 下から上にスワイプ or タップ → 展開（指の動きに追従）
  * - 折りたたみ中のタップは「展開」のみ（選択解除しない）
  * - 展開中のカードタップ → 選択解除（子RecyclerViewが処理）
@@ -29,7 +29,8 @@ class CollapsibleCardStrip @JvmOverloads constructor(
 
     var onCollapsedChanged: ((Boolean) -> Unit)? = null
 
-    private val peekHeightPx: Int = (24 * resources.displayMetrics.density).toInt()
+    private val fallbackHeaderPx: Int = (24 * resources.displayMetrics.density).toInt()
+    private val cardPeekPx: Int = (32 * resources.displayMetrics.density).toInt()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     private var downRawY = 0f
@@ -123,12 +124,24 @@ class CollapsibleCardStrip @JvmOverloads constructor(
         if (height == 0) post(apply) else apply()
     }
 
-    private fun collapsedOffset(): Float =
-        (height - headerPeekHeight()).toFloat().coerceAtLeast(0f)
+    fun refreshPeek() {
+        if (!isCollapsed) return
+        animate().cancel()
+        translationY = collapsedOffset()
+    }
 
-    private fun headerPeekHeight(): Int {
+    private fun collapsedOffset(): Float =
+        (height - peekHeight()).toFloat().coerceAtLeast(0f)
+
+    private fun peekHeight(): Int {
         val header = findViewById<View>(R.id.builder_strip_header)
-        return BuilderStripStatePolicy.peekHeight(header?.height ?: 0, peekHeightPx)
+        val cards = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recycler_selected_cards)
+        val hasCards = (cards?.adapter?.itemCount ?: 0) > 0
+        return BuilderStripStatePolicy.peekHeight(
+            headerHeight = header?.height ?: 0,
+            cardPeek = BuilderStripStatePolicy.cardPeek(hasCards, cardPeekPx),
+            fallbackHeader = fallbackHeaderPx
+        )
     }
 
     private fun isTouchOnHistoryControls(ev: MotionEvent): Boolean {

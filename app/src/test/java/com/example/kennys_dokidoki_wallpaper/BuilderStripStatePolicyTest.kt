@@ -19,8 +19,15 @@ class BuilderStripStatePolicyTest {
     }
 
     @Test
-    fun peekKeepsHeaderAboveHiddenCards() {
-        assertEquals(44, BuilderStripStatePolicy.peekHeight(headerHeight = 44, fallback = 24))
-        assertEquals(24, BuilderStripStatePolicy.peekHeight(headerHeight = 0, fallback = 24))
+    fun peekKeepsHeaderAndASliverOfCards() {
+        assertEquals(76, BuilderStripStatePolicy.peekHeight(headerHeight = 44, cardPeek = 32, fallbackHeader = 24))
+        assertEquals(56, BuilderStripStatePolicy.peekHeight(headerHeight = 0, cardPeek = 32, fallbackHeader = 24))
+        assertEquals(44, BuilderStripStatePolicy.peekHeight(headerHeight = 44, cardPeek = 0, fallbackHeader = 24))
+    }
+
+    @Test
+    fun emptyStripDoesNotPeekMissingCards() {
+        assertEquals(0, BuilderStripStatePolicy.cardPeek(hasCards = false, peekWhenVisible = 32))
+        assertEquals(32, BuilderStripStatePolicy.cardPeek(hasCards = true, peekWhenVisible = 32))
     }
 }

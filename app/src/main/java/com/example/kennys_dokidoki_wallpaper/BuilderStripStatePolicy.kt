@@ -9,7 +9,12 @@ object BuilderStripStatePolicy {
 
     fun isCollapsed(stored: Boolean?): Boolean = stored == true
 
-    /** 畳んだあとも履歴ボタンとグラバーだけ残す。カード本体は隠す。 */
-    fun peekHeight(headerHeight: Int, fallback: Int): Int =
-        if (headerHeight > 0) headerHeight else fallback.coerceAtLeast(1)
+    /** 畳んでもグラバー／履歴の下に、カード上端が少し見える高さ。 */
+    fun peekHeight(headerHeight: Int, cardPeek: Int, fallbackHeader: Int): Int {
+        val header = if (headerHeight > 0) headerHeight else fallbackHeader.coerceAtLeast(1)
+        return header + cardPeek.coerceAtLeast(0)
+    }
+
+    fun cardPeek(hasCards: Boolean, peekWhenVisible: Int): Int =
+        if (hasCards) peekWhenVisible.coerceAtLeast(0) else 0
 }
