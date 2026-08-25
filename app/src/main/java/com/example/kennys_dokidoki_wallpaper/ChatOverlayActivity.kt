@@ -2313,7 +2313,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             // 同じ画像で一度出したら、同じ起動中は出し直さない
             if (variantPickerShownForImage == imageKey) return false
             // チャットがひとつも存在していない（ユーザーの発言がまだ無い）時だけ出す
-            if (chatTree.nodes.any { it.isUser }) return false
+            if (chatTree.nodes.values.any { it.isUser }) return false
         }
 
         val priorityMap = TagManager.categories.flatMap { it.tags }
