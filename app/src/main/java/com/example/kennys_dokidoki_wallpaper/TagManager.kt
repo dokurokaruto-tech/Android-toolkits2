@@ -9,11 +9,17 @@ import java.util.Collections
 object TagManager {
     private const val PREFS_NAME = "tag_prefs"
     private const val KEY_CATEGORIES = "tag_categories"
-    private const val KEY_PROMPTS = "tag_prompts"
+    private const val KEY_PROMPTS = "tag_prompts" // 旧形式：タグ→単一の文章
+    private const val KEY_PROMPT_VARIANTS = "tag_prompt_variants" // 新形式：タグ→複数の文章
     private const val KEY_IMPLIED_TAGS = "tag_implied_mappings"
     
     val categories = mutableListOf<TagCategory>()
-    val tagPrompts = mutableMapOf<String, String>()
+
+    /**
+     * タグごとの「AI召喚用の文章」のバリエーション。
+     * 旧バージョンのデータは、読み込み時に「オリジナル」という名前の1件に移行される。
+     */
+    val tagPromptVariants = mutableMapOf<String, MutableList<TagPromptVariant>>()
     val tagRemoteCardIds = mutableMapOf<String, String>() // リモートカードIDの紐付け
     
     // タグの継承関係（このタグを持っていたら、自動的に持っているとみなすタグのリスト）
@@ -83,13 +89,35 @@ object TagManager {
             categories.clear()
             categories.addAll(newCategories)
 
+            // 新形式（タグ→複数の文章）を読み込む
+            var migratedLegacyPrompts = false
+            val variantsJson = prefs.getString(KEY_PROMPT_VARIANTS, null)
+            tagPromptVariants.clear()
+            if (variantsJson != null) {
+                val obj = JSONObject(variantsJson)
+                for (key in obj.keys()) {
+                    val value = obj.get(key)
+                    val parsed = parseVariantValue(value)
+                    if (parsed.isNotEmpty()) {
+                        tagPromptVariants[key] = parsed
+                    }
+                }
+            }
+
+            // 旧形式（タグ→単一の文章）が残っていたら「オリジナル」として移行する
             val promptsJson = prefs.getString(KEY_PROMPTS, null)
-            tagPrompts.clear()
             if (promptsJson != null) {
                 val obj = JSONObject(promptsJson)
                 for (key in obj.keys()) {
-                    tagPrompts[key] = obj.getString(key)
+                    if (!tagPromptVariants.containsKey(key)) {
+                        tagPromptVariants[key] = mutableListOf(
+                            TagPromptVariant(TagVariantPolicy.ORIGINAL_NAME, obj.getString(key))
+                        )
+                        migratedLegacyPrompts = true
+                    }
                 }
+                // 移行済みの旧形式キーは消しておく（消したタグが復活するのを防ぐ）
+                prefs.edit().remove(KEY_PROMPTS).apply()
             }
 
             val remoteIdsJson = prefs.getString("tag_remote_ids", null)
@@ -116,11 +144,38 @@ object TagManager {
             }
             isLoaded = true
             Log.i("TagManager", "loadTags: successfully loaded ${categories.size} categories.")
+            if (migratedLegacyPrompts) {
+                // 旧形式から移行した結果を新形式で保存し直す
+                try {
+                    saveTags(context)
+                } catch (e: Exception) {
+                    Log.e("TagManager", "Failed to persist migrated tag prompts", e)
+                }
+            }
         } catch (e: Exception) {
             Log.e("TagManager", "loadTags failed!", e)
         } finally {
             isLoading = false
         }
+    }
+
+    /**
+     * 保存された値（JSONArray＝新形式 or String＝旧形式）をバリエーションのリストへ変換する。
+     */
+    private fun parseVariantValue(value: Any?): MutableList<TagPromptVariant> {
+        val list = mutableListOf<TagPromptVariant>()
+        when (value) {
+            is JSONArray -> {
+                for (i in 0 until value.length()) {
+                    val obj = value.optJSONObject(i) ?: continue
+                    val name = obj.optString("name").trim()
+                        .ifEmpty { TagVariantPolicy.ORIGINAL_NAME }
+                    list.add(TagPromptVariant(name, obj.optString("text")))
+                }
+            }
+            is String -> list.add(TagPromptVariant(TagVariantPolicy.ORIGINAL_NAME, value))
+        }
+        return list
     }
 
     /**
@@ -160,9 +215,18 @@ object TagManager {
             array.put(obj)
         }
         
-        val promptsObj = JSONObject()
-        tagPrompts.forEach { (tag, prompt) ->
-            promptsObj.put(tag, prompt)
+        val variantsObj = JSONObject()
+        tagPromptVariants.forEach { (tag, variants) ->
+            val array = JSONArray()
+            variants.forEach { variant ->
+                array.put(
+                    JSONObject().apply {
+                        put("name", variant.name)
+                        put("text", variant.text)
+                    }
+                )
+            }
+            variantsObj.put(tag, array)
         }
 
         val remoteIdsObj = JSONObject()
@@ -177,9 +241,10 @@ object TagManager {
         
         prefs.edit()
             .putString(KEY_CATEGORIES, array.toString())
-            .putString(KEY_PROMPTS, promptsObj.toString())
+            .putString(KEY_PROMPT_VARIANTS, variantsObj.toString())
             .putString("tag_remote_ids", remoteIdsObj.toString())
             .putString(KEY_IMPLIED_TAGS, impliedObj.toString())
+            .remove(KEY_PROMPTS) // 旧形式は新形式へ移行済みなので残さない
             .apply()
 
         // セーブ成功後、自動バックアップを作成
@@ -269,10 +334,10 @@ object TagManager {
             }
         }
 
-        // プロンプトを移行
-        val prompt = tagPrompts.remove(oldTag)
-        if (prompt != null) {
-            tagPrompts[newTag] = prompt
+        // プロンプト（バリエーションごと）を移行
+        val variants = tagPromptVariants.remove(oldTag)
+        if (variants != null) {
+            tagPromptVariants[newTag] = variants
         }
 
         // 継承関係を移行
@@ -293,15 +358,72 @@ object TagManager {
         saveTags(context)
     }
 
+    /**
+     * タグに登録された文章のバリエーション一覧を返す。
+     */
     @Synchronized
-    fun setTagPrompt(context: Context, tag: String, prompt: String) {
-        tagPrompts[tag] = prompt
+    fun getTagPromptVariants(tag: String): List<TagPromptVariant> {
+        return tagPromptVariants[tag]?.toList() ?: emptyList()
+    }
+
+    /**
+     * タグの文章バリエーション一覧を丸ごと置き換える。
+     */
+    @Synchronized
+    fun setTagPromptVariants(context: Context, tag: String, variants: List<TagPromptVariant>) {
+        val cleaned = TagVariantPolicy.ensureNonEmpty(variants)
+        tagPromptVariants[tag] = cleaned.toMutableList()
         saveTags(context)
     }
 
+    /**
+     * 旧APIとの互換用：デフォルト（「オリジナル」優先）の文章を保存する。
+     */
+    @Synchronized
+    fun setTagPrompt(context: Context, tag: String, prompt: String) {
+        val variants = getTagPromptVariants(tag).toMutableList()
+        if (variants.isEmpty()) {
+            variants.add(TagPromptVariant(TagVariantPolicy.ORIGINAL_NAME, ""))
+        }
+        val name = TagVariantPolicy.defaultVariantName(variants)
+        val index = variants.indexOfFirst { it.name == name }
+        variants[index] = variants[index].copy(text = prompt)
+        tagPromptVariants[tag] = variants
+        saveTags(context)
+    }
+
+    /**
+     * 指定した名前のバリエーションの文章だけを書き換える。
+     */
+    @Synchronized
+    fun setTagPromptVariant(context: Context, tag: String, variantName: String?, text: String) {
+        val variants = getTagPromptVariants(tag).toMutableList()
+        if (variants.isEmpty()) {
+            tagPromptVariants[tag] = mutableListOf(TagPromptVariant(TagVariantPolicy.ORIGINAL_NAME, text))
+            saveTags(context)
+            return
+        }
+        val index = TagVariantPolicy.resolveIndex(variants, variantName)
+        variants[index] = variants[index].copy(text = text)
+        tagPromptVariants[tag] = variants
+        saveTags(context)
+    }
+
+    /**
+     * 旧APIとの互換用：デフォルト（「オリジナル」優先）の文章を返す。
+     */
     @Synchronized
     fun getTagPrompt(tag: String): String {
-        return tagPrompts[tag] ?: ""
+        return TagVariantPolicy.resolveText(getTagPromptVariants(tag), null)
+    }
+
+    /**
+     * 指定した名前のバリエーションの文章を返す。
+     * 名前が見つからない場合はデフォルト（先頭）の文章を返す。
+     */
+    @Synchronized
+    fun getTagPrompt(tag: String, variantName: String?): String {
+        return TagVariantPolicy.resolveText(getTagPromptVariants(tag), variantName)
     }
 
     fun estimateTokenCount(text: String): Int {
@@ -428,8 +550,8 @@ object TagManager {
         // カテゴリから削除
         categories.forEach { it.tags.remove(tag) }
         
-        // プロンプトから削除
-        tagPrompts.remove(tag)
+        // プロンプト（バリエーションごと）から削除
+        tagPromptVariants.remove(tag)
         
         // リモートカード紐付けから削除
         tagRemoteCardIds.remove(tag)

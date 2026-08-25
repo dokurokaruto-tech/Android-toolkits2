@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- タグ編集画面に並ぶ「AI召喚用の文章」のバリエーション1件分（横長ボタン） -->
+<com.google.android.material.button.MaterialButton xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/btn_variant"
+    style="@style/Widget.Material3.Button.OutlinedButton.Icon"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    android:gravity="center_vertical|start"
+    android:minHeight="56dp"
+    app:icon="@drawable/ic_md3_description"
+    app:iconGravity="textStart"
+    app:iconPadding="8dp"
+    app:iconSize="20dp"
+    tools:text="オリジナル（156文字）" />

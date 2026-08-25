@@ -537,6 +537,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private var currentChatId: String? = null
     private var currentImageEntry: ImageEntry? = null
 
+    /** タグごとに発動させる性格（バリエーション名）の選択結果 */
+    private var activeTagVariants = mutableMapOf<String, String>()
+
+    /** 同じ画像に対して選択UIを二重に表示しないためのガード */
+    private var variantPickerShownForImage: String? = null
+
     private lateinit var tvOpenRouterCounter: TextView
 
     private lateinit var chatInput: EditText
@@ -1058,6 +1064,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         })
 
         try {
+            TagManager.loadTags(this)
             DataManager.loadData(this)
             loadCurrentSession()
         } catch (e: Exception) {
@@ -1139,9 +1146,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     })
                 } else {
                     tags.forEach { tag ->
-                        val prompt = TagManager.getTagPrompt(tag)
+                        val variants = TagManager.getTagPromptVariants(tag)
+                        val prompt = activePromptFor(tag)
                         val tChars = prompt.length
                         val tTokens = TagManager.estimateTokenCount(prompt)
+                        val tagLabel = if (variants.size >= 2) {
+                            "$tag ［${activeVariantNameFor(tag)}］"
+                        } else {
+                            tag
+                        }
 
                         val tagRow = LinearLayout(this@ChatOverlayActivity).apply {
                             orientation = LinearLayout.HORIZONTAL
@@ -1171,7 +1184,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                                 
                                 addView(TextView(this@ChatOverlayActivity).apply {
-                                    text = tag
+                                    text = tagLabel
                                     setTextColor(android.graphics.Color.WHITE)
                                     textSize = 16f
                                 })
@@ -1296,6 +1309,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         setIntent(intent)
         applyPinnedChatWindowCover()
         try {
+            TagManager.loadTags(this)
             loadCurrentSession()
         } catch (e: Exception) {
             Log.e("ChatOverlay", "onNewIntent loadCurrentSession failed", e)
@@ -1837,6 +1851,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 persistImageBinding(currentImageEntry, saveLibrary = true)
                 buildDisplayList()
                 Toast.makeText(this, "チャットをリセットしました。新しいセッションを開始します。", Toast.LENGTH_SHORT).show()
+
+                // 新しいチャットになるので、性格の選択UIをもう一度出す
+                variantPickerShownForImage = null
+                scheduleTagVariantPicker()
             }
             .setNegativeButton("キャンセル", null)
             .show()
@@ -2269,7 +2287,151 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
             
             updateIntegrityWarnings()
+            scheduleTagVariantPicker()
         }
+    }
+
+    /**
+     * チャットがまだ始まっていない状態なら、複数の文章（性格）を持つタグの
+     * 選択UIを画面の最初に表示する。ビュー構築が終わってから表示するため一旦postする。
+     */
+    private fun scheduleTagVariantPicker(force: Boolean = false) {
+        findViewById<View>(R.id.root_layout).post {
+            maybeShowTagVariantPicker(force)
+        }
+    }
+
+    /**
+     * 複数の文章を持つタグがあれば性格選択UIを出す。
+     * @return 実際にUIを表示したかどうか
+     */
+    private fun maybeShowTagVariantPicker(force: Boolean = false): Boolean {
+        val entry = currentImageEntry ?: return false
+        val imageKey = GeneratedImageIdentity.canonicalKey(entry.uri.toString())
+
+        if (!force) {
+            // 同じ画像で一度出したら、同じ起動中は出し直さない
+            if (variantPickerShownForImage == imageKey) return false
+            // チャットがひとつも存在していない（ユーザーの発言がまだ無い）時だけ出す
+            if (chatTree.nodes.any { it.isUser }) return false
+        }
+
+        val priorityMap = TagManager.categories.flatMap { it.tags }
+            .withIndex().associate { it.value to it.index }
+        val effective = TagManager.getEffectiveTags(entry.tags)
+        val multiTags = effective
+            .filter { TagManager.getTagPromptVariants(it).size >= 2 }
+            .sortedBy { priorityMap[it] ?: Int.MAX_VALUE }
+
+        variantPickerShownForImage = imageKey
+        if (multiTags.isEmpty()) return false
+
+        activeTagVariants.clear()
+        activeTagVariants.putAll(TagVariantPolicy.loadSelection(this, imageKey))
+        showTagVariantPickerDialog(imageKey, multiTags)
+        return true
+    }
+
+    /**
+     * Material Design 3 の選択画面：タグごとに「どの性格を発動させるか」を選ぶ。
+     */
+    private fun showTagVariantPickerDialog(imageKey: String, multiTags: List<String>) {
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_tag_variant_picker)
+        val sections = view.findViewById<LinearLayout>(R.id.ll_variant_picker_sections)
+
+        val selections = mutableMapOf<String, String>()
+        selections.putAll(activeTagVariants)
+
+        multiTags.forEach { tag ->
+            val variants = TagManager.getTagPromptVariants(tag)
+
+            val label = MaterialTextView(md3Context).apply {
+                text = "#$tag（${variants.size}通り）"
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium)
+                setTextColor(md3Color(com.google.android.material.R.attr.colorPrimary))
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 16.dp() }
+                layoutParams = params
+            }
+            sections.addView(label)
+
+            val preview = MaterialTextView(md3Context).apply {
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+                setTextColor(md3Color(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 4.dp() }
+                layoutParams = params
+            }
+
+            fun refreshPreview() {
+                val name = selections[tag]
+                val text = TagVariantPolicy.resolveText(variants, name)
+                val firstLine = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+                preview.text = firstLine.ifEmpty { "（まだ文章が書かれていない）" }
+            }
+            refreshPreview()
+            sections.addView(preview)
+
+            val group = com.google.android.material.button.MaterialButtonToggleGroup(md3Context).apply {
+                isSingleSelection = true
+                isSelectionRequired = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 8.dp() }
+            }
+
+            val defaultName = TagVariantPolicy.defaultVariantName(variants)
+            val storedName = selections[tag]?.takeIf { saved -> variants.any { it.name == saved } }
+            val selectedName = storedName ?: defaultName
+            selections[tag] = selectedName
+
+            variants.forEach { variant ->
+                val btn = MaterialButton(md3Context, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                    id = View.generateViewId()
+                    text = variant.name
+                    isCheckable = true
+                    isChecked = variant.name == selectedName
+                }
+                group.addView(btn)
+            }
+            group.addOnButtonCheckedListener { _, checkedId, isChecked ->
+                if (!isChecked) return@addOnButtonCheckedListener
+                val checkedIndex = group.indexOfChild(view.findViewById<View>(checkedId))
+                if (checkedIndex in variants.indices) {
+                    selections[tag] = variants[checkedIndex].name
+                    refreshPreview()
+                }
+            }
+            sections.addView(group)
+        }
+
+        val dialog = Md3PopupDialog.show(this, view)
+
+        view.findViewById<View>(R.id.btn_variant_picker_close).setOnClickListener {
+            dialog.dismiss()
+        }
+        view.findViewById<View>(R.id.btn_variant_picker_apply).setOnClickListener {
+            activeTagVariants.clear()
+            activeTagVariants.putAll(selections)
+            TagVariantPolicy.saveSelection(this, imageKey, selections)
+            dialog.dismiss()
+            Toast.makeText(this, "発動させる性格を設定したわよ！", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** 現在の画像で、タグに発動させる性格（バリエーション名）を返す。 */
+    private fun activeVariantNameFor(tag: String): String {
+        return TagVariantPolicy.resolveName(TagManager.getTagPromptVariants(tag), activeTagVariants[tag])
+    }
+
+    /** 現在の画像で、タグが実際に発動させる文章を返す。 */
+    private fun activePromptFor(tag: String): String {
+        return TagVariantPolicy.resolveText(TagManager.getTagPromptVariants(tag), activeTagVariants[tag])
     }
 
     private fun checkAndInitializeGreeting() {
@@ -2355,7 +2517,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun showOptionsMenu(view: View) {
-        val items = arrayOf("ビジュアル設定", "チャットの結びつけ", "新しいチャットを開始")
+        val items = arrayOf("ビジュアル設定", "チャットの結びつけ", "性格を選択", "新しいチャットを開始")
         MaterialAlertDialogBuilder(md3Context)
             .setTitle("チャットオプション")
             .setItems(items) { _, which ->
@@ -2363,6 +2525,11 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     0 -> showVisualConfigDialog()
                     1 -> showSessionSelectionDialog()
                     2 -> {
+                        if (!maybeShowTagVariantPicker(force = true)) {
+                            Toast.makeText(this, "この画像には性格を選べるタグ（複数の文章を持つタグ）がないわよ！", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    3 -> {
                         if (currentChatId != null) {
                             showStartNewChatDialog()
                         } else {
@@ -2446,6 +2613,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         chatTree = ChatTree(mutableMapOf(), null)
         buildDisplayList()
         Toast.makeText(this, "新規セッションの準備が完了しました。", Toast.LENGTH_SHORT).show()
+
+        // 新しいチャットになるので、性格の選択UIをもう一度出す
+        variantPickerShownForImage = null
+        scheduleTagVariantPicker()
     }
 
     private fun showVisualConfigDialog() {
@@ -3307,7 +3478,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         if (tags.isNotEmpty()) {
             val effectiveTags = TagManager.getEffectiveTags(tags)
             builder.append("\n【現在の画像属性（タグ）】:\n")
-            effectiveTags.forEach { builder.append("- $it: ${TagManager.getTagPrompt(it)}\n") }
+            effectiveTags.forEach { builder.append("- $it: ${activePromptFor(it)}\n") }
         }
         
         return builder.toString()
@@ -3357,7 +3528,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val tags = if (entry == null) {
             emptyList()
         } else {
-            TagManager.getEffectiveTags(entry.tags).map { tag -> tag to TagManager.getTagPrompt(tag) }
+            TagManager.getEffectiveTags(entry.tags).map { tag -> tag to activePromptFor(tag) }
         }
         val personaItems = persona?.items
             ?.filter { it.isEnabled && it.content.isNotBlank() }
@@ -3409,7 +3580,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             ChatInstructionPolicy.Kind.IMAGE -> saveImageInstruction(body)
             ChatInstructionPolicy.Kind.TAG -> {
                 if (target.key.isBlank()) return false
-                TagManager.setTagPrompt(this, target.key, body)
+                // いま発動中の性格（バリエーション）の文章だけを書き換える
+                TagManager.setTagPromptVariant(this, target.key, activeVariantNameFor(target.key), body)
                 true
             }
             ChatInstructionPolicy.Kind.MEMORY -> {

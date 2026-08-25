@@ -474,7 +474,7 @@ class ImageTagEditorActivity : AppCompatActivity() {
 
     private fun showDirectDescriptionDialog(entry: ImageEntry) {
         val inflater = LayoutInflater.from(this)
-        val dialogView = inflater.inflate(R.layout.activity_tag_prompt_editor, null)
+        val dialogView = inflater.inflate(R.layout.dialog_image_description, null)
         
         val etDesc = dialogView.findViewById<EditText>(R.id.et_prompt_input)
         val tvDialogTitle = dialogView.findViewById<TextView>(R.id.tv_editor_title)
@@ -485,19 +485,13 @@ class ImageTagEditorActivity : AppCompatActivity() {
         val tvCounter = dialogView.findViewById<TextView>(R.id.tv_counter)
 
         // 不要な要素を完全に消去するわよ！
-        dialogView.findViewById<View>(R.id.btn_edit_implied_tags)?.parent?.let { (it as? View)?.visibility = View.GONE }
-        dialogView.findViewById<View>(R.id.btn_edit_implied_tags)?.visibility = View.GONE
         dialogView.findViewById<View>(R.id.btn_migrate)?.visibility = View.GONE
         dialogView.findViewById<View>(R.id.btn_delete)?.visibility = View.GONE
-        dialogView.findViewById<View>(R.id.tv_implied_tags_display)?.visibility = View.GONE
         dialogView.findViewById<View>(R.id.btn_link_local_card)?.visibility = View.GONE
         dialogView.findViewById<View>(R.id.tv_local_card_status)?.visibility = View.GONE
         etTagName?.visibility = View.GONE
-        // 「タグ名」のラベルも消しちゃうわ
-        (etTagName?.parent as? LinearLayout)?.let { parent ->
-            val idx = parent.indexOfChild(etTagName)
-            if (idx > 0) parent.getChildAt(idx - 1).visibility = View.GONE
-        }
+        // 「タグ名」の入力欄ごと消しちゃうわ
+        (etTagName?.parent as? View)?.visibility = View.GONE
 
         // --- AI設定セクションの追加 ---
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)

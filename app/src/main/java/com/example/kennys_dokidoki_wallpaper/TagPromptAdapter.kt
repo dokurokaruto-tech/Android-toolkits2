@@ -150,7 +150,12 @@ class TagPromptAdapter(
                 onCategoryClick(item.name)
             }
         } else if (holder is TagViewHolder && item is TagListItem.TagItem) {
-            holder.tagName.text = "#${item.name}"
+            val variantCount = TagManager.getTagPromptVariants(item.name).size
+            holder.tagName.text = if (variantCount >= 2) {
+                "#${item.name} ［${variantCount}通り］"
+            } else {
+                "#${item.name}"
+            }
             holder.tagName.setOnClickListener {
                 onTagClick(item.name)
             }

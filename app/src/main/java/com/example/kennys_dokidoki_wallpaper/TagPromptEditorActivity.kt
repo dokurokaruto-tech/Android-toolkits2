@@ -21,6 +21,7 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,14 +49,25 @@ import java.util.Locale
 class TagPromptEditorActivity : AppCompatActivity() {
 
     private lateinit var etTagName: EditText
-    private lateinit var etPromptInput: EditText
     private lateinit var tvTitle: TextView
     private lateinit var tvImpliedTags: TextView
-    private lateinit var tvCounter: TextView
     private lateinit var tvLocalCardStatus: TextView
     private lateinit var btnLinkLocalCard: Button
-    private lateinit var btnAiGenerate: Button
+    private lateinit var llVariantContainer: LinearLayout
+    private lateinit var btnAddVariant: Button
     private lateinit var originalTag: String
+
+    /** このタグが持つ文章バリエーション（画面内の作業用コピー。保存時にまとめて書き込む） */
+    private var currentVariants = mutableListOf<TagPromptVariant>()
+
+    /** バリエーション編集ダイアログでAI置き換えの出力先になるエディタ */
+    private var variantEditText: EditText? = null
+
+    /** AI置き換え中のバリエーション位置（新規追加中は currentVariants.size） */
+    private var activeVariantEditIndex = -1
+
+    /** 生成中アニメーションの対象（ダイアログ内のAIボタン） */
+    private var aiMotionTarget: View? = null
     
     private val currentImpliedTags = mutableSetOf<String>()
     
@@ -171,14 +183,13 @@ class TagPromptEditorActivity : AppCompatActivity() {
         
         tvTitle = findViewById(R.id.tv_editor_title)
         etTagName = findViewById(R.id.et_tag_name)
-        etPromptInput = findViewById(R.id.et_prompt_input)
         tvImpliedTags = findViewById(R.id.tv_implied_tags_display)
-        tvCounter = findViewById(R.id.tv_counter)
         tvLocalCardStatus = findViewById(R.id.tv_local_card_status)
         btnLinkLocalCard = findViewById(R.id.btn_link_local_card)
+        llVariantContainer = findViewById(R.id.ll_variant_container)
+        btnAddVariant = findViewById(R.id.btn_add_variant)
         val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar_tag_editor)
         val btnEditImplied = findViewById<Button>(R.id.btn_edit_implied_tags)
-        btnAiGenerate = findViewById(R.id.btn_ai_generate)
         val btnMigrate = findViewById<Button>(R.id.btn_migrate)
         val btnDelete = findViewById<Button>(R.id.btn_delete)
         val btnSave = findViewById<Button>(R.id.btn_save)
@@ -218,20 +229,11 @@ class TagPromptEditorActivity : AppCompatActivity() {
             }
         }
 
-        val initialPrompt = TagManager.getTagPrompt(originalTag)
-        etPromptInput.setText(initialPrompt)
-        updateCounter(initialPrompt)
+        currentVariants = TagManager.getTagPromptVariants(originalTag).toMutableList()
+        renderVariants()
         
         PromptCardManager.loadCards(this)
         updateLocalCardStatus()
-
-        etPromptInput.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                updateCounter(s?.toString() ?: "")
-            }
-            override fun afterTextChanged(s: android.text.Editable?) {}
-        })
 
         val implied = TagManager.getImpliedTags(originalTag)
         currentImpliedTags.addAll(implied)
@@ -239,10 +241,9 @@ class TagPromptEditorActivity : AppCompatActivity() {
 
         btnEditImplied.setOnClickListener { showImpliedTagsPickerDialog() }
         btnLinkLocalCard.setOnClickListener { showLocalCardPickerDialog() }
-        btnAiGenerate.setOnClickListener { showHybridGenerateDialog() }
+        btnAddVariant.setOnClickListener { showVariantEditorDialog(currentVariants.size, isNew = true) }
         btnSave.setOnClickListener {
             val newTagName = etTagName.text.toString().trim()
-            val newPrompt = etPromptInput.text.toString().trim()
 
             if (newTagName.isEmpty()) {
                 Toast.makeText(this, "タグ名を入力してください。", Toast.LENGTH_SHORT).show()
@@ -267,7 +268,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
                 TagManager.renameTag(this, originalTag, newTagName)
             }
             
-            TagManager.setTagPrompt(this, newTagName, newPrompt)
+            TagManager.setTagPromptVariants(this, newTagName, currentVariants)
             TagManager.setImpliedTags(this, newTagName, currentImpliedTags)
             DataManager.saveData(this)
             Toast.makeText(this, "保存しました", Toast.LENGTH_SHORT).show()
@@ -353,12 +354,126 @@ class TagPromptEditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateCounter(text: String) {
+    private fun counterText(text: String): String {
         val chars = text.length
         val tokens = TagManager.estimateTokenCount(text)
-        tvCounter.text = "$chars 文字 | 約 $tokens トークン"
-        if (chars in 300..500) tvCounter.setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
-        else tvCounter.setTextColor(android.graphics.Color.parseColor("#CAC4D0"))
+        return "$chars 文字 | 約 $tokens トークン"
+    }
+
+    /**
+     * タグが持つ文章バリエーションを、横長のボタンとして並べ直す。
+     */
+    private fun renderVariants() {
+        llVariantContainer.removeAllViews()
+        currentVariants.forEachIndexed { index, variant ->
+            val item = LayoutInflater.from(this)
+                .inflate(R.layout.item_tag_prompt_variant, llVariantContainer, false)
+            val btn = item.findViewById<Button>(R.id.btn_variant)
+            val chars = variant.text.length
+            btn.text = "${variant.name}（${chars}文字）"
+            btn.setOnClickListener { showVariantEditorDialog(index, isNew = false) }
+            llVariantContainer.addView(item)
+        }
+    }
+
+    /**
+     * 1つの文章（性格）を閲覧・編集するダイアログ。新規登録にも使う。
+     */
+    private fun showVariantEditorDialog(index: Int, isNew: Boolean) {
+        if (generateJob?.isActive == true) {
+            Toast.makeText(this, "AIの置き換え中は他の文章を開けないわよ！", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_tag_prompt_variant)
+        val tvTitle = view.findViewById<TextView>(R.id.tv_variant_title)
+        val tvSub = view.findViewById<TextView>(R.id.tv_variant_sub)
+        val etName = view.findViewById<EditText>(R.id.et_variant_name)
+        val etText = view.findViewById<EditText>(R.id.et_variant_text)
+        val tvCounter = view.findViewById<TextView>(R.id.tv_variant_counter)
+        val btnDelete = view.findViewById<Button>(R.id.btn_variant_delete)
+        val btnAi = view.findViewById<Button>(R.id.btn_variant_ai)
+        val btnCancel = view.findViewById<Button>(R.id.btn_variant_cancel)
+        val btnSave = view.findViewById<Button>(R.id.btn_variant_save)
+
+        val editing = !isNew && index in currentVariants.indices
+        val initial = if (editing) {
+            currentVariants[index]
+        } else {
+            TagPromptVariant(TagVariantPolicy.nextVariantName(currentVariants), "")
+        }
+
+        tvTitle.text = if (editing) "文章の編集" else "新しい文章を登録"
+        tvSub.text = if (editing) {
+            "「${initial.name}」の内容を閲覧・編集できるわよ。"
+        } else {
+            "別の性格の文章を登録すると、チャットの最初に選べるようになるわよ。"
+        }
+        etName.setText(initial.name)
+        etText.setText(initial.text)
+
+        fun refreshCounter(text: CharSequence) {
+            tvCounter.text = counterText(text.toString())
+        }
+        refreshCounter(etText.text ?: "")
+        etText.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                refreshCounter(s ?: "")
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+
+        btnDelete.visibility = if (editing && TagVariantPolicy.canDelete(currentVariants)) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+
+        // AI置き換えの出力先をこのダイアログのエディタに切り替える
+        variantEditText = etText
+        activeVariantEditIndex = if (editing) index else currentVariants.size
+        aiMotionTarget = btnAi
+
+        val dialog = Md3PopupDialog.show(this, view)
+
+        fun closeEditor() {
+            aiMotionTarget = null
+            stopGenerateMotion()
+            variantEditText = null
+            dialog.dismiss()
+        }
+
+        btnCancel.setOnClickListener { closeEditor() }
+
+        btnSave.setOnClickListener {
+            val name = etName.text.toString().trim().ifEmpty {
+                if (editing) initial.name else TagVariantPolicy.nextVariantName(currentVariants)
+            }
+            val text = etText.text.toString()
+            if (editing) {
+                currentVariants[index] = TagPromptVariant(name, text)
+            } else {
+                currentVariants.add(TagPromptVariant(name, text))
+            }
+            renderVariants()
+            closeEditor()
+        }
+
+        btnDelete.setOnClickListener {
+            AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
+                .setTitle("文章の削除")
+                .setMessage("「${initial.name}」を削除してもいいの？")
+                .setPositiveButton("削除する") { _, _ ->
+                    currentVariants = TagVariantPolicy.removeAt(currentVariants, index).toMutableList()
+                    renderVariants()
+                    closeEditor()
+                }
+                .setNegativeButton("やっぱりやめる", null)
+                .show()
+        }
+
+        btnAi.setOnClickListener { showHybridGenerateDialog() }
     }
 
     private fun updateImpliedTagsDisplay() {
@@ -478,7 +593,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
         }
 
         cbUseTagName.isChecked = etTagName.text.toString().trim().isNotEmpty()
-        cbUseExisting.isChecked = etPromptInput.text.toString().trim().isNotEmpty()
+        cbUseExisting.isChecked = variantEditText?.text?.toString()?.trim()?.isNotEmpty() == true
         hybridDialog = Md3PopupDialog.show(this, dialogView)
 
         btnPickImage.setOnClickListener {
@@ -628,9 +743,11 @@ class TagPromptEditorActivity : AppCompatActivity() {
 
     private fun generatePromptHybrid(instruction: String, useTagName: Boolean, useExisting: Boolean, imageUri: Uri?, systemPrompt: String) {
         if (generateJob?.isActive == true) return
+        val target = variantEditText ?: return
+        val variantIndex = activeVariantEditIndex
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val provider = prefs.getString("chat_cloud_provider", "GROK") ?: "GROK"
-        val originalPrompt = etPromptInput.text.toString()
+        val originalPrompt = target.text.toString()
         val userText = TagPromptStreamPolicy.userMessage(
             etTagName.text.toString(),
             instruction,
@@ -645,14 +762,22 @@ class TagPromptEditorActivity : AppCompatActivity() {
                 val imageDataUrl = imageUri?.let { uri ->
                     encodeImageToBase64(uri)?.let { "data:image/jpeg;base64,$it" }
                 }
+                val onDelta: (String) -> Unit = { text ->
+                    coroutineScope.launch(Dispatchers.Main) {
+                        target.setText(text)
+                        target.setSelection(text.length)
+                    }
+                }
                 val reply = when {
-                    provider == "OPENROUTER" -> streamOpenRouter(prefs, systemPrompt, userText, imageDataUrl)
-                    else -> streamGrokOrLegacy(prefs, instruction, useTagName, useExisting, originalPrompt, systemPrompt, userText, imageDataUrl)
+                    provider == "OPENROUTER" -> streamOpenRouter(prefs, systemPrompt, userText, imageDataUrl, onDelta)
+                    else -> streamGrokOrLegacy(prefs, instruction, useTagName, useExisting, originalPrompt, systemPrompt, userText, imageDataUrl, onDelta)
                 }
                 if (reply.isNotEmpty()) {
                     failed = false
                     withContext(Dispatchers.Main) {
-                        etPromptInput.setText(reply)
+                        target.setText(reply)
+                        target.setSelection(reply.length)
+                        commitVariantText(variantIndex, reply)
                         Toast.makeText(this@TagPromptEditorActivity, "置き換えた。", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -661,7 +786,10 @@ class TagPromptEditorActivity : AppCompatActivity() {
             }
             withContext(Dispatchers.Main) {
                 if (failed) {
-                    etPromptInput.setText(TagPromptStreamPolicy.applyFailedInstruction(originalPrompt, instruction))
+                    val fallback = TagPromptStreamPolicy.applyFailedInstruction(originalPrompt, instruction)
+                    target.setText(fallback)
+                    target.setSelection(fallback.length)
+                    commitVariantText(variantIndex, fallback)
                     val message = if (instruction.isNotBlank()) {
                         "置き換えに失敗した。補足を文章へ移した。"
                     } else {
@@ -674,11 +802,23 @@ class TagPromptEditorActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * AI置き換えの結果を、編集中のバリエーションへ書き戻す。
+     * （ダイアログを閉じていても結果が消えないようにする）
+     */
+    private fun commitVariantText(index: Int, text: String) {
+        if (index in currentVariants.indices) {
+            currentVariants[index] = currentVariants[index].copy(text = text)
+            renderVariants()
+        }
+    }
+
     private suspend fun streamOpenRouter(
         prefs: android.content.SharedPreferences,
         systemPrompt: String,
         userText: String,
-        imageDataUrl: String?
+        imageDataUrl: String?,
+        onDelta: (String) -> Unit
     ): String {
         val apiKey = OpenRouterManager.getActiveApiKey(this@TagPromptEditorActivity)
             ?: throw IllegalStateException("OpenRouterのAPIキーがない")
@@ -698,7 +838,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
             userText,
             imageDataUrl,
             isActive = { generateJob?.isActive == true },
-            onDelta = { text -> coroutineScope.launch(Dispatchers.Main) { etPromptInput.setText(text) } }
+            onDelta = onDelta
         )
         if (reply.isNotEmpty()) {
             OpenRouterManager.incrementUsage(this@TagPromptEditorActivity, apiKey)
@@ -714,7 +854,8 @@ class TagPromptEditorActivity : AppCompatActivity() {
         originalPrompt: String,
         systemPrompt: String,
         userText: String,
-        imageDataUrl: String?
+        imageDataUrl: String?,
+        onDelta: (String) -> Unit
     ): String {
         var xaiApiKey = prefs.getString("xai_api_key", "")?.trim().orEmpty()
         if (xaiApiKey.isNotEmpty() && !xaiApiKey.startsWith("xai-")) xaiApiKey = "xai-$xaiApiKey"
@@ -729,7 +870,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
                 userText,
                 imageDataUrl,
                 isActive = { generateJob?.isActive == true },
-                onDelta = { text -> coroutineScope.launch(Dispatchers.Main) { etPromptInput.setText(text) } }
+                onDelta = onDelta
             )
         }
         val baseUrl = prefs.getString("remote_server_url", "") ?: ""
@@ -759,21 +900,22 @@ class TagPromptEditorActivity : AppCompatActivity() {
         }
         conn.disconnect()
         if (reply.isNotEmpty()) {
-            withContext(Dispatchers.Main) { etPromptInput.setText(reply) }
+            onDelta(reply)
         }
         return reply
     }
 
     private fun startGenerateMotion() {
         stopGenerateMotion()
-        btnAiGenerate.isEnabled = false
-        btnAiGenerate.contentDescription = "置き換え中"
-        val spin = ObjectAnimator.ofFloat(btnAiGenerate, View.ROTATION, 0f, 360f).apply {
+        val target = aiMotionTarget ?: return
+        target.isEnabled = false
+        target.contentDescription = "置き換え中"
+        val spin = ObjectAnimator.ofFloat(target, View.ROTATION, 0f, 360f).apply {
             duration = 1100
             interpolator = LinearInterpolator()
             repeatCount = ObjectAnimator.INFINITE
         }
-        val pulse = ObjectAnimator.ofFloat(btnAiGenerate, View.ALPHA, 1f, 0.4f, 1f).apply {
+        val pulse = ObjectAnimator.ofFloat(target, View.ALPHA, 1f, 0.4f, 1f).apply {
             duration = 700
             interpolator = AccelerateDecelerateInterpolator()
             repeatCount = ObjectAnimator.INFINITE
@@ -787,12 +929,12 @@ class TagPromptEditorActivity : AppCompatActivity() {
     private fun stopGenerateMotion() {
         generateMotion?.cancel()
         generateMotion = null
-        if (::btnAiGenerate.isInitialized) {
-            btnAiGenerate.animate().cancel()
-            btnAiGenerate.rotation = 0f
-            btnAiGenerate.alpha = 1f
-            btnAiGenerate.isEnabled = true
-            btnAiGenerate.contentDescription = "AIで置き換える"
+        aiMotionTarget?.let { target ->
+            target.animate().cancel()
+            target.rotation = 0f
+            target.alpha = 1f
+            target.isEnabled = true
+            target.contentDescription = "AIで置き換える"
         }
     }
 

@@ -39,7 +39,20 @@ object BackupManager {
                 categoriesArray.put(obj)
             }
             tagData.put("categories", categoriesArray)
-            tagData.put("prompts", JSONObject(TagManager.tagPrompts.toMap()))
+            val promptsObj = JSONObject()
+            TagManager.tagPromptVariants.forEach { (tag, variants) ->
+                val array = JSONArray()
+                variants.forEach { variant ->
+                    array.put(
+                        JSONObject().apply {
+                            put("name", variant.name)
+                            put("text", variant.text)
+                        }
+                    )
+                }
+                promptsObj.put(tag, array)
+            }
+            tagData.put("prompts", promptsObj)
             tagData.put("remote_ids", JSONObject(TagManager.tagRemoteCardIds.toMap()))
             val impliedObj = JSONObject()
             TagManager.impliedTagsMap.forEach { (tag, set) ->
@@ -158,9 +171,26 @@ object BackupManager {
                     for (j in 0 until tags.length()) cat.tags.add(tags.getString(j))
                     TagManager.categories.add(cat)
                 }
-                TagManager.tagPrompts.clear()
+                TagManager.tagPromptVariants.clear()
                 val prompts = tagData.getJSONObject("prompts")
-                prompts.keys().forEach { TagManager.tagPrompts[it] = prompts.getString(it) }
+                prompts.keys().forEach { key ->
+                    val value = prompts.get(key)
+                    val variants = mutableListOf<TagPromptVariant>()
+                    when (value) {
+                        is JSONArray -> {
+                            for (i in 0 until value.length()) {
+                                val obj = value.optJSONObject(i) ?: continue
+                                val name = obj.optString("name").trim()
+                                    .ifEmpty { TagVariantPolicy.ORIGINAL_NAME }
+                                variants.add(TagPromptVariant(name, obj.optString("text")))
+                            }
+                        }
+                        is String -> variants.add(TagPromptVariant(TagVariantPolicy.ORIGINAL_NAME, value))
+                    }
+                    if (variants.isNotEmpty()) {
+                        TagManager.tagPromptVariants[key] = variants
+                    }
+                }
                 
                 TagManager.tagRemoteCardIds.clear()
                 val remotes = tagData.getJSONObject("remote_ids")
