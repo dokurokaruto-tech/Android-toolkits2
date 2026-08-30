@@ -645,7 +645,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         Toast.makeText(this, "リストから除外しました。", Toast.LENGTH_SHORT).show()
                     }
                     .setNeutralButton("ファイルごと削除") { _, _ ->
-                        val success = DataManager.deleteImageFile(this, entry.uri)
+                        val success = DataManager.deleteImageEntryFiles(this, entry)
                         if (success) {
                             GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
                             DataManager.allImages.remove(entry)
@@ -788,20 +788,36 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 .setTitle("一括削除")
                 .setMessage("${selectedEntries.size}件の画像をどうしますか？")
                 .setPositiveButton("リストから外す") { _, _ ->
+                    selectedEntries.forEach { GeneratedImageDraftStore.deleteImageAndMaybeChat(this, it.uri) }
                     DataManager.allImages.removeAll(selectedEntries)
                     DataManager.saveData(this)
                     allImagesAdapter.stopSelectionMode()
+                    applyQuickFilter()
                     Toast.makeText(this, "${selectedEntries.size}件をリストから除外しました。", Toast.LENGTH_SHORT).show()
                 }
                 .setNeutralButton("ファイルごと全て削除") { _, _ ->
-                    var count = 0
-                    selectedEntries.forEach { 
-                        if (DataManager.deleteImageFile(this, it.uri)) count++
+                    val deletedEntries = mutableListOf<ImageEntry>()
+                    val failedEntries = mutableListOf<ImageEntry>()
+                    selectedEntries.forEach { entry ->
+                        if (DataManager.deleteImageEntryFiles(this, entry)) {
+                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
+                            deletedEntries.add(entry)
+                        } else {
+                            failedEntries.add(entry)
+                        }
                     }
-                    DataManager.allImages.removeAll(selectedEntries)
-                    DataManager.saveData(this)
+                    // 実際に消せた分だけをリストから除去する（失敗分は残す）
+                    if (deletedEntries.isNotEmpty()) {
+                        DataManager.allImages.removeAll(deletedEntries)
+                        DataManager.saveData(this)
+                    }
                     allImagesAdapter.stopSelectionMode()
-                    Toast.makeText(this, "${count}件のファイルを削除しました。", Toast.LENGTH_SHORT).show()
+                    applyQuickFilter()
+                    Toast.makeText(
+                        this,
+                        ImageDeleteReportPolicy.summary(deletedEntries.size, failedEntries.size),
+                        if (failedEntries.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                    ).show()
                 }
                 .setNegativeButton("キャンセル", null)
                 .show()

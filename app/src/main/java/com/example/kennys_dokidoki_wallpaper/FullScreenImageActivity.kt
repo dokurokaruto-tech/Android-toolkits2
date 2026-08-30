@@ -416,7 +416,7 @@ class FullScreenImageActivity : AppCompatActivity() {
                 if (isRemoteGenerated || ImageStoragePolicy.isRemote(entry.uri)) {
                     GenerationAgentClient.deleteLibraryImage(this@FullScreenImageActivity, entry.uri)
                 } else {
-                    DataManager.deleteImageFile(this@FullScreenImageActivity, entry.uri)
+                    DataManager.deleteImageEntryFiles(this@FullScreenImageActivity, entry)
                 }
             } catch (_: Exception) {
                 false

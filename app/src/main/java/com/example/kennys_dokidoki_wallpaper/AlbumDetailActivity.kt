@@ -343,19 +343,29 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                     Toast.makeText(this, "${selectedEntries.size}件をリストから除外しました。", Toast.LENGTH_SHORT).show()
                 }
                 .setNeutralButton("ファイルごと全て削除") { _, _ ->
-                    var count = 0
-                    selectedEntries.forEach {
-                        if (DataManager.deleteImageFile(this, it.uri)) {
-                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, it.uri)
-                            count++
+                    val deletedEntries = mutableListOf<ImageEntry>()
+                    val failedEntries = mutableListOf<ImageEntry>()
+                    selectedEntries.forEach { entry ->
+                        if (DataManager.deleteImageEntryFiles(this, entry)) {
+                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
+                            deletedEntries.add(entry)
+                        } else {
+                            failedEntries.add(entry)
                         }
                     }
-                    DataManager.allImages.removeAll(selectedEntries)
-                    DataManager.saveData(this)
+                    // 実際に消せた分だけをリストから除去する（失敗分は残す）
+                    if (deletedEntries.isNotEmpty()) {
+                        DataManager.allImages.removeAll(deletedEntries)
+                        DataManager.saveData(this)
+                    }
                     imageAdapter.stopSelectionMode()
                     loadImages()
                     imageAdapter.notifyDataSetChanged()
-                    Toast.makeText(this, "${count}件のファイルを削除しました。", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this,
+                        ImageDeleteReportPolicy.summary(deletedEntries.size, failedEntries.size),
+                        if (failedEntries.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                    ).show()
                 }
                 .setNegativeButton("キャンセル", null)
                 .show()
@@ -393,21 +403,24 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             .setNegativeButton("キャンセル", null)
             .setPositiveButton("削除する") { _, _ ->
                 var successCount = 0
+                var failedCount = 0
                 targets.forEach { entry ->
-                    if (DataManager.deleteImageFile(this, entry.uri)) {
+                    if (DataManager.deleteImageEntryFiles(this, entry)) {
                         GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
                         DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
                         successCount++
+                    } else {
+                        failedCount++
                     }
                 }
                 DataManager.saveData(this)
                 loadImages()
                 imageAdapter.notifyDataSetChanged()
-                if (successCount > 0) {
-                    Toast.makeText(this, "${successCount}件のファイルを削除しました。", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this, "削除に失敗しました。", Toast.LENGTH_LONG).show()
-                }
+                Toast.makeText(
+                    this,
+                    ImageDeleteReportPolicy.summary(successCount, failedCount),
+                    if (failedCount == 0) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                ).show()
             }
             .show()
     }
@@ -421,7 +434,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                     if (isRemoteGenerated || ImageStoragePolicy.isRemote(entry.uri)) {
                         GenerationAgentClient.deleteLibraryImage(this@AlbumDetailActivity, entry.uri)
                     } else {
-                        DataManager.deleteImageFile(this@AlbumDetailActivity, entry.uri)
+                        DataManager.deleteImageEntryFiles(this@AlbumDetailActivity, entry)
                     }
                 } catch (_: Exception) {
                     false

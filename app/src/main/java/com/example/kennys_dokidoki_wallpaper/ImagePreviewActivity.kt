@@ -227,7 +227,7 @@ class ImagePreviewActivity : AppCompatActivity() {
 
     private fun performDelete(index: Int, entry: ImageEntry, deleteFile: Boolean) {
         if (deleteFile) {
-            if (!DataManager.deleteImageFile(this, entry.uri)) {
+            if (!DataManager.deleteImageEntryFiles(this, entry)) {
                 Toast.makeText(this, "ファイルが消せなかったわ…", Toast.LENGTH_LONG).show()
                 return
             }

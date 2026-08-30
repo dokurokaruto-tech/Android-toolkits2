@@ -5,9 +5,11 @@ import android.graphics.RectF
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileNotFoundException
 
 object DataManager {
     private const val PREFS_NAME = "wallpaper_prefs"
@@ -348,29 +350,128 @@ object DataManager {
         return set.filterImages(allImages)
     }
 
+    /**
+     * 画像ファイル本体を削除する。
+     *
+     * SAF文書URI（生成画像の保存先）・MediaStore・file:// の各形式に応じて
+     * 複数の方法で削除を試み、どの方法でも「削除できた」と言われなかった場合でも、
+     * 実際にファイルが存在しなくなっていれば削除成功とみなす（冪等）。
+     */
     fun deleteImageFile(context: Context, uri: Uri): Boolean {
-        var deleted = false
-        try {
-            if (DocumentsContract.isDocumentUri(context, uri)) {
-                deleted = DocumentsContract.deleteDocument(context.contentResolver, uri)
-            } else {
-                val rowsDeleted = context.contentResolver.delete(uri, null, null)
-                deleted = rowsDeleted > 0
+        val scheme = uri.scheme?.lowercase() ?: ""
+        return try {
+            when (scheme) {
+                "file" -> deleteLocalFile(uri)
+                "content" -> deleteContentUri(context, uri)
+                else -> false
             }
         } catch (e: Exception) {
-            Log.e("DataManager", "Failed to delete via ContentResolver", e)
+            Log.e("DataManager", "deleteImageFile failed for $uri", e)
+            false
         }
-        
-        if (!deleted && uri.scheme == "file") {
+    }
+
+    /**
+     * 画像エントリの本体ファイルと、紐づくサムネイルファイルをまとめて削除する。
+     * 本体を消せたかどうかを戻り値とする（サムネイルは本体の結果に影響させない）。
+     */
+    fun deleteImageEntryFiles(context: Context, entry: ImageEntry): Boolean {
+        val mainDeleted = deleteImageFile(context, entry.uri)
+        val thumbUri = entry.thumbnailUri
+        if (thumbUri != null &&
+            thumbUri.toString() != entry.uri.toString() &&
+            !ImageStoragePolicy.isRemote(thumbUri)
+        ) {
             try {
-                val file = File(uri.path ?: "")
-                if (file.exists()) {
-                    deleted = file.delete()
-                }
+                deleteImageFile(context, thumbUri)
             } catch (e: Exception) {
-                Log.e("DataManager", "Failed to delete file directly", e)
+                Log.e("DataManager", "Failed to delete thumbnail: $thumbUri", e)
             }
         }
-        return deleted
+        return mainDeleted
+    }
+
+    /** file:// の実体をFile APIで直接消す。既に無ければ削除済みとして成功扱い。 */
+    private fun deleteLocalFile(uri: Uri): Boolean {
+        val path = uri.path ?: return false
+        val file = File(path)
+        if (!file.exists()) return true
+        return try {
+            file.delete() || !file.exists()
+        } catch (e: Exception) {
+            Log.e("DataManager", "Failed to delete file directly: $path", e)
+            false
+        }
+    }
+
+    /** content:// を、文書URIならSAF経由、それ以外はContentResolver経由で消す。 */
+    private fun deleteContentUri(context: Context, uri: Uri): Boolean {
+        val isDocument = try {
+            DocumentsContract.isDocumentUri(context, uri)
+        } catch (e: Exception) {
+            false
+        }
+
+        if (isDocument) {
+            if (deleteViaDocumentsContract(context, uri)) return true
+            if (deleteViaDocumentFile(context, uri)) return true
+        } else {
+            // MediaStore などの一般プロバイダ
+            if (deleteViaContentResolver(context, uri)) return true
+            if (deleteViaDocumentsContract(context, uri)) return true
+            if (deleteViaDocumentFile(context, uri)) return true
+        }
+
+        // すべての方法が失敗と報告しても、実際には消えている場合がある（プロバイダの仕様差）。
+        // 存在確認して本当に無ければ削除成功とみなす。
+        return !contentUriStillExists(context, uri)
+    }
+
+    private fun deleteViaDocumentsContract(context: Context, uri: Uri): Boolean {
+        return try {
+            DocumentsContract.deleteDocument(context.contentResolver, uri)
+        } catch (e: Exception) {
+            Log.e("DataManager", "deleteDocument failed for $uri: ${e.message}")
+            false
+        }
+    }
+
+    private fun deleteViaDocumentFile(context: Context, uri: Uri): Boolean {
+        return try {
+            val document = DocumentFile.fromSingleUri(context, uri) ?: return false
+            if (!document.exists()) true else document.delete()
+        } catch (e: Exception) {
+            Log.e("DataManager", "DocumentFile delete failed for $uri: ${e.message}")
+            false
+        }
+    }
+
+    private fun deleteViaContentResolver(context: Context, uri: Uri): Boolean {
+        return try {
+            context.contentResolver.delete(uri, null, null) > 0
+        } catch (e: Exception) {
+            Log.e("DataManager", "ContentResolver delete failed for $uri: ${e.message}")
+            false
+        }
+    }
+
+    /** content:// の実体がまだ残っているかどうか。判定不能なら「残っている」扱い。 */
+    private fun contentUriStillExists(context: Context, uri: Uri): Boolean {
+        return try {
+            if (DocumentsContract.isDocumentUri(context, uri)) {
+                DocumentFile.fromSingleUri(context, uri)?.exists() ?: true
+            } else {
+                try {
+                    context.contentResolver.openInputStream(uri)?.use { }
+                    true
+                } catch (e: FileNotFoundException) {
+                    false
+                } catch (e: Exception) {
+                    true
+                }
+            }
+        } catch (e: Exception) {
+            true
+        }
     }
 }
