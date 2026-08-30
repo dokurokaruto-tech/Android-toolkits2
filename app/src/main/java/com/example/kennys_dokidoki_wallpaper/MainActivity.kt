@@ -44,6 +44,9 @@ import kotlin.random.Random
 
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
+    /** アプリが所有していない画像もOSの承認ダイアログで削除するための仕掛け */
+    private val imageDeletionRequester = ImageDeletionRequester(this)
+
     private lateinit var allImagesAdapter: AllImagesAdapter
     private lateinit var imageSetAdapter: ImageSetAdapter
     private lateinit var tagPromptAdapter: TagPromptAdapter
@@ -645,15 +648,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         Toast.makeText(this, "リストから除外しました。", Toast.LENGTH_SHORT).show()
                     }
                     .setNeutralButton("ファイルごと削除") { _, _ ->
-                        val success = DataManager.deleteImageEntryFiles(this, entry)
-                        if (success) {
-                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
-                            DataManager.allImages.remove(entry)
-                            DataManager.saveData(this)
-                            applyQuickFilter()
-                            Toast.makeText(this, "ファイルを削除しました。", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(this, "ファイルの削除に失敗しました。権限を確認してください。", Toast.LENGTH_LONG).show()
+                        imageDeletionRequester.request(listOf(entry)) { outcome ->
+                            if (outcome.deleted.isNotEmpty()) {
+                                GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
+                                DataManager.allImages.remove(entry)
+                                DataManager.saveData(this)
+                                applyQuickFilter()
+                                Toast.makeText(this, "ファイルを削除しました。", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(
+                                    this,
+                                    ImageDeleteReportPolicy.singleFailure(outcome.userDeclined),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     }
                     .setNegativeButton("キャンセル", null)
@@ -796,28 +804,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     Toast.makeText(this, "${selectedEntries.size}件をリストから除外しました。", Toast.LENGTH_SHORT).show()
                 }
                 .setNeutralButton("ファイルごと全て削除") { _, _ ->
-                    val deletedEntries = mutableListOf<ImageEntry>()
-                    val failedEntries = mutableListOf<ImageEntry>()
-                    selectedEntries.forEach { entry ->
-                        if (DataManager.deleteImageEntryFiles(this, entry)) {
-                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
-                            deletedEntries.add(entry)
-                        } else {
-                            failedEntries.add(entry)
+                    imageDeletionRequester.request(selectedEntries) { outcome ->
+                        outcome.deleted.forEach { GeneratedImageDraftStore.deleteImageAndMaybeChat(this, it.uri) }
+                        // 実際に消せた分だけをリストから除去する（失敗分は残す）
+                        if (outcome.deleted.isNotEmpty()) {
+                            DataManager.allImages.removeAll(outcome.deleted)
+                            DataManager.saveData(this)
                         }
+                        allImagesAdapter.stopSelectionMode()
+                        applyQuickFilter()
+                        Toast.makeText(
+                            this,
+                            ImageDeleteReportPolicy.summary(outcome.deleted.size, outcome.failed.size),
+                            if (outcome.failed.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                        ).show()
                     }
-                    // 実際に消せた分だけをリストから除去する（失敗分は残す）
-                    if (deletedEntries.isNotEmpty()) {
-                        DataManager.allImages.removeAll(deletedEntries)
-                        DataManager.saveData(this)
-                    }
-                    allImagesAdapter.stopSelectionMode()
-                    applyQuickFilter()
-                    Toast.makeText(
-                        this,
-                        ImageDeleteReportPolicy.summary(deletedEntries.size, failedEntries.size),
-                        if (failedEntries.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
-                    ).show()
                 }
                 .setNegativeButton("キャンセル", null)
                 .show()

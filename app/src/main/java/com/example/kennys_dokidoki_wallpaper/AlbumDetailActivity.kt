@@ -26,6 +26,9 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
+    /** アプリが所有していない画像もOSの承認ダイアログで削除するための仕掛け */
+    private val imageDeletionRequester = ImageDeletionRequester(this)
+
     private lateinit var imageAdapter: ImageAdapter
     private val images = mutableListOf<ImageEntry>()
     private var albumName: String = ""
@@ -343,29 +346,22 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                     Toast.makeText(this, "${selectedEntries.size}件をリストから除外しました。", Toast.LENGTH_SHORT).show()
                 }
                 .setNeutralButton("ファイルごと全て削除") { _, _ ->
-                    val deletedEntries = mutableListOf<ImageEntry>()
-                    val failedEntries = mutableListOf<ImageEntry>()
-                    selectedEntries.forEach { entry ->
-                        if (DataManager.deleteImageEntryFiles(this, entry)) {
-                            GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
-                            deletedEntries.add(entry)
-                        } else {
-                            failedEntries.add(entry)
+                    imageDeletionRequester.request(selectedEntries) { outcome ->
+                        outcome.deleted.forEach { GeneratedImageDraftStore.deleteImageAndMaybeChat(this, it.uri) }
+                        // 実際に消せた分だけをリストから除去する（失敗分は残す）
+                        if (outcome.deleted.isNotEmpty()) {
+                            DataManager.allImages.removeAll(outcome.deleted)
+                            DataManager.saveData(this)
                         }
+                        imageAdapter.stopSelectionMode()
+                        loadImages()
+                        imageAdapter.notifyDataSetChanged()
+                        Toast.makeText(
+                            this,
+                            ImageDeleteReportPolicy.summary(outcome.deleted.size, outcome.failed.size),
+                            if (outcome.failed.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                        ).show()
                     }
-                    // 実際に消せた分だけをリストから除去する（失敗分は残す）
-                    if (deletedEntries.isNotEmpty()) {
-                        DataManager.allImages.removeAll(deletedEntries)
-                        DataManager.saveData(this)
-                    }
-                    imageAdapter.stopSelectionMode()
-                    loadImages()
-                    imageAdapter.notifyDataSetChanged()
-                    Toast.makeText(
-                        this,
-                        ImageDeleteReportPolicy.summary(deletedEntries.size, failedEntries.size),
-                        if (failedEntries.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
-                    ).show()
                 }
                 .setNegativeButton("キャンセル", null)
                 .show()
@@ -402,25 +398,20 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             .setMessage("このファイルを完全に削除しますか？")
             .setNegativeButton("キャンセル", null)
             .setPositiveButton("削除する") { _, _ ->
-                var successCount = 0
-                var failedCount = 0
-                targets.forEach { entry ->
-                    if (DataManager.deleteImageEntryFiles(this, entry)) {
-                        GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
-                        DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
-                        successCount++
-                    } else {
-                        failedCount++
+                imageDeletionRequester.request(targets) { outcome ->
+                    outcome.deleted.forEach {
+                        GeneratedImageDraftStore.deleteImageAndMaybeChat(this, it.uri)
+                        DataManager.allImages.removeAll { other -> other.uri.toString() == it.uri.toString() }
                     }
+                    DataManager.saveData(this)
+                    loadImages()
+                    imageAdapter.notifyDataSetChanged()
+                    Toast.makeText(
+                        this,
+                        ImageDeleteReportPolicy.summary(outcome.deleted.size, outcome.failed.size),
+                        if (outcome.failed.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                    ).show()
                 }
-                DataManager.saveData(this)
-                loadImages()
-                imageAdapter.notifyDataSetChanged()
-                Toast.makeText(
-                    this,
-                    ImageDeleteReportPolicy.summary(successCount, failedCount),
-                    if (failedCount == 0) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
-                ).show()
             }
             .show()
     }

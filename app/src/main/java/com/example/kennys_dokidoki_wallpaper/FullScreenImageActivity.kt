@@ -35,6 +35,9 @@ import kotlinx.coroutines.launch
 
 class FullScreenImageActivity : AppCompatActivity() {
 
+    /** アプリが所有していない画像もOSの承認ダイアログで削除するための仕掛け */
+    private val imageDeletionRequester = ImageDeletionRequester(this)
+
     private lateinit var rootLayout: ConstraintLayout
     private lateinit var imageView: ProgressiveTileImageView
     private lateinit var tvCounter: TextView
@@ -411,35 +414,52 @@ class FullScreenImageActivity : AppCompatActivity() {
     }
 
     private fun deleteCurrentImage(entry: ImageEntry) {
-        lifecycleScope.launch {
-            val deleted = try {
-                if (isRemoteGenerated || ImageStoragePolicy.isRemote(entry.uri)) {
+        // PC側の画像はPCのエージェントへ削除を依頼する
+        if (isRemoteGenerated || ImageStoragePolicy.isRemote(entry.uri)) {
+            lifecycleScope.launch {
+                val deleted = try {
                     GenerationAgentClient.deleteLibraryImage(this@FullScreenImageActivity, entry.uri)
-                } else {
-                    DataManager.deleteImageEntryFiles(this@FullScreenImageActivity, entry)
+                } catch (_: Exception) {
+                    false
                 }
-            } catch (_: Exception) {
-                false
+                if (deleted) {
+                    finalizeImageDeletion(entry)
+                } else {
+                    Toast.makeText(this@FullScreenImageActivity, "削除に失敗しました。", Toast.LENGTH_LONG).show()
+                }
             }
-            if (!deleted) {
-                Toast.makeText(this@FullScreenImageActivity, "削除に失敗しました。", Toast.LENGTH_LONG).show()
-                return@launch
-            }
-            GeneratedImageDraftStore.deleteImageAndMaybeChat(this@FullScreenImageActivity, entry.uri)
-            DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
-            DataManager.saveData(this@FullScreenImageActivity)
-            deletedUris.add(entry.uri.toString())
-            val removedAt = currentIndex
-            currentEntries.removeAt(removedAt)
-            if (currentEntries.isEmpty()) {
-                Toast.makeText(this@FullScreenImageActivity, "削除しました。", Toast.LENGTH_SHORT).show()
-                closeViewerImmediately()
-                return@launch
-            }
-            currentIndex = removedAt.coerceAtMost(currentEntries.lastIndex)
-            Toast.makeText(this@FullScreenImageActivity, "削除しました。", Toast.LENGTH_SHORT).show()
-            showImage()
+            return
         }
+        // 端末内の画像は、アプリ外の画像でもOSの承認ダイアログで削除する
+        imageDeletionRequester.request(listOf(entry)) { outcome ->
+            if (outcome.deleted.isNotEmpty()) {
+                finalizeImageDeletion(entry)
+            } else {
+                Toast.makeText(
+                    this@FullScreenImageActivity,
+                    ImageDeleteReportPolicy.singleFailure(outcome.userDeclined),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun finalizeImageDeletion(entry: ImageEntry) {
+        GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
+        DataManager.allImages.removeAll { it.uri.toString() == entry.uri.toString() }
+        DataManager.saveData(this)
+        deletedUris.add(entry.uri.toString())
+        val removedAt = currentEntries.indexOfFirst { it.uri.toString() == entry.uri.toString() }
+        if (removedAt < 0) return
+        currentEntries.removeAt(removedAt)
+        if (currentEntries.isEmpty()) {
+            Toast.makeText(this, "削除しました。", Toast.LENGTH_SHORT).show()
+            closeViewerImmediately()
+            return
+        }
+        currentIndex = removedAt.coerceAtMost(currentEntries.lastIndex)
+        Toast.makeText(this, "削除しました。", Toast.LENGTH_SHORT).show()
+        showImage()
     }
 
     private fun revealViewerChrome() {

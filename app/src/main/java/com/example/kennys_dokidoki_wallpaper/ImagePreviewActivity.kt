@@ -23,6 +23,9 @@ import java.io.File
 
 class ImagePreviewActivity : AppCompatActivity() {
 
+    /** アプリが所有していない画像もOSの承認ダイアログで削除するための仕掛け */
+    private val imageDeletionRequester = ImageDeletionRequester(this)
+
     private lateinit var viewPager: ViewPager2
     private lateinit var pagerAdapter: ImagePreviewPagerAdapter
     private lateinit var tvFileInfo: TextView
@@ -226,14 +229,34 @@ class ImagePreviewActivity : AppCompatActivity() {
     }
 
     private fun performDelete(index: Int, entry: ImageEntry, deleteFile: Boolean) {
-        if (deleteFile) {
-            if (!DataManager.deleteImageEntryFiles(this, entry)) {
-                Toast.makeText(this, "ファイルが消せなかったわ…", Toast.LENGTH_LONG).show()
-                return
-            }
+        if (!deleteFile) {
+            removeEntryFromPreview(index, entry)
+            return
         }
-        currentEntries.removeAt(index)
-        pagerAdapter.notifyItemRemoved(index)
+        // アプリ外の画像はOSの承認ダイアログで削除する
+        imageDeletionRequester.request(listOf(entry)) { outcome ->
+            if (outcome.deleted.isEmpty()) {
+                Toast.makeText(
+                    this,
+                    ImageDeleteReportPolicy.singleFailure(outcome.userDeclined),
+                    Toast.LENGTH_LONG
+                ).show()
+                return@request
+            }
+            removeEntryFromPreview(index, entry)
+        }
+    }
+
+    private fun removeEntryFromPreview(index: Int, entry: ImageEntry) {
+        if (index !in currentEntries.indices || currentEntries[index].uri.toString() != entry.uri.toString()) {
+            val realIndex = currentEntries.indexOfFirst { it.uri.toString() == entry.uri.toString() }
+            if (realIndex < 0) return
+            currentEntries.removeAt(realIndex)
+            pagerAdapter.notifyItemRemoved(realIndex)
+        } else {
+            currentEntries.removeAt(index)
+            pagerAdapter.notifyItemRemoved(index)
+        }
         GeneratedImageDraftStore.deleteImageAndMaybeChat(this, entry.uri)
         DataManager.allImages.remove(entry)
         DataManager.saveData(this)

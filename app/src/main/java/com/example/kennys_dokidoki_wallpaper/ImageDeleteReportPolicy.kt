@@ -13,4 +13,12 @@ object ImageDeleteReportPolicy {
         success == 0 -> "削除するファイルがありませんでした。"
         else -> "${success}件を削除し、${failed}件は削除できませんでした。失敗した分はリストに残してあります。"
     }
+
+    /** 1件の削除に失敗したときの文面。ユーザーが承認を断った場合と区別する。 */
+    fun singleFailure(userDeclined: Boolean): String =
+        if (userDeclined) {
+            "削除の確認が取り消されました。画像はリストに残してあります。"
+        } else {
+            "この画像は削除できませんでした。端末のギャラリーアプリなどから削除してください。"
+        }
 }

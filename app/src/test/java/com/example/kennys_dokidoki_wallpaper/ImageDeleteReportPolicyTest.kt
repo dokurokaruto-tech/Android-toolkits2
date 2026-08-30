@@ -29,4 +29,16 @@ class ImageDeleteReportPolicyTest {
     fun emptySelectionIsNeutral() {
         assertEquals("削除するファイルがありませんでした。", ImageDeleteReportPolicy.summary(0, 0))
     }
+
+    @Test
+    fun singleFailureDistinguishesUserDecline() {
+        assertEquals(
+            "削除の確認が取り消されました。画像はリストに残してあります。",
+            ImageDeleteReportPolicy.singleFailure(true)
+        )
+        assertEquals(
+            "この画像は削除できませんでした。端末のギャラリーアプリなどから削除してください。",
+            ImageDeleteReportPolicy.singleFailure(false)
+        )
+    }
 }
