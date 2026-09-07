@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    8dp グリッド。Kotlin で setPadding(48, 16, 48, 0) のように "px" を直書きしない。
+    (旧コードの 48px は xxhdpi で 16dp、mdpi で 48dp となり端末ごとに見た目が変わっていた)
+-->
+<resources>
+    <dimen name="space_xxs">2dp</dimen>
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_sm">8dp</dimen>
+    <dimen name="space_md">16dp</dimen>
+    <dimen name="space_lg">24dp</dimen>
+    <dimen name="space_xl">32dp</dimen>
+    <dimen name="space_xxl">48dp</dimen>
+
+    <dimen name="radius_xs">4dp</dimen>
+    <dimen name="radius_sm">8dp</dimen>
+    <dimen name="radius_md">12dp</dimen>
+    <dimen name="radius_lg">16dp</dimen>
+    <dimen name="radius_xl">28dp</dimen>
+
+    <dimen name="touch_target">48dp</dimen>
+    <dimen name="icon_size">24dp</dimen>
+    <dimen name="icon_size_small">18dp</dimen>
+
+    <dimen name="chat_bubble_max_width">320dp</dimen>
+    <dimen name="chat_bubble_padding_h">16dp</dimen>
+    <dimen name="chat_bubble_padding_v">12dp</dimen>
+    <dimen name="chat_image_max_height">240dp</dimen>
+    <dimen name="chat_input_min_height">56dp</dimen>
+
+    <dimen name="grid_thumb_min">104dp</dimen>
+    <dimen name="fab_margin">16dp</dimen>
+    <dimen name="dialog_content_padding">24dp</dimen>
+    <dimen name="sheet_handle_top">8dp</dimen>
+
+    <dimen name="wallpaper_hud_text_size">11sp</dimen>
+    <dimen name="wallpaper_hud_bottom_margin">20dp</dimen>
+</resources>

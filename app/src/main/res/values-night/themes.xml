@@ -1,20 +1,78 @@
-<!-- Night resource is now essentially a duplicate of normal resource to kill DayNight logic -->
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ダークテーマ。values/themes.xml の Base.Theme.Kennys をカラートークンだけ上書きする -->
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Base.Theme.Kennys_dokidoki_wallpaper" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">#D0BCFF</item>
-        <item name="colorOnPrimary">#381E72</item>
-        <item name="colorPrimaryContainer">#4F378B</item>
-        <item name="colorOnPrimaryContainer">#EADDFF</item>
-        <item name="colorSecondary">#CCC2DC</item>
-        <item name="colorSecondaryContainer">#4A4458</item>
-        <item name="colorOnSecondaryContainer">#EADDFF</item>
-        <item name="colorError">#F2B8B5</item>
-        <item name="colorOutline">#938F99</item>
-        <item name="colorOutlineVariant">#49454F</item>
-        <item name="colorSurface">#1C1B1F</item>
-        <item name="colorOnSurface">#E6E1E5</item>
-        <item name="colorSurfaceVariant">#49454F</item>
-        <item name="colorOnSurfaceVariant">#CAC4D0</item>
-        <item name="android:colorBackground">#1C1B1F</item>
+
+    <style name="Base.Theme.Kennys" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/md_theme_dark_primary</item>
+        <item name="colorOnPrimary">@color/md_theme_dark_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/md_theme_dark_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/md_theme_dark_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/md_theme_dark_secondary</item>
+        <item name="colorOnSecondary">@color/md_theme_dark_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/md_theme_dark_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/md_theme_dark_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/md_theme_dark_tertiary</item>
+        <item name="colorOnTertiary">@color/md_theme_dark_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/md_theme_dark_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/md_theme_dark_onTertiaryContainer</item>
+        <item name="colorError">@color/md_theme_dark_error</item>
+        <item name="colorOnError">@color/md_theme_dark_onError</item>
+        <item name="colorErrorContainer">@color/md_theme_dark_errorContainer</item>
+        <item name="colorOnErrorContainer">@color/md_theme_dark_onErrorContainer</item>
+        <item name="android:colorBackground">@color/md_theme_dark_background</item>
+        <item name="colorOnBackground">@color/md_theme_dark_onBackground</item>
+        <item name="colorSurface">@color/md_theme_dark_surface</item>
+        <item name="colorOnSurface">@color/md_theme_dark_onSurface</item>
+        <item name="colorSurfaceVariant">@color/md_theme_dark_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/md_theme_dark_onSurfaceVariant</item>
+        <item name="colorOutline">@color/md_theme_dark_outline</item>
+        <item name="colorOutlineVariant">@color/md_theme_dark_outlineVariant</item>
+        <item name="colorSurfaceInverse">@color/md_theme_dark_inverseSurface</item>
+        <item name="colorOnSurfaceInverse">@color/md_theme_dark_inverseOnSurface</item>
+        <item name="colorPrimaryInverse">@color/md_theme_dark_inversePrimary</item>
+        <item name="colorSurfaceDim">@color/md_theme_dark_surfaceDim</item>
+        <item name="colorSurfaceBright">@color/md_theme_dark_surfaceBright</item>
+        <item name="colorSurfaceContainerLowest">@color/md_theme_dark_surfaceContainerLowest</item>
+        <item name="colorSurfaceContainerLow">@color/md_theme_dark_surfaceContainerLow</item>
+        <item name="colorSurfaceContainer">@color/md_theme_dark_surfaceContainer</item>
+        <item name="colorSurfaceContainerHigh">@color/md_theme_dark_surfaceContainerHigh</item>
+        <item name="colorSurfaceContainerHighest">@color/md_theme_dark_surfaceContainerHighest</item>
+
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
+
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Kennys.Dialog</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.Kennys.BottomSheet</item>
+        <item name="materialButtonStyle">@style/Widget.Kennys.Button</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.Kennys.Button.Outlined</item>
+        <item name="borderlessButtonStyle">@style/Widget.Kennys.Button.Text</item>
+        <item name="materialIconButtonStyle">@style/Widget.Material3.Button.IconButton</item>
+        <item name="textInputStyle">@style/Widget.Kennys.TextInputLayout</item>
+        <item name="chipStyle">@style/Widget.Material3.Chip.Filter</item>
+        <item name="chipGroupStyle">@style/Widget.Material3.ChipGroup</item>
+        <item name="toolbarStyle">@style/Widget.Kennys.Toolbar</item>
+        <item name="bottomNavigationStyle">@style/Widget.Material3.BottomNavigationView</item>
+        <item name="floatingActionButtonStyle">@style/Widget.Material3.FloatingActionButton.Primary</item>
+        <item name="extendedFloatingActionButtonStyle">@style/Widget.Material3.ExtendedFloatingActionButton.Primary</item>
+        <item name="materialCardViewStyle">@style/Widget.Kennys.Card</item>
+        <item name="materialSwitchStyle">@style/Widget.Material3.CompoundButton.MaterialSwitch</item>
+        <item name="checkboxStyle">@style/Widget.Material3.CompoundButton.CheckBox</item>
+        <item name="sliderStyle">@style/Widget.Material3.Slider</item>
+        <item name="snackbarStyle">@style/Widget.Material3.Snackbar</item>
+        <item name="snackbarButtonStyle">@style/Widget.Material3.Button.TextButton.Snackbar</item>
+        <item name="tabStyle">@style/Widget.Material3.TabLayout</item>
+        <item name="linearProgressIndicatorStyle">@style/Widget.Material3.LinearProgressIndicator</item>
+        <item name="circularProgressIndicatorStyle">@style/Widget.Material3.CircularProgressIndicator</item>
+        <item name="popupMenuStyle">@style/Widget.Material3.PopupMenu</item>
+        <item name="listPopupWindowStyle">@style/Widget.Material3.PopupMenu.ListPopupWindow</item>
+
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.Kennys.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Kennys.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.Kennys.Large</item>
+
+        <item name="android:windowActivityTransitions">true</item>
     </style>
 </resources>

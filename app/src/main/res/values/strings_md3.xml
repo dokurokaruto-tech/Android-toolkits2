@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    新 UI で使う文字列。Kotlin 内の直書き日本語 ("保存したわよ！" 等) は段階的にここへ移す。
+    文言はキャラクター口調ではなく、システム UI として中立・簡潔にする (MD3 Writing guideline)。
+-->
+<resources>
+    <!-- 共通アクション -->
+    <string name="action_back">戻る</string>
+    <string name="action_save">保存</string>
+    <string name="action_cancel">キャンセル</string>
+    <string name="action_delete">削除</string>
+    <string name="action_close">閉じる</string>
+    <string name="action_test_connection">接続テスト</string>
+    <string name="action_ok">OK</string>
+
+    <!-- チャット吹き出し -->
+    <string name="chat_ai_image">AI が添付した画像</string>
+    <string name="chat_prev_branch">前の分岐</string>
+    <string name="chat_next_branch">次の分岐</string>
+    <string name="chat_regenerate">再生成</string>
+    <string name="chat_copy">コピー</string>
+    <string name="chat_edit">編集</string>
+    <string name="chat_copied">クリップボードにコピーしました</string>
+    <string name="chat_suggest_loading">返信候補を考えています…</string>
+
+    <!-- チャット設定シート -->
+    <string name="chat_settings_title">チャット設定</string>
+    <string name="chat_session_name">セッション名</string>
+    <string name="chat_save_name">名前を付けて保存</string>
+    <string name="chat_update_name">名前を更新</string>
+    <string name="chat_status_temporary">一時セッション (未保存)</string>
+    <string name="chat_status_linked">画像に紐付いたセッション</string>
+    <string name="chat_engine">推論エンジン</string>
+    <string name="chat_engine_cloud">クラウド</string>
+    <string name="chat_engine_local">ローカル LLM</string>
+    <string name="chat_link_to_set">現在のセット全体に結び付ける</string>
+    <string name="chat_link_to_set_desc">このセット内のどの画像を開いても同じ会話を続けます</string>
+    <string name="chat_discard">この会話を破棄</string>
+    <string name="chat_discard_confirm_title">会話を破棄しますか？</string>
+    <string name="chat_discard_confirm_message">この操作は取り消せません。</string>
+    <string name="chat_saved">保存しました</string>
+    <string name="chat_name_required">名前を入力してください</string>
+    <string name="chat_quota_format">OpenRouter %1$d / %2$d</string>
+
+    <!-- PC 生成エージェント -->
+    <string name="agent_dialog_title">PC 生成エージェント</string>
+    <string name="agent_primary_url">主 URL</string>
+    <string name="agent_primary_url_helper">PC 画面の ANDROID APP URL (例: http://192.168.1.20:3001)</string>
+    <string name="agent_alt_url">予備 URL</string>
+    <string name="agent_alt_url_helper">Tailscale などの代替 (例: http://100.x.x.x:3001)。複数はカンマ区切り</string>
+    <string name="agent_api_key">API キー (任意)</string>
+    <string name="agent_api_key_helper">config.json で設定した場合のみ。端末内で暗号化保存されます</string>
+    <string name="agent_https_hint">http:// はプライベートネットワーク内でのみ使えます。外出先から使う場合は PC 側で tailscale serve を有効にし https://…ts.net を指定してください。</string>
+    <string name="agent_saved">接続設定を保存しました</string>
+    <string name="agent_url_rejected">この URL は使用できません</string>
+
+    <!-- API キー -->
+    <string name="api_key_dialog_title">xAI API キー</string>
+    <string name="api_key_hint_xai">xai- から始まるキー</string>
+    <string name="api_key_saved">API キーを保存しました</string>
+
+    <!-- タップ操作設定 -->
+    <string name="tap_settings_title">タップ操作</string>
+    <string name="tap_settings_intro">ホーム画面の壁紙を操作したときの動作を設定します。設定内の一覧画面から実行することもできます。</string>
+    <string name="tap_n_times">画面を %1$d 回タップしたとき</string>
+    <string name="tap_double_hold">ダブルタップして長押ししたとき</string>
+    <string name="tap_triple_hold">トリプルタップして長押ししたとき</string>
+    <string name="tap_hold_1s">画面を 1 秒間長押ししたとき</string>
+    <string name="tap_action_dialog_title">%1$s の動作</string>
+    <string name="tap_pick_set">切り替えるイメージセット</string>
+    <string name="tap_no_sets">イメージセットがありません</string>
+    <string name="tap_action_none">なにもしない</string>
+    <string name="tap_action_next_image">次の壁紙に切り替え</string>
+    <string name="tap_action_next_set">次のイメージセットに切り替え</string>
+    <string name="tap_action_specific_set">特定のイメージセットに切り替え</string>
+    <string name="tap_action_specific_set_named">「%1$s」に切り替え</string>
+    <string name="tap_action_toggle_chat">AI キャラチャットの表示 / 非表示</string>
+    <string name="tap_action_open_app">このアプリを開く</string>
+    <string name="tap_action_crop">表示中の画像をクロップ</string>
+    <string name="tap_action_edit_tags">表示中の壁紙のタグを編集</string>
+    <string name="tap_action_edit_set">現在のイメージセットを編集</string>
+
+    <!-- 外観 -->
+    <string name="appearance_title">外観</string>
+    <string name="appearance_dynamic_color">壁紙の色を使う (Material You)</string>
+    <string name="appearance_theme">テーマ</string>
+    <string name="appearance_theme_system">システムに従う</string>
+    <string name="appearance_theme_light">ライト</string>
+    <string name="appearance_theme_dark">ダーク</string>
+</resources>

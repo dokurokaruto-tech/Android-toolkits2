@@ -6,7 +6,6 @@ import android.animation.ValueAnimator
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -14,658 +13,617 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
+import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceHolder
-import android.view.animation.LinearInterpolator
+import android.view.WindowManager
+import android.view.animation.PathInterpolator
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
+/**
+ * ライブ壁紙エンジン。
+ *
+ *   Prefs / Broadcast ──▶ reloadAlbum() ──▶ decode(IO) ──▶ crossfade ──▶ draw()
+ *   Touch ──▶ TapGestureDetector ──▶ executeActionString()
+ *
+ * 旧実装からの修正:
+ *   - draw() の中で毎フレーム getSharedPreferences + 全画像フィルタ + String.format していた
+ *       → HUD 文字列はアルバム変更時に 1 回だけ計算し hudText に保持
+ *   - 毎フレーム Rect を 4 個 new していた → フィールドで再利用
+ *   - loadData() (ファイル読込) を Main スレッドで呼んでいた → IO へ
+ *   - 不可視時もアニメーションが継続 → onVisibilityChanged で停止
+ *   - 使い終わった Bitmap を recycle せず GC 任せ → フェード完了時に解放
+ *   - タップ判定ロジックが ChatOverlayActivity と重複 → TapGestureDetector に統合
+ *   - "#8892B0" 等の直書き色 → リソース参照
+ */
 class MyWallpaperService : WallpaperService() {
 
-    override fun onCreateEngine(): Engine {
-        return MyEngine()
+    override fun onCreateEngine(): Engine = WallpaperEngine()
+
+    private companion object {
+        const val TAG = "MyWallpaperService"
+        const val CROSSFADE_MS = 320L
+        const val HUD_FADE_MS = 250L
+        const val HUD_HOLD_MS = 2_000L
+        const val HUD_FORMAT = "IMAGE SET [ %02d / %02d ] : %s ( %d )"
+        const val HUD_PILL_PADDING_DP = 10f
+        const val HUD_PILL_RADIUS_DP = 12f
+        const val MAX_SHUFFLE_RETRY = 8
+        const val ALPHA_OPAQUE = 255
     }
 
-    inner class MyEngine : Engine(), SharedPreferences.OnSharedPreferenceChangeListener {
-        private val engineJob = Job()
-        private val engineScope = CoroutineScope(Dispatchers.Main + engineJob)
-        private var isLoading = false
+    inner class WallpaperEngine : Engine(), SharedPreferences.OnSharedPreferenceChangeListener,
+        TapGestureDetector.Callbacks {
 
-        private var currentBitmap: Bitmap? = null
-        private var previousBitmap: Bitmap? = null
+        private val engineScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+        private val mainHandler = Handler(Looper.getMainLooper())
+        private val gestures = TapGestureDetector(this, mainHandler)
+        private val settings: SharedPreferences by lazy {
+            getSharedPreferences(PrefFiles.SETTINGS, Context.MODE_PRIVATE)
+        }
+        private val wallpaperPrefs: SharedPreferences by lazy {
+            getSharedPreferences(PrefFiles.WALLPAPER, Context.MODE_PRIVATE)
+        }
+
+        // ---- 表示状態 ----
+        private var imageEntries: List<ImageEntry> = emptyList()
+        private var currentIndex = 0
         private var currentEntry: ImageEntry? = null
         private var previousEntry: ImageEntry? = null
-        
-        private var imageEntries = mutableListOf<ImageEntry>()
-        private var currentImageIndex = 0
+        private var currentBitmap: Bitmap? = null
+        private var previousBitmap: Bitmap? = null
+        private var isVisible = false
+        private var isLoading = false
 
-        private var tapCount: Int = 0
-        private val tapTimeout: Long = 350L
-        private val tapHandler = Handler(Looper.getMainLooper())
-        private val tapRunnable = Runnable {
-            executeTapAction(tapCount)
-            tapCount = 0
-        }
+        // ---- アニメーション ----
+        private var crossfade: ValueAnimator? = null
+        private var crossfadeProgress = 1f
+        private var hudAnimator: ValueAnimator? = null
+        private var hudAlpha = 0f
+        private var hudText = ""
+        private val hideHud = Runnable { animateHud(to = 0f) }
 
-        private var isAnimating = false
-        private var animationProgress: Float = 0f
-        private var animator: ValueAnimator? = null
-        private val prevPaint = Paint().apply {
-            isFilterBitmap = true
-            isDither = true
-        }
-        private val currPaint = Paint().apply {
-            isFilterBitmap = true
-            isDither = true
-        }
-
-        private var downX = 0f
-        private var downY = 0f
-        private var downTime = 0L
-        private val TOUCH_TOLERANCE = 50f
-        private var lastTapTime = 0L
-        
-        private var holdRunnable: Runnable? = null
-        private val holdTimeout = 400L
-
-        private var longPressRunnable: Runnable? = null
-        private val longPress1sTimeout = 1000L
-
-        private var showTextProgress = 0f
-        private var textAnimator: ValueAnimator? = null
-        private val textHandler = Handler(Looper.getMainLooper())
-        private val textHideRunnable = Runnable { startTextFadeOut() }
-        
-        private val textPaint by lazy {
+        // ---- 描画リソース (再利用) ----
+        private val bitmapPaint = Paint().apply { isFilterBitmap = true; isDither = true }
+        private val fadePaint = Paint().apply { isFilterBitmap = true; isDither = true }
+        private val srcRect = Rect()
+        private val dstRect = Rect()
+        private val prevSrcRect = Rect()
+        private val prevDstRect = Rect()
+        private val hudBounds = Rect()
+        private val hudPill = RectF()
+        private val density get() = resources.displayMetrics.density
+        private val hudTextPaint by lazy {
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#8892B0")
-                val density = applicationContext.resources.displayMetrics.density
-                textSize = 10f * density
+                color = ContextCompat.getColor(applicationContext, R.color.wallpaper_hud_text)
+                // sp 指定の dimen は getDimension() で既にスケール済み px が返る
+                textSize = resources.getDimension(R.dimen.wallpaper_hud_text_size)
                 textAlign = Paint.Align.CENTER
+                letterSpacing = 0.08f
             }
         }
+        private val hudScrimColor by lazy { ContextCompat.getColor(applicationContext, R.color.wallpaper_hud_scrim) }
+        private val hudPillPaint by lazy { Paint(Paint.ANTI_ALIAS_FLAG).apply { color = hudScrimColor } }
+        private val motionEasing = PathInterpolator(0.4f, 0f, 0.2f, 1f) // MD3 standard easing
+        private val letterboxColor by lazy { ContextCompat.getColor(applicationContext, R.color.wallpaper_letterbox) }
 
-        private val tapReceiver = object : BroadcastReceiver() {
+        private val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
-                    "com.example.kennys_dokidoki_wallpaper.ACTION_SIMULATE_TAP" -> {
-                        val count = intent.getIntExtra("tap_count", 0)
-                        if (count > 0) executeTapAction(count)
-                    }
-                    "com.example.kennys_dokidoki_wallpaper.ACTION_EXECUTE_ACTION" -> {
-                        val actionStr = intent.getStringExtra("action_string")
-                        if (actionStr != null) {
-                            executeActionString(actionStr)
+                    WallpaperActions.SIMULATE_TAP -> {
+                        val count = intent.getIntExtra(WallpaperActions.EXTRA_TAP_COUNT, 0)
+                        if (count > 0) {
+                            onTaps(count)
                         }
                     }
-                    "com.example.kennys_dokidoki_wallpaper.ACTION_SHOW_SET_NAME" -> {
-                        showSetNameText()
+                    WallpaperActions.EXECUTE_ACTION -> {
+                        intent.getStringExtra(WallpaperActions.EXTRA_ACTION_STRING)?.let { executeActionString(it) }
                     }
-                    "com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED" -> {
-                        Handler(Looper.getMainLooper()).post {
-                            if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
-                                currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
-                                val entry = imageEntries[currentImageIndex]
-                                // URIが違うか、今のビットマップが空っぽなら読み込み開始よ！
-                                if (entry.uri != currentEntry?.uri || currentBitmap == null) {
-                                    loadAndSetCurrentBitmap(entry) { draw() }
-                                } else {
-                                    // URIが同じでも、クロップ範囲などが変わっている可能性があるから
-                                    // エントリーを最新のものに差し替えて再描画するわよ！
-                                    currentEntry = entry
-                                    draw()
-                                }
-                            }
-                            showSetNameText()
-                        }
-                    }
-                    else -> {}
+                    WallpaperActions.SHOW_SET_NAME -> showHud()
+                    WallpaperActions.WALLPAPER_CHANGED -> reloadAlbum(animate = false)
                 }
             }
         }
 
-        init {
-            setTouchEventsEnabled(true)
-        }
+        // ----------------------------------------------------------- lifecycle
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            settingsPrefs.registerOnSharedPreferenceChangeListener(this)
-            
-            val wallpaperPrefs = getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE)
+            setTouchEventsEnabled(true)
+            settings.registerOnSharedPreferenceChangeListener(this)
             wallpaperPrefs.registerOnSharedPreferenceChangeListener(this)
-
-            val filter = IntentFilter().apply {
-                addAction("com.example.kennys_dokidoki_wallpaper.ACTION_SIMULATE_TAP")
-                addAction("com.example.kennys_dokidoki_wallpaper.ACTION_EXECUTE_ACTION")
-                addAction("com.example.kennys_dokidoki_wallpaper.ACTION_SHOW_SET_NAME")
-                addAction("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
-            }
-            ContextCompat.registerReceiver(applicationContext, tapReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+            ContextCompat.registerReceiver(
+                applicationContext, receiver, WallpaperActions.filter(), ContextCompat.RECEIVER_NOT_EXPORTED
+            )
         }
 
         override fun onDestroy() {
             super.onDestroy()
-            engineJob.cancel()
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            settingsPrefs.unregisterOnSharedPreferenceChangeListener(this)
-            
-            val wallpaperPrefs = getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE)
+            engineScope.cancel()
+            gestures.reset()
+            mainHandler.removeCallbacksAndMessages(null)
+            crossfade?.cancel()
+            hudAnimator?.cancel()
+            settings.unregisterOnSharedPreferenceChangeListener(this)
             wallpaperPrefs.unregisterOnSharedPreferenceChangeListener(this)
-            
-            applicationContext.unregisterReceiver(tapReceiver)
-        }
-
-        override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-            if (key == "active_album_name" || key == "active_album_name_homescreen" || key == "active_album_name_chat" || key == "is_chat_active" || key == "active_image_index" || key == "all_images" || key == "image_sets" || key == DataManager.KEY_REVISION) {
-                Handler(Looper.getMainLooper()).post {
-                    if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
-                        currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
-                        val entry = imageEntries[currentImageIndex]
-                        // 設定が変わっても、画像が違うか空っぽの時だけロードするわ
-                        if (entry.uri != currentEntry?.uri || currentBitmap == null) {
-                            if (key == "is_chat_active" && currentBitmap != null) {
-                                prepareCrossfade(entry) { nextBitmap ->
-                                    previousBitmap = currentBitmap; previousEntry = currentEntry
-                                    currentBitmap = nextBitmap; currentEntry = entry
-                                    startAnimator()
-                                }
-                            } else {
-                                loadAndSetCurrentBitmap(entry) { draw() }
-                            }
-                        } else {
-                            // URIが同じでも、クロップ範囲などが変わっている可能性があるから
-                            // エントリーを最新のものに差し替えて再描画するわよ！
-                            currentEntry = entry
-                            draw()
-                        }
-                    }
-                    showSetNameText()
-                }
-            }
-        }
-
-        override fun onTouchEvent(event: MotionEvent?) {
-            super.onTouchEvent(event)
-            event?.let {
-                when (it.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        showSetNameText()
-                        
-                        // 指が触れた瞬間にタップ判定タイマーを停止する（これによって長押し中に前のタップのアクションが暴発するのを防ぐ）
-                        tapHandler.removeCallbacks(tapRunnable)
-                        
-                        downX = it.x
-                        downY = it.y
-                        downTime = System.currentTimeMillis()
-
-                        if (tapCount == 1 && (downTime - lastTapTime) <= tapTimeout) {
-                            holdRunnable = Runnable {
-                                val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-                                val action = prefs.getString("action_tap_2_hold", "NONE") ?: "NONE"
-                                executeActionString(action)
-                                tapCount = 0
-                            }
-                            tapHandler.postDelayed(holdRunnable!!, holdTimeout)
-                        } else if (tapCount == 2 && (downTime - lastTapTime) <= tapTimeout) {
-                            holdRunnable = Runnable {
-                                val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-                                val action = prefs.getString("action_tap_3_hold", "NONE") ?: "NONE"
-                                executeActionString(action)
-                                tapCount = 0
-                            }
-                            tapHandler.postDelayed(holdRunnable!!, holdTimeout)
-                        } else {
-                            if ((downTime - lastTapTime) > tapTimeout) {
-                                tapCount = 0
-                            }
-                            if (tapCount == 0) {
-                                longPressRunnable = Runnable {
-                                    val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-                                    val action = prefs.getString("action_hold_2s", "NONE") ?: "NONE"
-                                    executeActionString(action)
-                                    tapCount = 0
-                                }
-                                tapHandler.postDelayed(longPressRunnable!!, longPress1sTimeout)
-                            }
-                        }
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val dx = it.x - downX
-                        val dy = it.y - downY
-                        val distance = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-                        if (distance > TOUCH_TOLERANCE) {
-                            holdRunnable?.let { r -> tapHandler.removeCallbacks(r); holdRunnable = null }
-                            longPressRunnable?.let { r -> tapHandler.removeCallbacks(r); longPressRunnable = null }
-                        }
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        holdRunnable?.let { r -> tapHandler.removeCallbacks(r); holdRunnable = null }
-                        longPressRunnable?.let { r -> tapHandler.removeCallbacks(r); longPressRunnable = null }
-
-                        if (it.action == MotionEvent.ACTION_UP) {
-                            val upX = it.x
-                            val upY = it.y
-                            val upTime = System.currentTimeMillis()
-                            val dx = upX - downX
-                            val dy = upY - downY
-                            val distance = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-                            
-                            if (distance <= TOUCH_TOLERANCE && (upTime - downTime) < 300L) {
-                                lastTapTime = upTime
-                                handleTap()
-                            }
-                        }
-                    }
-                    else -> {}
-                }
-            }
-        }
-
-        private fun showSetNameText() {
-            textHandler.removeCallbacks(textHideRunnable)
-            textAnimator?.cancel()
-            if (showTextProgress < 1f) {
-                textAnimator = ValueAnimator.ofFloat(showTextProgress, 1f).apply {
-                    duration = 150L
-                    addUpdateListener { showTextProgress = it.animatedValue as Float; draw() }
-                    start()
-                }
-            } else {
-                showTextProgress = 1f
-                draw()
-            }
-            textHandler.postDelayed(textHideRunnable, 3000L)
-        }
-
-        private fun startTextFadeOut() {
-            textAnimator?.cancel()
-            textAnimator = ValueAnimator.ofFloat(showTextProgress, 0f).apply {
-                duration = 300L
-                addUpdateListener { showTextProgress = it.animatedValue as Float; draw() }
-                start()
-            }
-        }
-
-        private fun handleTap() {
-            tapCount++
-            tapHandler.removeCallbacks(tapRunnable)
-            tapHandler.postDelayed(tapRunnable, tapTimeout)
-        }
-
-        private fun executeTapAction(count: Int) {
-            if (count < 2) return
-            val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val defaultAction = if (count == 2) "NEXT_IMAGE" else if (count == 3) "NEXT_SET" else "NONE"
-            val action = prefs.getString("action_tap_$count", defaultAction) ?: "NONE"
-            executeActionString(action)
-        }
-
-        private fun executeActionString(action: String) {
-            when {
-                action == "NEXT_IMAGE" -> startCrossfadeToNextImage()
-                action == "NEXT_SET" -> startCrossfadeToNextAlbum()
-                action == "TOGGLE_AI_CHAT" -> toggleAiChatOverlay()
-                action == "OPEN_APP" -> openApp()
-                action == "CROP_IMAGE" -> startCropImage()
-                action == "EDIT_TAGS" -> startEditTags()
-                action == "EDIT_ACTIVE_SET" -> startEditActiveSet()
-                action.startsWith("SPECIFIC_SET:") -> {
-                    val setName = action.substringAfter("SPECIFIC_SET:")
-                    startCrossfadeToSpecificAlbum(setName)
-                }
-                else -> {}
-            }
-        }
-
-        private fun toggleAiChatOverlay() {
-            try {
-                val intent = Intent(applicationContext, ChatOverlayActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    )
-                }
-                applicationContext.startActivity(intent)
-            } catch (e: Exception) {
-                android.util.Log.e("MyWallpaperService", "toggleAiChatOverlay failed", e)
-            }
-        }
-
-        private fun openApp() {
-            val intent = Intent(applicationContext, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-            applicationContext.startActivity(intent)
-        }
-
-        private fun startCropImage() {
-            if (imageEntries.isEmpty() || currentImageIndex !in imageEntries.indices) return
-            val entry = imageEntries[currentImageIndex]
-            val intent = Intent(applicationContext, CropHandlerActivity::class.java).apply {
-                putExtra("SOURCE_URI", entry.uri.toString())
-                putExtra("IMAGE_URI", entry.uri.toString()) 
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            applicationContext.startActivity(intent)
-        }
-
-        private fun startEditTags() {
-            if (imageEntries.isEmpty() || currentImageIndex !in imageEntries.indices) return
-            val entry = imageEntries[currentImageIndex]
-            val intent = Intent(applicationContext, ImageTagEditorActivity::class.java).apply {
-                putExtra("IMAGE_URI", entry.uri.toString())
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            applicationContext.startActivity(intent)
-        }
-
-        private fun getActiveSetName(settingsPrefs: SharedPreferences): String? {
-            val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
-            return if (isChatActive) {
-                settingsPrefs.getString("active_album_name_chat", null)
-                    ?: settingsPrefs.getString("active_album_name", null)
-            } else {
-                settingsPrefs.getString("active_album_name_homescreen", null)
-                    ?: settingsPrefs.getString("active_album_name", null)
-            }
-        }
-
-        private fun getFilteredActiveSets(isChatActive: Boolean): List<ImageSet> {
-            return DataManager.imageSetList.filter { set ->
-                if (!set.isActive) return@filter false
-                if (isChatActive) {
-                    set.usage == ImageSetUsage.CHAT || set.usage == ImageSetUsage.BOTH
-                } else {
-                    set.usage == ImageSetUsage.HOMESCREEN || set.usage == ImageSetUsage.BOTH
-                }
-            }
-        }
-
-        private fun startEditActiveSet() {
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val currentSetName = getActiveSetName(settingsPrefs) ?: return
-            val intent = Intent(applicationContext, ImageTagEditorActivity::class.java).apply {
-                putExtra("SET_NAME", currentSetName)
-                putExtra("CREATE_NEW_SET", false)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            applicationContext.startActivity(intent)
-        }
-
-        private fun loadActiveAlbumAndIndex(): Boolean {
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val activeSetName = getActiveSetName(settingsPrefs) ?: return false
-            DataManager.loadData(this@MyWallpaperService)
-            val set = DataManager.imageSetList.find { it.name == activeSetName } ?: return false
-            val filteredEntries = set.filterImages(DataManager.allImages)
-            val activeEntries = filteredEntries.filter { it.isActive }
-            if (activeEntries.isEmpty()) return false
-            imageEntries = activeEntries.toMutableList()
-            val savedIndex = settingsPrefs.getInt("last_index_for_album_$activeSetName", 0)
-            currentImageIndex = savedIndex.coerceIn(0, imageEntries.size - 1)
-            return true
-        }
-
-        private fun saveCurrentIndex() {
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val activeSetName = getActiveSetName(settingsPrefs) ?: return
-            val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
-            intent.setPackage(applicationContext.packageName)
-            settingsPrefs.edit()
-                .putInt("active_image_index", currentImageIndex) 
-                .putInt("last_index_for_album_$activeSetName", currentImageIndex) 
-                .apply()
-            applicationContext.sendBroadcast(intent)
-        }
-
-        private fun startAnimator() {
-            if (animator?.isRunning == true) animator?.cancel()
-            isAnimating = true
-            animationProgress = 0f
-            animator = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 200L
-                interpolator = LinearInterpolator()
-                addUpdateListener { anim -> animationProgress = anim.animatedValue as Float; draw() }
-                addListener(object : AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(animation: Animator) {
-                        isAnimating = false
-                        previousBitmap = null; previousEntry = null
-                        animationProgress = 1f; saveCurrentIndex(); draw()
-                    }
-                    override fun onAnimationCancel(animation: Animator) {
-                        isAnimating = false
-                        previousBitmap = null; previousEntry = null
-                        animationProgress = 1f; saveCurrentIndex(); draw()
-                    }
-                })
-                start()
-            }
-        }
-
-        private fun decodeBitmap(uri: Uri): Bitmap? {
-            return try {
-                val wm = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
-                val displayMetrics = android.util.DisplayMetrics()
-                
-                // より確実に物理サイズを取得するわよ！っ！
-                @Suppress("DEPRECATION")
-                val display = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    try { this@MyWallpaperService.display } catch (e: Exception) { wm.defaultDisplay }
-                } else {
-                    wm.defaultDisplay
-                }
-                
-                display?.getRealMetrics(displayMetrics)
-                
-                var reqWidth = displayMetrics.widthPixels
-                var reqHeight = displayMetrics.heightPixels
-                
-                // 万が一0だったら、フォールバックするわ（これ大事！）
-                if (reqWidth <= 0 || reqHeight <= 0) {
-                    val fallback = applicationContext.resources.displayMetrics
-                    reqWidth = fallback.widthPixels
-                    reqHeight = fallback.heightPixels
-                }
-                
-                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-                
-                if (options.outWidth <= 0 || options.outHeight <= 0) return null
-
-                options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
-                options.inJustDecodeBounds = false
-                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-            } catch (e: Exception) { 
-                android.util.Log.e("MyWallpaperService", "decodeBitmap failed", e)
-                null 
-            }
-        }
-
-        private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-            val (height: Int, width: Int) = options.outHeight to options.outWidth
-            var inSampleSize = 1
-            if (height > reqHeight || width > reqWidth) {
-                val halfHeight: Int = height / 2; val halfWidth: Int = width / 2
-                while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) inSampleSize *= 2
-            }
-            return inSampleSize
-        }
-
-        private fun loadAndSetCurrentBitmap(entry: ImageEntry, onReady: (() -> Unit)? = null) {
-            isLoading = true
-            engineScope.launch(Dispatchers.IO) {
-                val bmp = decodeBitmap(entry.displayUri)
-                withContext(Dispatchers.Main) {
-                    isLoading = false
-                    if (bmp != null) { currentBitmap = bmp; currentEntry = entry; onReady?.invoke() }
-                }
-            }
-        }
-
-        private fun prepareCrossfade(nextEntry: ImageEntry, onReady: (Bitmap) -> Unit) {
-            isLoading = true
-            engineScope.launch(Dispatchers.IO) {
-                val nextBitmap = decodeBitmap(nextEntry.displayUri)
-                withContext(Dispatchers.Main) {
-                    isLoading = false
-                    if (nextBitmap != null) onReady(nextBitmap)
-                }
-            }
-        }
-
-        private fun startCrossfadeToNextImage() {
-            if (isAnimating || isLoading) return
-            if (!loadActiveAlbumAndIndex() || imageEntries.isEmpty()) return
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val isShuffle = settingsPrefs.getBoolean("shuffle_images", false)
-            val nextIndex = if (isShuffle && imageEntries.size > 1) {
-                var randomIndex = (0 until imageEntries.size).random()
-                while (randomIndex == currentImageIndex) randomIndex = (0 until imageEntries.size).random()
-                randomIndex
-            } else (currentImageIndex + 1) % imageEntries.size
-            val nextEntry = imageEntries[nextIndex]
-            prepareCrossfade(nextEntry) { nextBitmap ->
-                previousBitmap = currentBitmap; previousEntry = currentEntry
-                currentBitmap = nextBitmap; currentEntry = nextEntry; currentImageIndex = nextIndex
-                startAnimator()
-            }
-        }
-
-        private fun startCrossfadeToNextAlbum() {
-            if (isAnimating || isLoading) return
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val currentSetName = getActiveSetName(settingsPrefs) ?: return
-            DataManager.loadData(this@MyWallpaperService)
-            val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
-            val activeSets = getFilteredActiveSets(isChatActive)
-            if (activeSets.isEmpty()) return
-            val currentIndex = activeSets.indexOfFirst { it.name == currentSetName }
-            val nextSet = if (currentIndex == -1 || currentIndex == activeSets.size - 1) activeSets[0] else activeSets[currentIndex + 1]
-            val newEntries = nextSet.filterImages(DataManager.allImages).filter { it.isActive }
-            if (newEntries.isEmpty()) return
-            val lastIndexForNextSet = settingsPrefs.getInt("last_index_for_album_${nextSet.name}", 0)
-            val nextImageIndex = lastIndexForNextSet.coerceIn(0, newEntries.size - 1)
-            val nextEntry = newEntries[nextImageIndex]
-            prepareCrossfade(nextEntry) { nextBitmap ->
-                val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
-                intent.setPackage(applicationContext.packageName)
-                val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
-                val keyToSave = if (isChatActive) "active_album_name_chat" else "active_album_name_homescreen"
-                settingsPrefs.edit().putString(keyToSave, nextSet.name).putInt("active_image_index", nextImageIndex).putInt("last_index_for_album_${nextSet.name}", nextImageIndex).apply()
-                applicationContext.sendBroadcast(intent)
-                previousBitmap = currentBitmap; previousEntry = currentEntry
-                imageEntries = newEntries.toMutableList(); currentImageIndex = nextImageIndex; currentEntry = nextEntry; currentBitmap = nextBitmap
-                startAnimator()
-            }
-        }
-
-        private fun startCrossfadeToSpecificAlbum(setName: String) {
-            if (isAnimating || isLoading) return
-            DataManager.loadData(this@MyWallpaperService)
-            val set = DataManager.imageSetList.find { it.name == setName } ?: return
-            val newEntries = set.filterImages(DataManager.allImages).filter { it.isActive }
-            if (newEntries.isEmpty()) return
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val lastIndex = settingsPrefs.getInt("last_index_for_album_$setName", 0)
-            val nextImageIndex = lastIndex.coerceIn(0, newEntries.size - 1)
-            val nextEntry = newEntries[nextImageIndex]
-            prepareCrossfade(nextEntry) { nextBitmap ->
-                val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
-                intent.setPackage(applicationContext.packageName)
-                val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
-                val keyToSave = if (isChatActive) "active_album_name_chat" else "active_album_name_homescreen"
-                settingsPrefs.edit().putString(keyToSave, set.name).putInt("active_image_index", nextImageIndex).apply()
-                applicationContext.sendBroadcast(intent)
-                previousBitmap = currentBitmap; previousEntry = currentEntry
-                imageEntries = newEntries.toMutableList(); currentImageIndex = nextImageIndex; currentEntry = nextEntry; currentBitmap = nextBitmap
-                startAnimator()
-            }
+            runCatching { applicationContext.unregisterReceiver(receiver) }
+            val oldPrevious = previousBitmap
+            val oldCurrent = currentBitmap
+            previousBitmap = null
+            currentBitmap = null
+            recycle(oldPrevious)
+            recycle(oldCurrent)
         }
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
-            if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
-                val entry = imageEntries[currentImageIndex]
-                currentEntry = entry
-                loadAndSetCurrentBitmap(entry) { showSetNameText(); draw() }
-            } else draw()
+            reloadAlbum(animate = false, thenShowHud = true)
         }
+
+        override fun onVisibilityChanged(visible: Boolean) {
+            isVisible = visible
+            if (!visible) {
+                crossfade?.end()
+                hudAnimator?.cancel()
+                mainHandler.removeCallbacks(hideHud)
+                hudAlpha = 0f
+                return
+            }
+            draw()
+        }
+
+        override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
+            when (key) {
+                PrefKeys.IS_CHAT_ACTIVE -> reloadAlbum(animate = true)
+                PrefKeys.ACTIVE_ALBUM,
+                PrefKeys.ACTIVE_ALBUM_HOME,
+                PrefKeys.ACTIVE_ALBUM_CHAT,
+                PrefKeys.ACTIVE_IMAGE_INDEX,
+                PrefKeys.LEGACY_ALL_IMAGES,
+                PrefKeys.LEGACY_IMAGE_SETS,
+                PrefKeys.DATA_REVISION -> reloadAlbum(animate = false)
+            }
+        }
+
+        override fun onTouchEvent(event: MotionEvent) {
+            super.onTouchEvent(event)
+            gestures.onTouchEvent(event)
+        }
+
+        // ------------------------------------------------------------ gestures
+
+        override fun onTouchStart() = showHud()
+
+        override fun onTaps(count: Int) {
+            if (count < TapActions.MIN_TAP_COUNT || count > TapActions.MAX_TAP_COUNT) {
+                return
+            }
+            val action = settings.getString(PrefKeys.actionForTaps(count), null)
+                ?: TapActions.defaultForTaps(count)
+            executeActionString(action)
+        }
+
+        override fun onTapsAndHold(count: Int) {
+            val action = settings.getString(PrefKeys.actionForTapsAndHold(count), TapActions.NONE) ?: TapActions.NONE
+            executeActionString(action)
+        }
+
+        override fun onHold1s() {
+            val action = settings.getString(PrefKeys.ACTION_HOLD_1S, TapActions.NONE) ?: TapActions.NONE
+            executeActionString(action)
+        }
+
+        private fun executeActionString(action: String) {
+            TapActions.specificSet(action)?.let { switchToAlbum(it) ; return }
+            when (action) {
+                TapActions.NEXT_IMAGE -> nextImage()
+                TapActions.NEXT_SET -> nextAlbum()
+                TapActions.TOGGLE_AI_CHAT -> launchActivity(ChatOverlayActivity::class.java) {
+                    addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                TapActions.OPEN_APP -> launchActivity(MainActivity::class.java) { addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP) }
+                TapActions.CROP_IMAGE -> currentEntry?.let { entry ->
+                    launchActivity(CropHandlerActivity::class.java) {
+                        putExtra("SOURCE_URI", entry.uri.toString())
+                        putExtra("IMAGE_URI", entry.uri.toString())
+                    }
+                }
+                TapActions.EDIT_TAGS -> currentEntry?.let { entry ->
+                    launchActivity(ImageTagEditorActivity::class.java) { putExtra("IMAGE_URI", entry.uri.toString()) }
+                }
+                TapActions.EDIT_ACTIVE_SET -> activeSetName()?.let { name ->
+                    launchActivity(ImageTagEditorActivity::class.java) {
+                        putExtra("SET_NAME", name)
+                        putExtra("CREATE_NEW_SET", false)
+                    }
+                }
+                else -> Unit
+            }
+        }
+
+        private fun launchActivity(target: Class<*>, configure: Intent.() -> Unit = {}) {
+            try {
+                val intent = Intent(applicationContext, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                intent.configure()
+                applicationContext.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "failed to launch ${target.simpleName}", e)
+            }
+        }
+
+        // ------------------------------------------------------------- albums
+
+        private fun isChatActive(): Boolean = settings.getBoolean(PrefKeys.IS_CHAT_ACTIVE, false)
+
+        private fun activeSetName(): String? {
+            val specific = if (isChatActive()) PrefKeys.ACTIVE_ALBUM_CHAT else PrefKeys.ACTIVE_ALBUM_HOME
+            return settings.getString(specific, null) ?: settings.getString(PrefKeys.ACTIVE_ALBUM, null)
+        }
+
+        private fun activeSets(): List<ImageSet> {
+            val chat = isChatActive()
+            return DataManager.imageSetList.filter { set ->
+                if (!set.isActive) {
+                    return@filter false
+                }
+                when (set.usage) {
+                    ImageSetUsage.BOTH -> true
+                    ImageSetUsage.CHAT -> chat
+                    ImageSetUsage.HOMESCREEN -> !chat
+                    else -> false
+                }
+            }
+        }
+
+        private fun entriesOf(set: ImageSet): List<ImageEntry> =
+            set.filterImages(DataManager.allImages).filter { it.isActive }
+
+        /**
+         * 設定に従ってアルバムと index を読み直し、必要なら画像を差し替える。
+         * URI が同じでもクロップ範囲が変わっている可能性があるので entry は常に更新する。
+         */
+        private fun reloadAlbum(animate: Boolean, thenShowHud: Boolean = false) {
+            engineScope.launch {
+                withContext(Dispatchers.IO) { DataManager.loadData(this@MyWallpaperService) }
+
+                val setName = activeSetName()
+                val set = setName?.let { name -> DataManager.imageSetList.find { it.name == name } }
+                val entries = set?.let { entriesOf(it) }.orEmpty()
+                if (setName == null || entries.isEmpty()) {
+                    imageEntries = emptyList()
+                    hudText = ""
+                    draw()
+                    return@launch
+                }
+
+                imageEntries = entries
+                currentIndex = settings.getInt(PrefKeys.lastIndexForAlbum(setName), 0)
+                    .coerceIn(0, entries.lastIndex)
+                refreshHudText(setName, entries.size)
+
+                val entry = entries[currentIndex]
+                if (entry.uri == currentEntry?.uri && currentBitmap != null) {
+                    currentEntry = entry
+                    draw()
+                    if (thenShowHud) {
+                        showHud()
+                    }
+                    return@launch
+                }
+
+                val bitmap = decode(entry.displayUri) ?: return@launch
+                if (animate && currentBitmap != null) {
+                    startCrossfade(entry, bitmap)
+                } else {
+                    val old = currentBitmap
+                    currentBitmap = bitmap
+                    currentEntry = entry
+                    recycle(old)
+                    draw()
+                }
+                if (thenShowHud) {
+                    showHud()
+                }
+            }
+        }
+
+        private fun nextImage() {
+            if (isLoading || crossfade?.isRunning == true || imageEntries.isEmpty()) {
+                return
+            }
+            val size = imageEntries.size
+            val shuffle = settings.getBoolean(PrefKeys.SHUFFLE_IMAGES, false)
+            val next = if (shuffle && size > 1) {
+                var candidate = currentIndex
+                var retry = 0
+                while (candidate == currentIndex && retry++ < MAX_SHUFFLE_RETRY) {
+                    candidate = (0 until size).random()
+                }
+                if (candidate == currentIndex) (currentIndex + 1) % size else candidate
+            } else {
+                (currentIndex + 1) % size
+            }
+            transitionTo(imageEntries, next)
+        }
+
+        private fun nextAlbum() {
+            val sets = activeSets()
+            if (sets.isEmpty()) {
+                return
+            }
+            val current = sets.indexOfFirst { it.name == activeSetName() }
+            val nextSet = sets[(current + 1).mod(sets.size)]
+            switchToAlbum(nextSet.name)
+        }
+
+        private fun switchToAlbum(setName: String) {
+            if (isLoading || crossfade?.isRunning == true) {
+                return
+            }
+            val set = DataManager.imageSetList.find { it.name == setName } ?: return
+            val entries = entriesOf(set)
+            if (entries.isEmpty()) {
+                return
+            }
+            val index = settings.getInt(PrefKeys.lastIndexForAlbum(setName), 0).coerceIn(0, entries.lastIndex)
+
+            val albumKey = if (isChatActive()) PrefKeys.ACTIVE_ALBUM_CHAT else PrefKeys.ACTIVE_ALBUM_HOME
+            settings.edit()
+                .putString(albumKey, setName)
+                .putInt(PrefKeys.ACTIVE_IMAGE_INDEX, index)
+                .putInt(PrefKeys.lastIndexForAlbum(setName), index)
+                .apply()
+            refreshHudText(setName, entries.size)
+            transitionTo(entries, index)
+        }
+
+        private fun transitionTo(entries: List<ImageEntry>, index: Int) {
+            val entry = entries[index]
+            engineScope.launch {
+                val bitmap = decode(entry.displayUri) ?: return@launch
+                imageEntries = entries
+                currentIndex = index
+                startCrossfade(entry, bitmap)
+            }
+        }
+
+        private fun persistIndex() {
+            val setName = activeSetName() ?: return
+            settings.edit()
+                .putInt(PrefKeys.ACTIVE_IMAGE_INDEX, currentIndex)
+                .putInt(PrefKeys.lastIndexForAlbum(setName), currentIndex)
+                .apply()
+            WallpaperActions.notifyWallpaperChanged(applicationContext)
+        }
+
+        // ----------------------------------------------------------- crossfade
+
+        private fun startCrossfade(nextEntry: ImageEntry, nextBitmap: Bitmap) {
+            crossfade?.cancel()
+            val stale = previousBitmap
+            previousBitmap = currentBitmap
+            previousEntry = currentEntry
+            currentBitmap = nextBitmap
+            currentEntry = nextEntry
+            crossfadeProgress = 0f
+            recycle(stale)
+
+            crossfade = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = CROSSFADE_MS
+                interpolator = motionEasing
+                addUpdateListener { crossfadeProgress = it.animatedValue as Float; draw() }
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) = finishCrossfade()
+                    override fun onAnimationCancel(animation: Animator) = finishCrossfade()
+                })
+                start()
+            }
+            showHud()
+        }
+
+        private fun finishCrossfade() {
+            crossfadeProgress = 1f
+            val done = previousBitmap
+            previousBitmap = null
+            previousEntry = null
+            recycle(done)
+            persistIndex()
+            draw()
+        }
+
+        // ------------------------------------------------------------ decoding
+
+        private suspend fun decode(uri: Uri): Bitmap? {
+            isLoading = true
+            try {
+                val (reqW, reqH) = screenSize()
+                return withContext(Dispatchers.IO) {
+                    try {
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                        val options = BitmapFactory.Options().apply {
+                            inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, reqW, reqH)
+                            inPreferredConfig = Bitmap.Config.ARGB_8888
+                        }
+                        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "decode failed: $uri", e)
+                        null
+                    }
+                }
+            } finally {
+                isLoading = false
+            }
+        }
+
+        private fun screenSize(): Pair<Int, Int> {
+            val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val (w, h) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val bounds = wm.maximumWindowMetrics.bounds
+                bounds.width() to bounds.height()
+            } else {
+                val metrics = android.util.DisplayMetrics()
+                @Suppress("DEPRECATION")
+                wm.defaultDisplay.getRealMetrics(metrics)
+                metrics.widthPixels to metrics.heightPixels
+            }
+            val fallbackW = resources.displayMetrics.widthPixels
+            val fallbackH = resources.displayMetrics.heightPixels
+            return (if (w > 0) w else fallbackW) to (if (h > 0) h else fallbackH)
+        }
+
+        private fun sampleSize(width: Int, height: Int, reqW: Int, reqH: Int): Int {
+            var sample = 1
+            if (height > reqH || width > reqW) {
+                val halfH = height / 2
+                val halfW = width / 2
+                while (halfH / sample >= reqH && halfW / sample >= reqW) {
+                    sample *= 2
+                }
+            }
+            return sample
+        }
+
+        /** 呼び出し側が currentBitmap / previousBitmap から外してから渡すこと */
+        private fun recycle(bitmap: Bitmap?) {
+            if (bitmap != null && !bitmap.isRecycled && bitmap !== currentBitmap && bitmap !== previousBitmap) {
+                bitmap.recycle()
+            }
+        }
+
+        // ----------------------------------------------------------------- HUD
+
+        private fun refreshHudText(setName: String, imageCount: Int) {
+            val sets = activeSets()
+            val index = sets.indexOfFirst { it.name == setName } + 1
+            hudText = String.format(Locale.US, HUD_FORMAT, index, sets.size, setName.uppercase(Locale.US), imageCount)
+        }
+
+        private fun showHud() {
+            if (hudText.isEmpty() || !isVisible) {
+                return
+            }
+            mainHandler.removeCallbacks(hideHud)
+            if (hudAlpha < 1f) {
+                animateHud(to = 1f)
+            }
+            mainHandler.postDelayed(hideHud, HUD_HOLD_MS)
+        }
+
+        private fun animateHud(to: Float) {
+            hudAnimator?.cancel()
+            hudAnimator = ValueAnimator.ofFloat(hudAlpha, to).apply {
+                duration = HUD_FADE_MS
+                addUpdateListener { hudAlpha = it.animatedValue as Float; draw() }
+                start()
+            }
+        }
+
+        // ---------------------------------------------------------------- draw
 
         private fun draw() {
+            if (!isVisible && currentBitmap != null) {
+                return
+            }
+            val holder = surfaceHolder
             val canvas: Canvas = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) surfaceHolder.lockHardwareCanvas() else surfaceHolder.lockCanvas()
-            } catch (e: Exception) { null } ?: return
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) holder.lockHardwareCanvas() else holder.lockCanvas()
+            } catch (e: Exception) {
+                null
+            } ?: return
+
             try {
-                canvas.drawColor(Color.BLACK)
-                if (isAnimating && previousBitmap != null && currentBitmap != null) {
-                    val progress = animationProgress.coerceIn(0f, 1f)
-                    val prevBitmap = previousBitmap!!; val currBitmap = currentBitmap!!
-                    val prevSrc = calculateSrcRect(prevBitmap, previousEntry); val prevDest = Rect(0, 0, canvas.width, canvas.height)
-                    calculateDestRect(prevSrc, canvas, prevDest)
-                    val currSrc = calculateSrcRect(currBitmap, currentEntry); val currDest = Rect(0, 0, canvas.width, canvas.height)
-                    calculateDestRect(currSrc, canvas, currDest)
-                    prevPaint.alpha = 255; canvas.drawBitmap(prevBitmap, prevSrc, prevDest, prevPaint)
-                    val currAlpha = (progress * 255).toInt().coerceIn(0, 255)
-                    currPaint.alpha = currAlpha; canvas.drawBitmap(currBitmap, currSrc, currDest, currPaint)
-                } else {
-                    currentBitmap?.let {
-                        val src = calculateSrcRect(it, currentEntry); val dest = Rect(0, 0, canvas.width, canvas.height)
-                        calculateDestRect(src, canvas, dest); currPaint.alpha = 255; canvas.drawBitmap(it, src, dest, currPaint)
-                    }
-                }
-                if (showTextProgress > 0f) {
-                    val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-                    val activeSetName = getActiveSetName(settingsPrefs) ?: ""
-                    if (activeSetName.isNotEmpty()) {
-                        val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
-                        val activeSets = getFilteredActiveSets(isChatActive)
-                        val totalSets = activeSets.size
-                        val setIndex = activeSets.indexOfFirst { it.name == activeSetName } + 1
-                        val currentSet = activeSets.find { it.name == activeSetName }
-                        val totalImagesInSet = currentSet?.filterImages(DataManager.allImages)?.filter { it.isActive }?.size ?: 0
-                        
-                        val displayText = String.format(
-                            Locale.US,
-                            "IMAGE SET [ %02d / %02d ] : %s ( %d )",
-                            setIndex, totalSets, activeSetName.uppercase(Locale.US), totalImagesInSet
-                        )
+                canvas.drawColor(letterboxColor)
 
-                        textPaint.alpha = (showTextProgress * 255).toInt().coerceIn(0, 255)
-                        val x = canvas.width / 2f
-                        val density = applicationContext.resources.displayMetrics.density
-                        val y = canvas.height - (18f * density)
-                        canvas.drawText(displayText, x, y, textPaint)
-                    }
+                val current = currentBitmap
+                val previous = previousBitmap
+                val fading = crossfadeProgress < 1f && previous != null && !previous.isRecycled
+
+                if (fading) {
+                    computeRects(previous!!, previousEntry, canvas, prevSrcRect, prevDstRect)
+                    bitmapPaint.alpha = ALPHA_OPAQUE
+                    canvas.drawBitmap(previous, prevSrcRect, prevDstRect, bitmapPaint)
                 }
-            } finally { surfaceHolder.unlockCanvasAndPost(canvas) }
+                if (current != null && !current.isRecycled) {
+                    computeRects(current, currentEntry, canvas, srcRect, dstRect)
+                    val paint = if (fading) fadePaint else bitmapPaint
+                    paint.alpha = if (fading) (crossfadeProgress * ALPHA_OPAQUE).toInt().coerceIn(0, ALPHA_OPAQUE) else ALPHA_OPAQUE
+                    canvas.drawBitmap(current, srcRect, dstRect, paint)
+                }
+                if (hudAlpha > 0f && hudText.isNotEmpty()) {
+                    drawHud(canvas)
+                }
+            } finally {
+                runCatching { holder.unlockCanvasAndPost(canvas) }
+            }
         }
 
-        private fun calculateSrcRect(bitmap: Bitmap, entry: ImageEntry?): Rect {
+        private fun drawHud(canvas: Canvas) {
+            val pad = HUD_PILL_PADDING_DP * density
+            val radius = HUD_PILL_RADIUS_DP * density
+            val bottomMargin = resources.getDimension(R.dimen.wallpaper_hud_bottom_margin)
+
+            hudTextPaint.getTextBounds(hudText, 0, hudText.length, hudBounds)
+            val cx = canvas.width / 2f
+            val baseline = canvas.height - bottomMargin - pad
+            hudPill.set(
+                cx - hudBounds.width() / 2f - pad * 1.5f,
+                baseline + hudBounds.top - pad,
+                cx + hudBounds.width() / 2f + pad * 1.5f,
+                baseline + hudBounds.bottom + pad
+            )
+
+            val alpha = (hudAlpha * ALPHA_OPAQUE).toInt().coerceIn(0, ALPHA_OPAQUE)
+            hudPillPaint.alpha = alpha * Color.alpha(hudScrimColor) / ALPHA_OPAQUE
+            hudTextPaint.alpha = alpha
+            canvas.drawRoundRect(hudPill, radius, radius, hudPillPaint)
+            canvas.drawText(hudText, cx, baseline, hudTextPaint)
+        }
+
+        /** クロップ範囲 (0..1 の比率) を src に、center-crop した描画先を dst に入れる */
+        private fun computeRects(bitmap: Bitmap, entry: ImageEntry?, canvas: Canvas, src: Rect, dst: Rect) {
             val crop = entry?.cropRect
-            return if (crop != null) Rect((crop.left * bitmap.width).toInt(), (crop.top * bitmap.height).toInt(), (crop.right * bitmap.width).toInt(), (crop.bottom * bitmap.height).toInt()) else Rect(0, 0, bitmap.width, bitmap.height)
-        }
+            if (crop != null) {
+                src.set(
+                    (crop.left * bitmap.width).toInt(),
+                    (crop.top * bitmap.height).toInt(),
+                    (crop.right * bitmap.width).toInt(),
+                    (crop.bottom * bitmap.height).toInt()
+                )
+            } else {
+                src.set(0, 0, bitmap.width, bitmap.height)
+            }
 
-        private fun calculateDestRect(srcRect: Rect, canvas: Canvas, outRect: Rect) {
-            val srcWidth = srcRect.width().toFloat(); val srcHeight = srcRect.height().toFloat()
-            if (srcWidth <= 0 || srcHeight <= 0) return
-            val srcRatio = srcWidth / srcHeight; val canvasRatio = canvas.width.toFloat() / canvas.height.toFloat()
-            if (srcRatio > canvasRatio) { val width = (canvas.height * srcRatio).toInt(); val left = (canvas.width - width) / 2; outRect.set(left, 0, left + width, canvas.height) }
-            else { val height = (canvas.width / srcRatio).toInt(); val top = (canvas.height - height) / 2; outRect.set(0, top, canvas.width, top + height) }
+            val srcW = src.width().toFloat()
+            val srcH = src.height().toFloat()
+            if (srcW <= 0f || srcH <= 0f) {
+                dst.set(0, 0, canvas.width, canvas.height)
+                return
+            }
+            val srcRatio = srcW / srcH
+            val canvasRatio = canvas.width.toFloat() / canvas.height
+            if (srcRatio > canvasRatio) {
+                val width = (canvas.height * srcRatio).toInt()
+                val left = (canvas.width - width) / 2
+                dst.set(left, 0, left + width, canvas.height)
+            } else {
+                val height = (canvas.width / srcRatio).toInt()
+                val top = (canvas.height - height) / 2
+                dst.set(0, top, canvas.width, top + height)
+            }
         }
     }
 }

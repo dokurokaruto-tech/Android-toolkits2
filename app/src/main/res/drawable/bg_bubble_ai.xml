@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI 吹き出し。色はテーマ属性なのでライト/ダーク/ダイナミックカラーに自動追従 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceContainerHigh" />
+    <corners
+        android:bottomLeftRadius="@dimen/radius_xs"
+        android:bottomRightRadius="@dimen/radius_lg"
+        android:topLeftRadius="@dimen/radius_lg"
+        android:topRightRadius="@dimen/radius_lg" />
+</shape>

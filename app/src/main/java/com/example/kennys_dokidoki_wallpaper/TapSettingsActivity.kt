@@ -1,185 +1,127 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.content.Context
-import android.graphics.Color
-import android.graphics.Typeface
+import android.content.SharedPreferences
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.divider.MaterialDivider
 
+/**
+ * タップ操作設定。MD3 の Top app bar + two-line list item。
+ *
+ * 旧実装の問題:
+ *   - 行を Kotlin で生成し setPadding(16, 24, 16, 24) (px) / Color.WHITE / "#1A2235" (旧ネイビーテーマの残骸) を直書き
+ *   - AlertDialog.Builder に "アプリ全体のテーマ" を渡していた
+ *   - 動作名の表示文字列がここと MyWallpaperService とで別々に保持されていた
+ * Pref キーは PrefKeys / TapActions 経由で壁紙エンジンと共有する。
+ */
 class TapSettingsActivity : AppCompatActivity() {
 
+    private data class Row(val prefKey: String, val title: String, val defaultAction: String)
+
+    private lateinit var prefs: SharedPreferences
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_tap_settings)
+        prefs = getSharedPreferences(PrefFiles.SETTINGS, Context.MODE_PRIVATE)
 
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "タップ操作のカスタム設定"
-        toolbar.setNavigationOnClickListener { finish() }
+        findViewById<MaterialToolbar>(R.id.toolbar).setNavigationOnClickListener { finish() }
 
         val container = findViewById<LinearLayout>(R.id.settings_container)
-
-        // 2〜6タップの設定行を動的に生成
-        for (tapCount in 2..6) {
-            val defaultAction = if (tapCount == 2) "NEXT_IMAGE" else if (tapCount == 3) "NEXT_SET" else "NONE"
-            container.addView(createTapSettingRow("action_tap_$tapCount", "画面を${tapCount}回タップしたとき", defaultAction))
-            container.addView(createDivider())
+        ViewCompat.setOnApplyWindowInsetsListener(container) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.updatePadding(bottom = bars.bottom)
+            insets
         }
 
-        // ダブルタップ＋長押しの設定行を追加
-        container.addView(createTapSettingRow("action_tap_2_hold", "ダブルタップして長押ししたとき", "NONE"))
-        container.addView(createDivider())
-
-        // トリプルタップ＋長押しの設定行を追加
-        container.addView(createTapSettingRow("action_tap_3_hold", "トリプルタップして長押ししたとき", "NONE"))
-        container.addView(createDivider())
-
-        // 1秒長押しの設定行を追加
-        container.addView(createTapSettingRow("action_hold_2s", "画面を1秒間長押ししたとき", "NONE"))
-        container.addView(createDivider())
-    }
-
-    private fun createTapSettingRow(prefKey: String, title: String, defaultAction: String): View {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(16, 24, 16, 24)
-            isClickable = true
-            
-            // リップルエフェクト
-            val outValue = android.util.TypedValue()
-            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
-            setBackgroundResource(outValue.resourceId)
-        }
-
-        val titleView = TextView(this).apply {
-            text = title
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
-        }
-        
-        val summaryView = TextView(this).apply {
-            val currentAction = prefs.getString(prefKey, defaultAction) ?: defaultAction
-            text = getActionDisplayName(currentAction)
-            textSize = 14f
-            setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
-            setPadding(0, 8, 0, 0)
-        }
-
-        container.addView(titleView)
-        container.addView(summaryView)
-
-        container.setOnClickListener {
-            showActionSelectionDialog(prefKey, title, summaryView)
-        }
-        return container
-    }
-
-    private fun createDivider(): View {
-        return View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                1
-            ).apply {
-                setMargins(0, 16, 0, 16)
+        val rows = buildList {
+            for (count in TapActions.MIN_TAP_COUNT..TapActions.MAX_TAP_COUNT) {
+                add(Row(PrefKeys.actionForTaps(count), getString(R.string.tap_n_times, count), TapActions.defaultForTaps(count)))
             }
-            setBackgroundColor(Color.parseColor("#1A2235"))
+            add(Row(PrefKeys.actionForTapsAndHold(2), getString(R.string.tap_double_hold), TapActions.NONE))
+            add(Row(PrefKeys.actionForTapsAndHold(3), getString(R.string.tap_triple_hold), TapActions.NONE))
+            add(Row(PrefKeys.ACTION_HOLD_1S, getString(R.string.tap_hold_1s), TapActions.NONE))
+        }
+
+        val inflater = LayoutInflater.from(this)
+        rows.forEachIndexed { index, row ->
+            container.addView(createRow(inflater, container, row))
+            if (index < rows.lastIndex) {
+                container.addView(MaterialDivider(this).apply {
+                    val margin = resources.getDimensionPixelSize(R.dimen.space_md)
+                    setDividerInsetStart(margin)
+                    setDividerInsetEnd(margin)
+                })
+            }
         }
     }
 
-    private fun getActionDisplayName(action: String): String {
-        return when {
-            action == "NEXT_IMAGE" -> "次の壁紙に切り替え"
-            action == "NEXT_SET" -> "次のイメージセットに切り替え"
-            action == "TOGGLE_AI_CHAT" -> "AIキャラチャットの表示/非表示"
-            action == "OPEN_APP" -> "このアプリを開く"
-            action == "CROP_IMAGE" -> "現在表示している画像のクロップ"
-            action == "EDIT_TAGS" -> "現在の壁紙のタグを編集"
-            action == "EDIT_ACTIVE_SET" -> "現在のイメージセットを編集"
-            action.startsWith("SPECIFIC_SET:") -> {
-                val setName = action.substringAfter("SPECIFIC_SET:")
-                "「$setName」に切り替え"
+    private fun createRow(inflater: LayoutInflater, parent: LinearLayout, row: Row): View {
+        val view = inflater.inflate(R.layout.item_tap_setting, parent, false)
+        val summary = view.findViewById<TextView>(R.id.tv_summary)
+        view.findViewById<TextView>(R.id.tv_title).text = row.title
+        summary.text = displayName(currentAction(row))
+        view.setOnClickListener { showActionPicker(row, summary) }
+        return view
+    }
+
+    private fun currentAction(row: Row): String = prefs.getString(row.prefKey, row.defaultAction) ?: row.defaultAction
+
+    private fun save(row: Row, action: String, summary: TextView) {
+        prefs.edit().putString(row.prefKey, action).apply()
+        summary.text = displayName(action)
+    }
+
+    // 選択肢の並びは旧版と同じ
+    private val choices = listOf(
+        R.string.tap_action_none to TapActions.NONE,
+        R.string.tap_action_next_image to TapActions.NEXT_IMAGE,
+        R.string.tap_action_next_set to TapActions.NEXT_SET,
+        R.string.tap_action_specific_set to TapActions.SPECIFIC_SET_PREFIX,
+        R.string.tap_action_toggle_chat to TapActions.TOGGLE_AI_CHAT,
+        R.string.tap_action_open_app to TapActions.OPEN_APP,
+        R.string.tap_action_crop to TapActions.CROP_IMAGE,
+        R.string.tap_action_edit_tags to TapActions.EDIT_TAGS,
+        R.string.tap_action_edit_set to TapActions.EDIT_ACTIVE_SET
+    )
+
+    private fun showActionPicker(row: Row, summary: TextView) {
+        val labels = choices.map { getString(it.first) }
+        Md3Dialogs.pickOne(this, getString(R.string.tap_action_dialog_title, row.title), labels) { index ->
+            val action = choices[index].second
+            if (action != TapActions.SPECIFIC_SET_PREFIX) {
+                save(row, action, summary)
+                return@pickOne
             }
-            else -> "なにもしない"
+            pickSpecificSet(row, summary)
         }
     }
 
-    private fun showActionSelectionDialog(prefKey: String, title: String, summaryView: TextView) {
-        val options = arrayOf(
-            "なにもしない", 
-            "次の壁紙に切り替え", 
-            "次のイメージセットに切り替え", 
-            "特定のイメージセットに切り替え",
-            "AIキャラチャットの表示/非表示",
-            "このアプリを開く",
-            "現在表示している画像のクロップ",
-            "現在の壁紙のタグを編集",
-            "現在のイメージセットを編集"
-        )
-        
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper) // デフォルトテーマ適用
-            .setTitle(title + "の動作")
-            .setItems(options) { _, which ->
-                val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-                when (which) {
-                    0 -> {
-                        prefs.edit().putString(prefKey, "NONE").apply()
-                        summaryView.text = getActionDisplayName("NONE")
-                    }
-                    1 -> {
-                        prefs.edit().putString(prefKey, "NEXT_IMAGE").apply()
-                        summaryView.text = getActionDisplayName("NEXT_IMAGE")
-                    }
-                    2 -> {
-                        prefs.edit().putString(prefKey, "NEXT_SET").apply()
-                        summaryView.text = getActionDisplayName("NEXT_SET")
-                    }
-                    3 -> {
-                        val sets = DataManager.imageSetList.map { it.name }.toTypedArray()
-                        if (sets.isEmpty()) {
-                            Toast.makeText(this, "イメージセットが存在しません。", Toast.LENGTH_SHORT).show()
-                            return@setItems
-                        }
-                        AlertDialog.Builder(this)
-                            .setTitle("どのセットにする？")
-                            .setItems(sets) { _, setIndex ->
-                                val selectedSet = sets[setIndex]
-                                val actionString = "SPECIFIC_SET:$selectedSet"
-                                prefs.edit().putString(prefKey, actionString).apply()
-                                summaryView.text = getActionDisplayName(actionString)
-                            }
-                            .show()
-                    }
-                    4 -> {
-                        prefs.edit().putString(prefKey, "TOGGLE_AI_CHAT").apply()
-                        summaryView.text = getActionDisplayName("TOGGLE_AI_CHAT")
-                    }
-                    5 -> {
-                        prefs.edit().putString(prefKey, "OPEN_APP").apply()
-                        summaryView.text = getActionDisplayName("OPEN_APP")
-                    }
-                    6 -> {
-                        prefs.edit().putString(prefKey, "CROP_IMAGE").apply()
-                        summaryView.text = getActionDisplayName("CROP_IMAGE")
-                    }
-                    7 -> {
-                        prefs.edit().putString(prefKey, "EDIT_TAGS").apply()
-                        summaryView.text = getActionDisplayName("EDIT_TAGS")
-                    }
-                    8 -> {
-                        prefs.edit().putString(prefKey, "EDIT_ACTIVE_SET").apply()
-                        summaryView.text = getActionDisplayName("EDIT_ACTIVE_SET")
-                    }
-                }
-            }
-            .show()
+    private fun pickSpecificSet(row: Row, summary: TextView) {
+        val sets = DataManager.imageSetList.map { it.name }
+        if (sets.isEmpty()) {
+            Md3Dialogs.snackbar(findViewById(R.id.root), getString(R.string.tap_no_sets))
+            return
+        }
+        Md3Dialogs.pickOne(this, getString(R.string.tap_pick_set), sets) { index ->
+            save(row, TapActions.SPECIFIC_SET_PREFIX + sets[index], summary)
+        }
+    }
+
+    private fun displayName(action: String): String {
+        TapActions.specificSet(action)?.let { return getString(R.string.tap_action_specific_set_named, it) }
+        val res = choices.firstOrNull { it.second == action }?.first ?: R.string.tap_action_none
+        return getString(res)
     }
 }

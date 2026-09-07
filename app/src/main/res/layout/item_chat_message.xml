@@ -1,333 +1,279 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    チャット 1 メッセージ。既存 ChatAdapter.ViewHolder の ID と型をすべて維持しているので
+    アダプタ側の変更なしで差し替えられる。
+
+      root (vertical)
+        ├ wrapper (horizontal, gravity=start) ── container_ai ── bubble_ai / actions / suggestions
+        └ wrapper (horizontal, gravity=end)   ── container_user ── text_message_user / actions
+
+    wrapper が必要な理由: アダプタが container_* に LinearLayout.LayoutParams を新規代入するため、
+    親は LinearLayout でなければならず、かつ gravity は親側で指定する必要がある。
+
+    旧レイアウトからの変更:
+      - "◀" "▶" "↻" を入れた 20dp の TextView → 48dp の MaterialButton (IconButton)。a11y と押しやすさ
+      - 直書き色 (#2B2930 等) → ?attr/colorSurfaceContainerHigh / ?attr/colorPrimaryContainer
+      - 吹き出し角丸: 話者側の下角のみ 4dp (MD3 の会話 UI 慣例)
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/chat_message_container"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:gravity="center_horizontal"
-    android:paddingHorizontal="16dp"
-    android:paddingVertical="4dp">
+    android:paddingHorizontal="@dimen/space_sm"
+    android:paddingVertical="@dimen/space_xs">
 
-    <!-- AIメッセージコンテナ -->
+    <!-- ================= AI ================= -->
     <LinearLayout
-        android:id="@+id/container_ai"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
         android:gravity="start"
-        android:visibility="gone">
+        android:orientation="horizontal">
 
         <LinearLayout
-            android:id="@+id/bubble_ai"
-            android:layout_width="match_parent"
+            android:id="@+id/container_ai"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_chat_bubble_ai"
-            android:orientation="vertical"
-            android:gravity="start"
-            android:paddingHorizontal="14dp"
-            android:paddingVertical="10dp">
-
-            <TextView
-                android:id="@+id/text_message_ai"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@android:color/white"
-                android:textSize="15sp"
-                android:lineSpacingExtra="4dp" />
-
-            <ImageView
-                android:id="@+id/image_message_ai"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:adjustViewBounds="true"
-                android:maxWidth="260dp"
-                android:maxHeight="320dp"
-                android:visibility="gone"
-                android:scaleType="fitCenter"
-                android:layout_gravity="center_horizontal" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical|start"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="2dp">
-
-            <TextView
-                android:id="@+id/btn_ai_prev"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="4dp"
-                android:text="‹"
-                android:textColor="#CAC4D0"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/tv_ai_branch"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="1/2"
-                android:textColor="#938F99"
-                android:textSize="11sp"
-                android:layout_marginHorizontal="2dp"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/btn_ai_next"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="4dp"
-                android:text="›"
-                android:textColor="#CAC4D0"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/btn_ai_copy"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:paddingHorizontal="10dp"
-                android:paddingVertical="4dp"
-                android:text="❏"
-                android:textColor="#CAC4D0"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/btn_ai_regenerate"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="4dp"
-                android:text="↻"
-                android:textColor="#CAC4D0"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <!-- サジェスト返信用のコンテナ -->
-        <LinearLayout
-            android:id="@+id/layout_suggestions"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center_vertical"
-            android:layout_marginTop="10dp"
-            android:layout_marginBottom="6dp"
-            android:visibility="gone">
+            android:orientation="vertical">
 
             <LinearLayout
-                android:id="@+id/layout_suggest_loading"
-                android:layout_width="match_parent"
+                android:id="@+id/bubble_ai"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:background="@drawable/bg_bubble_ai"
                 android:orientation="vertical"
-                android:visibility="gone">
+                android:paddingHorizontal="@dimen/chat_bubble_padding_h"
+                android:paddingVertical="@dimen/chat_bubble_padding_v">
 
-                <LinearLayout
+                <ImageView
+                    android:id="@+id/image_message_ai"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingBottom="8dp">
+                    android:layout_marginBottom="@dimen/space_sm"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@string/chat_ai_image"
+                    android:maxHeight="@dimen/chat_image_max_height"
+                    android:scaleType="fitCenter"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
 
-                    <ProgressBar
-                        android:id="@+id/progress_suggest"
-                        style="?android:attr/progressBarStyleSmall"
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
-                        android:indeterminate="true" />
+                <TextView
+                    android:id="@+id/text_message_ai"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxWidth="@dimen/chat_bubble_max_width"
+                    android:textAppearance="@style/TextAppearance.Kennys.Bubble"
+                    android:textColor="?attr/colorOnSurface"
+                    tools:text="こんにちは。今日はどんな話をしましょうか？" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_ai_prev"
+                    style="@style/Widget.Kennys.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/chat_prev_branch"
+                    app:icon="@drawable/ic_chevron_left_24" />
+
+                <TextView
+                    android:id="@+id/tv_ai_branch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceLabelMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:text="1/2" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_ai_next"
+                    style="@style/Widget.Kennys.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/chat_next_branch"
+                    app:icon="@drawable/ic_chevron_right_24" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_ai_regenerate"
+                    style="@style/Widget.Kennys.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/chat_regenerate"
+                    app:icon="@drawable/ic_refresh_24" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_ai_copy"
+                    style="@style/Widget.Kennys.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/chat_copy"
+                    app:icon="@drawable/ic_content_copy_24" />
+            </LinearLayout>
+
+            <!-- 返信候補 A/B/C -->
+            <LinearLayout
+                android:id="@+id/layout_suggestions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_xs"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <LinearLayout
+                    android:id="@+id/layout_suggest_loading"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
 
                     <TextView
                         android:id="@+id/tv_suggest_loading"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="候補を作っている…"
-                        android:textColor="#D0BCFF"
-                        android:textSize="12sp"
-                        android:textStyle="bold" />
+                        android:layout_marginStart="@dimen/space_xs"
+                        android:textAppearance="?attr/textAppearanceLabelMedium"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        tools:text="返信候補を考えています…" />
+
+                    <View
+                        android:id="@+id/suggest_skel_a"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_marginTop="@dimen/space_sm"
+                        android:background="@drawable/bg_suggest_skeleton" />
+
+                    <View
+                        android:id="@+id/suggest_skel_b"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_marginTop="@dimen/space_sm"
+                        android:background="@drawable/bg_suggest_skeleton" />
+
+                    <View
+                        android:id="@+id/suggest_skel_c"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_marginTop="@dimen/space_sm"
+                        android:background="@drawable/bg_suggest_skeleton" />
                 </LinearLayout>
 
-                <View
-                    android:id="@+id/suggest_skel_a"
-                    android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    android:layout_marginBottom="6dp"
-                    android:background="@drawable/bg_glass_panel" />
-
-                <View
-                    android:id="@+id/suggest_skel_b"
-                    android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    android:layout_marginBottom="6dp"
-                    android:background="@drawable/bg_glass_panel" />
-
-                <View
-                    android:id="@+id/suggest_skel_c"
-                    android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    android:background="@drawable/bg_glass_panel" />
-            </LinearLayout>
-
-            <!-- 3つの選択肢ボタン -->
-            <LinearLayout
-                android:id="@+id/layout_suggest_choices"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/btn_suggest_a"
+                <LinearLayout
+                    android:id="@+id/layout_suggest_choices"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:background="@drawable/bg_glass_panel"
-                    android:paddingVertical="8dp"
-                    android:paddingHorizontal="12dp"
-                    android:textColor="#D0BCFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:gravity="center_vertical" />
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/btn_suggest_b"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:background="@drawable/bg_glass_panel"
-                    android:paddingVertical="8dp"
-                    android:paddingHorizontal="12dp"
-                    android:textColor="#D0BCFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:gravity="center_vertical" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_suggest_a"
+                        style="@style/Widget.Kennys.Button.Tonal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="start|center_vertical"
+                        android:maxLines="3"
+                        android:ellipsize="end"
+                        tools:text="A: いいね、続けて聞かせて" />
 
-                <TextView
-                    android:id="@+id/btn_suggest_c"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/bg_glass_panel"
-                    android:paddingVertical="8dp"
-                    android:paddingHorizontal="12dp"
-                    android:textColor="#D0BCFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:gravity="center_vertical" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_suggest_b"
+                        style="@style/Widget.Kennys.Button.Tonal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="start|center_vertical"
+                        android:maxLines="3"
+                        android:ellipsize="end"
+                        tools:text="B: 今日はもう寝るね" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_suggest_c"
+                        style="@style/Widget.Kennys.Button.Tonal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="start|center_vertical"
+                        android:maxLines="3"
+                        android:ellipsize="end"
+                        tools:text="C: 別の話題にしよう" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
-    <!-- ユーザーメッセージコンテナ -->
+    <!-- ================= USER ================= -->
     <LinearLayout
-        android:id="@+id/container_user"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="start"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/text_message_user"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_chat_bubble_user"
-            android:paddingHorizontal="14dp"
-            android:paddingVertical="10dp"
-            android:textColor="@android:color/white"
-            android:textSize="15sp"
-            android:lineSpacingExtra="4dp" />
+        android:gravity="end"
+        android:orientation="horizontal">
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:id="@+id/container_user"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical|start"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="2dp">
+            android:gravity="end"
+            android:orientation="vertical">
 
             <TextView
-                android:id="@+id/btn_user_edit"
+                android:id="@+id/text_message_user"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="4dp"
-                android:text="✎"
-                android:textColor="#CAC4D0"
-                android:textSize="14sp" />
+                android:background="@drawable/bg_bubble_user"
+                android:maxWidth="@dimen/chat_bubble_max_width"
+                android:paddingHorizontal="@dimen/chat_bubble_padding_h"
+                android:paddingVertical="@dimen/chat_bubble_padding_v"
+                android:textAppearance="@style/TextAppearance.Kennys.Bubble"
+                android:textColor="?attr/colorOnPrimaryContainer"
+                tools:text="今日のことを話してもいい？" />
 
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/btn_user_copy"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:paddingHorizontal="10dp"
-                android:paddingVertical="4dp"
-                android:text="❏"
-                android:textColor="#CAC4D0"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/btn_user_prev"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="4dp"
-                android:text="‹"
-                android:textColor="#CAC4D0"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_user_prev"
+                    style="@style/Widget.Kennys.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/chat_prev_branch"
+                    app:icon="@drawable/ic_chevron_left_24" />
 
-            <TextView
-                android:id="@+id/tv_user_branch"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="1/2"
-                android:textColor="#938F99"
-                android:textSize="11sp"
-                android:layout_marginHorizontal="2dp"
-                android:visibility="gone" />
+                <TextView
+                    android:id="@+id/tv_user_branch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceLabelMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:text="1/1" />
 
-            <TextView
-                android:id="@+id/btn_user_next"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="4dp"
-                android:text="›"
-                android:textColor="#CAC4D0"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_user_next"
+                    style="@style/Widget.Kennys.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/chat_next_branch"
+                    app:icon="@drawable/ic_chevron_right_24" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_user_edit"
+                    style="@style/Widget.Kennys.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/chat_edit"
+                    app:icon="@drawable/ic_edit_24" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_user_copy"
+                    style="@style/Widget.Kennys.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/chat_copy"
+                    app:icon="@drawable/ic_content_copy_24" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
-
 </LinearLayout>

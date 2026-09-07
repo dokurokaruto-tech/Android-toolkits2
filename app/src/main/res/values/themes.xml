@@ -1,59 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    テーマ階層 (values = ライト、values-night = ダーク)
+
+      Theme.Material3.DayNight.NoActionBar
+        └ Base.Theme.Kennys        … カラートークン + コンポーネント既定スタイル
+            └ Theme.Kennys         … 通常画面 (全 Activity の既定)
+                ├ Theme.Kennys.Immersive       … 全画面表示 / クロップ / PiP
+                └ Theme.Kennys.Overlay         … 壁紙の上に重ねる透過画面 (チャット)
+                    └ Theme.Kennys.Overlay.Scrim … 背景を暗くするタグ編集
+
+    旧名 (Theme.Kennys_dokidoki_wallpaper / Theme.TransparentOverlay 等) はエイリアスとして残し、
+    既存コードをコンパイル可能に保つ。新規コードでは使わない。
+-->
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Material Design 3 ベースライン（ダーク）。アプリ全体をGoogle公式アプリ風のMD3配色に。 -->
-    <style name="Base.Theme.Kennys_dokidoki_wallpaper" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">#D0BCFF</item>
-        <item name="colorOnPrimary">#381E72</item>
-        <item name="colorPrimaryContainer">#4F378B</item>
-        <item name="colorOnPrimaryContainer">#EADDFF</item>
-        <item name="colorSecondary">#CCC2DC</item>
-        <item name="colorSecondaryContainer">#4A4458</item>
-        <item name="colorOnSecondaryContainer">#EADDFF</item>
-        <item name="colorError">#F2B8B5</item>
-        <item name="colorOutline">#938F99</item>
-        <item name="colorOutlineVariant">#49454F</item>
-        <item name="colorSurface">#1C1B1F</item>
-        <item name="colorOnSurface">#E6E1E5</item>
-        <item name="colorSurfaceVariant">#49454F</item>
-        <item name="colorOnSurfaceVariant">#CAC4D0</item>
-        <item name="android:colorBackground">#1C1B1F</item>
+
+    <style name="Base.Theme.Kennys" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Color roles -->
+        <item name="colorPrimary">@color/md_theme_light_primary</item>
+        <item name="colorOnPrimary">@color/md_theme_light_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/md_theme_light_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/md_theme_light_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/md_theme_light_secondary</item>
+        <item name="colorOnSecondary">@color/md_theme_light_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/md_theme_light_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/md_theme_light_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/md_theme_light_tertiary</item>
+        <item name="colorOnTertiary">@color/md_theme_light_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/md_theme_light_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/md_theme_light_onTertiaryContainer</item>
+        <item name="colorError">@color/md_theme_light_error</item>
+        <item name="colorOnError">@color/md_theme_light_onError</item>
+        <item name="colorErrorContainer">@color/md_theme_light_errorContainer</item>
+        <item name="colorOnErrorContainer">@color/md_theme_light_onErrorContainer</item>
+        <item name="android:colorBackground">@color/md_theme_light_background</item>
+        <item name="colorOnBackground">@color/md_theme_light_onBackground</item>
+        <item name="colorSurface">@color/md_theme_light_surface</item>
+        <item name="colorOnSurface">@color/md_theme_light_onSurface</item>
+        <item name="colorSurfaceVariant">@color/md_theme_light_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/md_theme_light_onSurfaceVariant</item>
+        <item name="colorOutline">@color/md_theme_light_outline</item>
+        <item name="colorOutlineVariant">@color/md_theme_light_outlineVariant</item>
+        <item name="colorSurfaceInverse">@color/md_theme_light_inverseSurface</item>
+        <item name="colorOnSurfaceInverse">@color/md_theme_light_inverseOnSurface</item>
+        <item name="colorPrimaryInverse">@color/md_theme_light_inversePrimary</item>
+        <item name="colorSurfaceDim">@color/md_theme_light_surfaceDim</item>
+        <item name="colorSurfaceBright">@color/md_theme_light_surfaceBright</item>
+        <item name="colorSurfaceContainerLowest">@color/md_theme_light_surfaceContainerLowest</item>
+        <item name="colorSurfaceContainerLow">@color/md_theme_light_surfaceContainerLow</item>
+        <item name="colorSurfaceContainer">@color/md_theme_light_surfaceContainer</item>
+        <item name="colorSurfaceContainerHigh">@color/md_theme_light_surfaceContainerHigh</item>
+        <item name="colorSurfaceContainerHighest">@color/md_theme_light_surfaceContainerHighest</item>
+
+        <!-- Edge-to-edge: システムバーは透過し、enableEdgeToEdge() + insets で対応 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
+
+        <!-- Component defaults -->
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Kennys.Dialog</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.Kennys.BottomSheet</item>
+        <item name="materialButtonStyle">@style/Widget.Kennys.Button</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.Kennys.Button.Outlined</item>
+        <item name="borderlessButtonStyle">@style/Widget.Kennys.Button.Text</item>
+        <item name="materialIconButtonStyle">@style/Widget.Material3.Button.IconButton</item>
+        <item name="textInputStyle">@style/Widget.Kennys.TextInputLayout</item>
+        <item name="chipStyle">@style/Widget.Material3.Chip.Filter</item>
+        <item name="chipGroupStyle">@style/Widget.Material3.ChipGroup</item>
+        <item name="toolbarStyle">@style/Widget.Kennys.Toolbar</item>
+        <item name="bottomNavigationStyle">@style/Widget.Material3.BottomNavigationView</item>
+        <item name="floatingActionButtonStyle">@style/Widget.Material3.FloatingActionButton.Primary</item>
+        <item name="extendedFloatingActionButtonStyle">@style/Widget.Material3.ExtendedFloatingActionButton.Primary</item>
+        <item name="materialCardViewStyle">@style/Widget.Kennys.Card</item>
+        <item name="materialSwitchStyle">@style/Widget.Material3.CompoundButton.MaterialSwitch</item>
+        <item name="checkboxStyle">@style/Widget.Material3.CompoundButton.CheckBox</item>
+        <item name="sliderStyle">@style/Widget.Material3.Slider</item>
+        <item name="snackbarStyle">@style/Widget.Material3.Snackbar</item>
+        <item name="snackbarButtonStyle">@style/Widget.Material3.Button.TextButton.Snackbar</item>
+        <item name="tabStyle">@style/Widget.Material3.TabLayout</item>
+        <item name="linearProgressIndicatorStyle">@style/Widget.Material3.LinearProgressIndicator</item>
+        <item name="circularProgressIndicatorStyle">@style/Widget.Material3.CircularProgressIndicator</item>
+        <item name="popupMenuStyle">@style/Widget.Material3.PopupMenu</item>
+        <item name="listPopupWindowStyle">@style/Widget.Material3.PopupMenu.ListPopupWindow</item>
+
+        <!-- Shape -->
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.Kennys.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Kennys.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.Kennys.Large</item>
+
+        <!-- Motion -->
+        <item name="android:windowActivityTransitions">true</item>
     </style>
 
-    <style name="Theme.Kennys_dokidoki_wallpaper" parent="Base.Theme.Kennys_dokidoki_wallpaper" />
+    <style name="Theme.Kennys" parent="Base.Theme.Kennys" />
 
-    <!-- AIチャットオーバーレイ用の透明なテーマ -->
-    <style name="Theme.TransparentOverlay" parent="Theme.AppCompat.Light.NoActionBar">
+    <!-- 全画面画像 / クロップ / 生成プレビュー / PiP。黒背景で画像を邪魔しない -->
+    <style name="Theme.Kennys.Immersive">
+        <item name="android:windowBackground">@color/wallpaper_letterbox</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="p">shortEdges</item>
+    </style>
+
+    <!-- 壁紙の上に重ねるチャット / クロップハンドラ -->
+    <style name="Theme.Kennys.Overlay">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>
-        <item name="android:windowNoTitle">true</item>
         <item name="android:windowIsFloating">false</item>
         <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowShowWallpaper">true</item>
-        <!-- ステータスバーとナビゲーションバーを透明に -->
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- 画像の上なので、システムバーのアイコンは常に明色 -->
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Kennys.Overlay</item>
     </style>
 
-    <!-- タグ編集画面用のテーマ：背後のアプリ画面を動かさないように設定 -->
-    <style name="Theme.TagEditorOverlay" parent="Theme.TransparentOverlay">
-        <!-- windowShowWallpaperをfalseにすることで、アプリ内で開いた時に背後のActivityを維持させるわ -->
+    <!-- タグ編集: 背後の Activity を維持しつつ 70% のスクリム -->
+    <style name="Theme.Kennys.Overlay.Scrim">
         <item name="android:windowShowWallpaper">false</item>
-        <!-- 背景を少し暗くして編集画面を目立たせるわね -->
         <item name="android:backgroundDimEnabled">true</item>
         <item name="android:backgroundDimAmount">0.7</item>
     </style>
 
-    <!-- ペルソナダイアログ用の透明テーマ -->
-    <style name="Theme_TransparentDialog" parent="Theme.AppCompat.Dialog">
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowIsFloating">true</item>
-        <item name="android:backgroundDimEnabled">true</item>
-        <item name="android:backgroundDimAmount">0.6</item>
+    <style name="Animation.Kennys.Overlay" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@android:anim/fade_in</item>
+        <item name="android:activityOpenExitAnimation">@android:anim/fade_out</item>
+        <item name="android:activityCloseEnterAnimation">@android:anim/fade_in</item>
+        <item name="android:activityCloseExitAnimation">@android:anim/fade_out</item>
     </style>
 
-    <!-- 編集ポップアップ。AlertDialogのwrap制限を避け、こちらで縦幅を固定する。 -->
-    <style name="ThemeOverlay.Kennys.Md3Popup" parent="Theme.Material3.Dark.Dialog">
+    <!-- ===== Dialog / Sheet overlays ===== -->
+    <style name="ThemeOverlay.Kennys.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.Kennys.ExtraLarge</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/MaterialAlertDialog.Material3.Title.Text</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.Kennys.Button.Text</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.Kennys.Button.Text</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.Kennys.Button.Text</item>
+    </style>
+
+    <!-- 破壊的操作 (削除 / 破棄) 用: positive ボタンを error 色に -->
+    <style name="ThemeOverlay.Kennys.Dialog.Destructive">
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.Kennys.Button.Text.Destructive</item>
+    </style>
+
+    <style name="ThemeOverlay.Kennys.BottomSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.Kennys.BottomSheet</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="enableEdgeToEdge">true</item>
+    </style>
+
+    <!-- 既存 Md3PopupDialog 用 (名前維持) -->
+    <style name="ThemeOverlay.Kennys.Md3Popup" parent="ThemeOverlay.Material3.Dialog">
         <item name="android:windowIsFloating">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>
@@ -64,4 +164,11 @@
         <item name="android:windowMinWidthMajor">50%</item>
         <item name="android:windowMinWidthMinor">92%</item>
     </style>
+
+    <!-- ===== 旧名エイリアス (互換用。新規参照禁止) ===== -->
+    <style name="Theme.Kennys_dokidoki_wallpaper" parent="Theme.Kennys" />
+    <style name="Base.Theme.Kennys_dokidoki_wallpaper" parent="Base.Theme.Kennys" />
+    <style name="Theme.TransparentOverlay" parent="Theme.Kennys.Overlay" />
+    <style name="Theme.TagEditorOverlay" parent="Theme.Kennys.Overlay.Scrim" />
+    <style name="Theme_TransparentDialog" parent="ThemeOverlay.Kennys.Md3Popup" />
 </resources>
