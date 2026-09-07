@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    方針:
+      * 既定 (base-config) は平文 HTTP 禁止。OpenRouter / xAI / Chub は HTTPS のみ。
+      * PC 生成エージェント (LAN / Tailscale) は下の domain-config に "実際に使うホスト" を
+        列挙した場合だけ平文を許可する。
+
+    重要な制約:
+      Android の <domain> はホスト名 / IP リテラルの完全一致であり、CIDR (192.168.0.0/16 等) は
+      解釈されない。includeSubdomains は "example.com" に対する "a.example.com" 用であり、
+      IP には効かない。よって使用する PC の IP を個別に書く。
+
+    推奨:
+      PC 側で `tailscale serve -https=443 http://localhost:3001` を実行すると (実際は dash-dash-https)
+      https://<pc>.<tailnet>.ts.net で有効な証明書付き HTTPS が得られ、
+      この平文許可自体が不要になる。
+
+    ランタイム側の防御:
+      AgentNetworkPolicy.validate() が http:// の宛先がプライベート IP 帯以外なら
+      保存・接続を拒否する (この XML で列挙漏れがあっても公開ホストへの平文送信は起きない)。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- 開発用 (エミュレータ / adb reverse) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+
+    <!--
+        PC 生成エージェント。使用する PC の IP / ホスト名をここに追加する。
+        例:
+          <domain includeSubdomains="false">192.168.1.20</domain>
+          <domain includeSubdomains="false">100.101.102.103</domain>
+          <domain includeSubdomains="false">desktop-pc.local</domain>
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.1.20</domain>
+    </domain-config>
+</network-security-config>
