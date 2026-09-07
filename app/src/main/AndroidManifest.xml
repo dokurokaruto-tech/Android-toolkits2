@@ -5,125 +5,121 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <!-- Android 10以下で file:// 画像を直接削除するために使う（11以降は不要） -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Android 14+ の「一部の写真のみ許可」に対応。無いと部分許可時に毎回ダイアログが出る -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
-    <uses-permission android:name="android.permission.BIND_WALLPAPER" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!--
+        BIND_WALLPAPER はシステムが「サービスに」要求する権限であり、
+        アプリ側が uses-permission で宣言しても付与されない(署名権限)。削除。
+        requestLegacyExternalStorage は targetSdk 30 以降無視される。削除。
+        usesCleartextTraffic="true" は全ホストへの平文HTTPを許可してしまうので
+        network_security_config でプライベートIP帯のみに限定する。
+    -->
 
     <application
         android:name=".KennysApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:requestLegacyExternalStorage="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Kennys_dokidoki_wallpaper"
-        android:usesCleartextTraffic="true">
+        android:theme="@style/Theme.Kennys">
+
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".AlbumDetailActivity"
-            android:exported="false" />
-        <activity
-            android:name=".GeneratedFolderPickerActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Kennys_dokidoki_wallpaper" />
-        <activity
-            android:name=".ChubBrowserActivity"
-            android:exported="false" />
-        <activity
-            android:name=".CustomFilePickerActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ImagePreviewActivity"
-            android:exported="false" />
+
+        <!-- 通常画面: すべて同一の MD3 テーマ (Theme.Kennys) を継承 -->
+        <activity android:name=".AlbumDetailActivity" android:exported="false" />
+        <activity android:name=".GeneratedFolderPickerActivity" android:exported="false" />
+        <activity android:name=".ChubBrowserActivity" android:exported="false" />
+        <activity android:name=".CustomFilePickerActivity" android:exported="false" />
+        <activity android:name=".ImagePreviewActivity" android:exported="false" />
+        <activity android:name=".TapSettingsActivity" android:exported="false" />
+        <activity android:name=".TagPromptEditorActivity" android:exported="false" />
+        <activity android:name=".LocalModelActivity" android:exported="false" />
+
+        <!-- 没入系画面: 黒背景・システムバー透過。AppCompat テーマは使わない -->
         <activity
             android:name=".CustomCropActivity"
-            android:theme="@style/Theme.AppCompat.NoActionBar"
-            android:exported="false" />
-
-        <activity
-            android:name=".CropHandlerActivity"
-            android:theme="@style/Theme.TransparentOverlay"
             android:exported="false"
-            android:taskAffinity=""
-            android:excludeFromRecents="true" />
-
+            android:theme="@style/Theme.Kennys.Immersive" />
         <activity
-            android:name=".ImageTagEditorActivity"
-            android:theme="@style/Theme.TagEditorOverlay"
+            android:name=".FullScreenImageActivity"
             android:exported="false"
-            android:taskAffinity=""
-            android:excludeFromRecents="true" />
-
+            android:theme="@style/Theme.Kennys.Immersive" />
         <activity
-            android:name=".TapSettingsActivity"
-            android:exported="false" />
+            android:name=".GenerationLivePreviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Kennys.Immersive" />
         <activity
-            android:name=".TagPromptEditorActivity"
-            android:exported="false" />
-
-        <!-- ローカルLLM管理画面を登録したわよ！ -->
-        <activity
-            android:name=".LocalModelActivity"
-            android:exported="false" />
-
+            android:name=".InspectionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Kennys.Immersive" />
         <activity
             android:name=".GenerationProgressActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
-            android:supportsPictureInPicture="true"
-            android:launchMode="singleInstance"
+            android:excludeFromRecents="false"
             android:exported="false"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
+            android:launchMode="singleInstance"
+            android:supportsPictureInPicture="true"
+            android:theme="@style/Theme.Kennys.Immersive" />
 
+        <!-- 壁紙の上に重ねるオーバーレイ系 -->
         <activity
-            android:name=".ChatOverlayActivity"
-            android:theme="@style/Theme.TransparentOverlay"
+            android:name=".CropHandlerActivity"
+            android:excludeFromRecents="true"
             android:exported="false"
             android:taskAffinity=""
+            android:theme="@style/Theme.Kennys.Overlay" />
+        <activity
+            android:name=".ImageTagEditorActivity"
             android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Kennys.Overlay.Scrim" />
+        <activity
+            android:name=".ChatOverlayActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
             android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Kennys.Overlay"
             android:windowSoftInputMode="stateHidden|adjustResize" />
 
-        <activity
-            android:name=".FullScreenImageActivity"
-            android:theme="@style/Theme.AppCompat.NoActionBar"
-            android:exported="false" />
-
-        <activity
-            android:name=".GenerationLivePreviewActivity"
-            android:theme="@style/Theme.AppCompat.NoActionBar"
-            android:exported="false" />
-
-        <activity
-            android:name=".InspectionActivity"
-            android:theme="@style/Theme.AppCompat.NoActionBar"
-            android:exported="false" />
-
+        <!-- ライブラリの Activity は exported を明示 (API31+ 必須) -->
         <activity
             android:name="com.canhub.cropper.CropImageActivity"
-            android:theme="@style/Base.Theme.AppCompat" />
+            android:exported="false"
+            android:theme="@style/Theme.Kennys"
+            tools:replace="android:theme,android:exported" />
 
         <service
             android:name=".MyWallpaperService"
+            android:exported="true"
             android:label="@string/app_name"
-            android:permission="android.permission.BIND_WALLPAPER"
-            android:exported="true">
+            android:permission="android.permission.BIND_WALLPAPER">
             <intent-filter>
                 <action android:name="android.service.wallpaper.WallpaperService" />
             </intent-filter>
@@ -132,13 +128,11 @@
                 android:resource="@xml/wallpaper" />
         </service>
 
-        <!-- 画像生成用フォアグラウンドサービス -->
         <service
             android:name=".GenerationService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- ローカルLLM推論用フォアグラウンドサービス -->
         <service
             android:name=".LlmForegroundService"
             android:exported="false"
