@@ -2501,6 +2501,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 pickSaveFolderLauncher.launch(null)
             })
 
+            addView(createSettingsRow("🗂 サムネイルの保存先と容量", "端末に残す圧縮サムネイルの保存先（本体／SD）と上限") {
+                showThumbnailStorageDialog()
+            })
+
             addView(createSettingsRow("AIのAPI Keyを設定") { showApiKeyDialog() })
             addView(createSettingsRow("AIへの指示（システムプロンプト）の編集") { showAiPromptDialog() })
             addView(createSettingsRow("⚙️ ローカルLLMモデルの管理") { startActivity(Intent(this@MainActivity, LocalModelActivity::class.java)) })
@@ -2832,6 +2836,106 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .putString("generation_agent_api_key", rawKey.trim())
             .apply()
     }
+
+    private fun showThumbnailStorageDialog() {
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val currentLocation = ThumbnailStoragePolicy.locationOf(
+            prefs.getString(ThumbnailStoragePolicy.PREF_LOCATION, null)
+        )
+        val currentCapacity = ThumbnailStoragePolicy.capacityBytes(
+            prefs.getLong(ThumbnailStoragePolicy.PREF_CAPACITY_BYTES, 0L)
+        )
+        val sd = ThumbnailLocalCache.sdCardDir(this)
+        var chosenLocation = currentLocation
+        var chosenCapacity = currentCapacity
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 16, 48, 0)
+        }
+
+        container.addView(TextView(this).apply { text = "圧縮サムネイルの保存先"; setTextColor(Color.LTGRAY) })
+        val internalButton = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "本体ストレージ（アプリ内）"
+            setTextColor(Color.WHITE)
+            isChecked = currentLocation == ThumbnailStoragePolicy.Location.INTERNAL
+        }
+        val sdButton = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = if (sd != null) "SDカード（${sd.absolutePath}）" else "SDカード（見つかりません）"
+            setTextColor(Color.WHITE)
+            isEnabled = sd != null
+            isChecked = currentLocation == ThumbnailStoragePolicy.Location.SD_CARD
+        }
+        val locationGroup = RadioGroup(this)
+        locationGroup.addView(internalButton)
+        locationGroup.addView(sdButton)
+        locationGroup.setOnCheckedChangeListener { _, checkedId ->
+            chosenLocation = if (checkedId == sdButton.id) {
+                ThumbnailStoragePolicy.Location.SD_CARD
+            } else {
+                ThumbnailStoragePolicy.Location.INTERNAL
+            }
+        }
+        container.addView(locationGroup)
+
+        container.addView(
+            TextView(this).apply {
+                text = "容量上限（超えたら古いサムネイルから削除）"
+                setTextColor(Color.LTGRAY)
+            }
+        )
+        val capacityGroup = RadioGroup(this)
+        ThumbnailStoragePolicy.CAPACITY_CHOICES.forEach { bytes ->
+            capacityGroup.addView(
+                RadioButton(this).apply {
+                    text = ThumbnailStoragePolicy.label(bytes)
+                    setTextColor(Color.WHITE)
+                    isChecked = bytes == currentCapacity
+                    setOnCheckedChangeListener { _, checked -> if (checked) chosenCapacity = bytes }
+                }
+            )
+        }
+        container.addView(capacityGroup)
+
+        val usageView = TextView(this).apply { setTextColor(Color.GRAY); textSize = 12f }
+        container.addView(usageView)
+        lifecycleScope.launch(Dispatchers.IO) {
+            val used = usageBytes(ThumbnailLocalCache.cacheDir(applicationContext))
+            withContext(Dispatchers.Main) {
+                usageView.text = "現在の使用量: %.1fMB".format(used / 1048576f)
+            }
+        }
+
+        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
+            .setTitle("サムネイルの保存先と容量")
+            .setView(container)
+            .setPositiveButton("保存") { _, _ ->
+                prefs.edit()
+                    .putString(ThumbnailStoragePolicy.PREF_LOCATION, chosenLocation.name)
+                    .putLong(ThumbnailStoragePolicy.PREF_CAPACITY_BYTES, chosenCapacity)
+                    .apply()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    ThumbnailLocalCache.relocate(applicationContext)
+                    ThumbnailLocalCache.prune(applicationContext)
+                }
+                val where = if (chosenLocation == ThumbnailStoragePolicy.Location.SD_CARD) {
+                    "SDカード"
+                } else {
+                    "本体ストレージ"
+                }
+                Toast.makeText(
+                    this,
+                    "サムネイルの保存先を${where}・上限を${ThumbnailStoragePolicy.label(chosenCapacity)}にしたわ。",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun usageBytes(dir: File): Long = dir.listFiles()?.sumOf { it.length() } ?: 0L
 
     private fun showApiKeyDialog() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Environment
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -30,7 +31,7 @@ object ThumbnailLocalCache {
     fun existingLocal(context: Context, target: ThumbnailBindPolicy.Target, remote: String): Uri? {
         if (!target.isValid || remote.isBlank()) return null
         val dest = File(
-            File(context.filesDir, ThumbnailLocalCachePolicy.DIR_NAME),
+            cacheDir(context),
             ThumbnailLocalCachePolicy.localFileName(target.kind, target.id, remote)
         )
         return if (dest.isFile && dest.length() > 0L) Uri.fromFile(dest) else null
@@ -89,7 +90,7 @@ object ThumbnailLocalCache {
     }
 
     fun prune(context: Context) {
-        val dir = File(context.filesDir, ThumbnailLocalCachePolicy.DIR_NAME)
+        val dir = cacheDir(context)
         if (!dir.isDirectory) return
         val listed = dir.listFiles() ?: return
         val keep = ThumbnailLocalCachePolicy.keepPrefixes(
@@ -100,7 +101,8 @@ object ThumbnailLocalCache {
             listed.map { file ->
                 ThumbnailLocalCachePolicy.DiskFile(file.name, file.length(), file.lastModified())
             },
-            keep
+            keep,
+            capacityBytes(context)
         ).toSet()
         listed.forEach { file ->
             if (file.name in doomed) file.delete()
@@ -114,6 +116,96 @@ object ThumbnailLocalCache {
         }
     }
 
+    private fun settings(context: Context) =
+        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+    private fun preferredLocation(context: Context): ThumbnailStoragePolicy.Location =
+        ThumbnailStoragePolicy.locationOf(
+            settings(context).getString(ThumbnailStoragePolicy.PREF_LOCATION, null)
+        )
+
+    private fun externalCandidates(context: Context): List<ThumbnailStoragePolicy.Candidate> {
+        val dirs = context.getExternalFilesDirs(null) ?: return emptyList()
+        return dirs.filterNotNull().map { dir ->
+            ThumbnailStoragePolicy.Candidate(
+                File(dir, ThumbnailLocalCachePolicy.DIR_NAME),
+                Environment.isExternalStorageRemovable(dir)
+            )
+        }
+    }
+
+    /** 現在の保存先。SD 選択でもカードが無ければ本体へ退避する。 */
+    internal fun cacheDir(context: Context): File {
+        val internal = File(context.filesDir, ThumbnailLocalCachePolicy.DIR_NAME)
+        val chosen = ThumbnailStoragePolicy.resolveDir(
+            preferredLocation(context),
+            internal,
+            externalCandidates(context)
+        )
+        return if (chosen.mkdirs() || chosen.isDirectory) chosen else internal.also { it.mkdirs() }
+    }
+
+    /** 設定ダイアログ用。挿されているSDカードのアプリ専用領域。 */
+    fun sdCardDir(context: Context): File? =
+        externalCandidates(context).firstOrNull { it.isRemovable }?.file
+
+    private fun capacityBytes(context: Context): Long =
+        ThumbnailStoragePolicy.capacityBytes(
+            settings(context).getLong(ThumbnailStoragePolicy.PREF_CAPACITY_BYTES, 0L)
+        )
+
+    /**
+     * 保存先を変えた直後に呼ぶ。旧場所の実ファイルを新場所へ移し、
+     * カード／プリセットが張っている file:// を新場所へ付け直す。
+     */
+    fun relocate(context: Context) {
+        val app = context.applicationContext
+        val active = cacheDir(app)
+        val internal = File(app.filesDir, ThumbnailLocalCachePolicy.DIR_NAME)
+        val retired = (listOf(internal) + externalCandidates(app).map { it.file })
+            .filter { it.absolutePath != active.absolutePath && it.isDirectory }
+        retired.forEach { old -> moveAll(old, active) }
+        rebaseBoundUris(app, active)
+    }
+
+    private fun moveAll(from: File, to: File) {
+        val listed = from.listFiles() ?: return
+        listed.forEach { file ->
+            if (!file.isFile) return@forEach
+            val target = File(to, file.name)
+            when {
+                target.isFile -> file.delete()
+                file.renameTo(target) -> Unit
+                else -> {
+                    file.copyTo(target, overwrite = true)
+                    file.delete()
+                }
+            }
+        }
+        if (from.listFiles()?.isEmpty() == true) from.delete()
+    }
+
+    private fun rebaseBoundUris(context: Context, active: File) {
+        val entries =
+            PromptCardManager.promptCards.map { ThumbnailBindPolicy.Target.card(it.id) to it.thumbnailUri } +
+                PresetManager.presets.map { ThumbnailBindPolicy.Target.preset(it.id) to it.thumbnailUri }
+        var cardsDirty = false
+        var presetsDirty = false
+        entries.forEach { (target, uri) ->
+            val name = uri?.lastPathSegment ?: return@forEach
+            if (uri.scheme != "file") return@forEach
+            val moved = File(active, name)
+            if (!moved.isFile || uri.path == moved.absolutePath) return@forEach
+            when (ThumbnailBinder.replaceWithLocal(context, target, Uri.fromFile(moved), persist = false)) {
+                ThumbnailBinder.ApplyResult.CARD -> cardsDirty = true
+                ThumbnailBinder.ApplyResult.PRESET -> presetsDirty = true
+                else -> Unit
+            }
+        }
+        if (cardsDirty) PromptCardManager.saveCards(context)
+        if (presetsDirty) PresetManager.savePresets(context)
+    }
+
     private fun currentPending(): List<Pair<ThumbnailBindPolicy.Target, String>> =
         ThumbnailLocalCachePolicy.collectPending(
             PromptCardManager.promptCards.map { it.id to it.thumbnailUri?.toString() },
@@ -122,7 +214,7 @@ object ThumbnailLocalCache {
 
     internal fun persist(context: Context, target: ThumbnailBindPolicy.Target, remote: Uri): Uri? {
         val remoteText = remote.toString()
-        val dir = File(context.filesDir, ThumbnailLocalCachePolicy.DIR_NAME).also { it.mkdirs() }
+        val dir = cacheDir(context)
         val dest = File(dir, ThumbnailLocalCachePolicy.localFileName(target.kind, target.id, remoteText))
         if (dest.isFile && dest.length() > 0L) {
             pruneOthers(dir, target, dest)
