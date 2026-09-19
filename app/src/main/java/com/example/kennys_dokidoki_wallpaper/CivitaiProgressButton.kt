@@ -31,7 +31,7 @@ class CivitaiProgressButton @JvmOverloads constructor(
         if (fraction != null && fraction > 0f) {
             canvas.drawRoundRect(
                 0f, 0f, width * fraction, height.toFloat(),
-                cornerRadius, cornerRadius, fillPaint
+                cornerRadius.toFloat(), cornerRadius.toFloat(), fillPaint
             )
         }
     }
