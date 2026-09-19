@@ -241,7 +241,21 @@
                     android:inputType="textMultiLine" />
             </com.google.android.material.textfield.TextInputLayout>
 
-            <com.google.android.material.button.MaterialButton
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                android:hint="Civitai APIトークン（認証が必要なモデルのみ任意）">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_civitai_token"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.example.kennys_dokidoki_wallpaper.CivitaiProgressButton
                 android:id="@+id/btn_import"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
@@ -249,16 +263,6 @@
                 android:enabled="false"
                 android:text="PCにインポート"
                 app:icon="@drawable/ic_md3_download" />
-
-            <com.google.android.material.progressindicator.LinearProgressIndicator
-                android:id="@+id/progress_import"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:max="100"
-                android:visibility="gone"
-                app:indicatorColor="?attr/colorPrimary"
-                app:trackColor="?attr/colorSurfaceVariant" />
 
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/tv_import_status"

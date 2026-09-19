@@ -62,7 +62,8 @@ data class ModelImportRequest(
     val civitaiModelId: Long? = null,
     val civitaiVersionId: Long? = null,
     val thumbnailUrl: String? = null,
-    val thumbnailBase64: String? = null
+    val thumbnailBase64: String? = null,
+    val civitaiToken: String? = null
 )
 
 data class ModelImportState(
@@ -736,6 +737,7 @@ object GenerationAgentClient {
                 request.civitaiVersionId?.let { put("civitai_version_id", it) }
                 request.thumbnailUrl?.let { put("thumbnail_url", it) }
                 request.thumbnailBase64?.let { put("thumbnail_base64", it) }
+                request.civitaiToken?.let { put("civitai_token", it) }
             }
             parseImport(requestJson(context, "/api/v1/model-imports", "POST", body))
         }

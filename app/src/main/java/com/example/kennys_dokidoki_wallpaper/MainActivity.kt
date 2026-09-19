@@ -525,6 +525,33 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         tagPromptAdapter.refreshItemsFromManager()
         presetAdapter.updateList(PresetManager.presets)
         syncBuilderRestorePipButton()
+        resumePendingCivitaiImport()
+    }
+
+    // An import interrupted by app kill completes here: PC kept downloading.
+    private fun resumePendingCivitaiImport() {
+        val pending = CivitaiImportStore.loadPending(this)
+        if (pending == null) {
+            CivitaiImportStore.takeLastError(this)?.let {
+                Toast.makeText(this, "前回のインポートは失敗: $it", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        lifecycleScope.launch {
+            val done = try {
+                CivitaiImportFinalizer.awaitAndFinalize(this@MainActivity, pending, null)
+            } catch (_: Exception) {
+                null
+            }
+            if (done == true) {
+                promptCardAdapter.updateList(PromptCardManager.promptCards)
+                Toast.makeText(this@MainActivity, "インポート完了: ${pending.label}", Toast.LENGTH_LONG).show()
+            } else if (done == false) {
+                CivitaiImportStore.takeLastError(this@MainActivity)?.let {
+                    Toast.makeText(this@MainActivity, "インポート失敗: $it", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {

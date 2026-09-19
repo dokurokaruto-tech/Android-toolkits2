@@ -461,6 +461,35 @@ class AgentIntegrationTest(unittest.TestCase):
             time.sleep(0.05)
         return state
 
+    def test_post_body_does_not_desync_keep_alive(self) -> None:
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.agent_server.server_port, timeout=5)
+        try:
+            auth = {"Authorization": "Bearer secret", "Content-Type": "application/json"}
+            # Unknown route with a body: 404 must still consume the bytes,
+            # or the next request on this socket parses garbage (HTTP 414).
+            conn.request("POST", "/api/v1/nope", body=json.dumps({"pad": "x" * 4096}), headers=auth)
+            response = conn.getresponse()
+            self.assertEqual(404, response.status)
+            response.read()
+            conn.request("GET", "/api/v1/health", headers=auth)
+            response = conn.getresponse()
+            self.assertEqual(200, response.status)
+            self.assertIn("service", json.loads(response.read()))
+
+            # Bodiless handlers (cancel) receive {} from Android; same rule.
+            _, job = self.request("/api/v1/jobs", "POST", {"tasks": [{"prompt": "x"}]})
+            conn.request("POST", f"/api/v1/jobs/{job['id']}/cancel", body="{}", headers=auth)
+            response = conn.getresponse()
+            self.assertEqual(202, response.status)
+            response.read()
+            conn.request("GET", f"/api/v1/jobs/{job['id']}", headers=auth)
+            response = conn.getresponse()
+            self.assertEqual(200, response.status)
+            response.read()
+        finally:
+            conn.close()
+
     def test_database_requeues_interrupted_process_state(self) -> None:
         path = Path(self.temp.name) / "recovery.sqlite3"
         database = JobDatabase(path)

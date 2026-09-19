@@ -1,9 +1,8 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Base64
 import android.view.View
@@ -18,20 +17,17 @@ import com.bumptech.glide.Glide
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textview.MaterialTextView
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import java.util.UUID
 
 // MD3 import sheet: pick version + thumbnail, edit prompts, send to PC.
 class CivitaiImportActivity : AppCompatActivity() {
@@ -50,8 +46,8 @@ class CivitaiImportActivity : AppCompatActivity() {
     private lateinit var actCategory: AutoCompleteTextView
     private lateinit var etMainPrompt: TextInputEditText
     private lateinit var etNegativePrompt: TextInputEditText
-    private lateinit var btnImport: MaterialButton
-    private lateinit var progress: LinearProgressIndicator
+    private lateinit var etToken: TextInputEditText
+    private lateinit var btnImport: CivitaiProgressButton
     private lateinit var tvStatus: MaterialTextView
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -65,11 +61,14 @@ class CivitaiImportActivity : AppCompatActivity() {
     private var selectedImage: CivitaiApi.ShowImage? = null
     private var croppedThumb: File? = null
     private var targetDir = ""
+    private var openedModelId = 0L
+    private var keepRestoredDraft = false
 
     companion object {
         const val EXTRA_MODEL_ID = "MODEL_ID"
         const val EXTRA_VERSION_ID = "VERSION_ID"
-        private const val THUMB_MAX_SIDE = 768
+        private const val TOKEN_KEY = "civitai_api_token"
+        private const val IDLE_TEXT = "PCにインポート"
     }
 
     private val cropLauncher = registerForActivityResult(
@@ -105,25 +104,46 @@ class CivitaiImportActivity : AppCompatActivity() {
         actCategory = findViewById(R.id.act_category)
         etMainPrompt = findViewById(R.id.et_main_prompt)
         etNegativePrompt = findViewById(R.id.et_negative_prompt)
+        etToken = findViewById(R.id.et_civitai_token)
         btnImport = findViewById(R.id.btn_import)
-        progress = findViewById(R.id.progress_import)
         tvStatus = findViewById(R.id.tv_import_status)
 
         rvShowcase.layoutManager =
             androidx.recyclerview.widget.LinearLayoutManager(this, RecyclerView.HORIZONTAL, false)
         rvShowcase.adapter = showcaseAdapter
         bindCategoryDropdown()
+        etToken.setText(getSharedPreferences("settings", Context.MODE_PRIVATE).getString(TOKEN_KEY, ""))
 
         btnCrop.setOnClickListener { startCrop() }
         btnImport.setOnClickListener { startImport() }
 
-        val modelId = intent.getLongExtra(EXTRA_MODEL_ID, 0L)
-        if (modelId <= 0L) {
+        openedModelId = intent.getLongExtra(EXTRA_MODEL_ID, 0L)
+        if (openedModelId <= 0L) {
             Toast.makeText(this, "モデルIDが不正です。", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
-        fetchAll(modelId, intent.getLongExtra(EXTRA_VERSION_ID, 0L))
+        restorePending()
+        fetchAll(openedModelId, intent.getLongExtra(EXTRA_VERSION_ID, 0L))
+    }
+
+    // A killed app returns here: refill the draft and keep polling the PC job.
+    private fun restorePending() {
+        val pending = CivitaiImportStore.loadPending(this) ?: return
+        if (pending.modelId != openedModelId) {
+            showStatus("別のモデル（${pending.filename}）のインポートが進行中です。")
+            return
+        }
+        keepRestoredDraft = true
+        etLabel.setText(pending.label)
+        etMainPrompt.setText(pending.mainPrompt)
+        etNegativePrompt.setText(pending.negativePrompt)
+        actCategory.setText(pending.category, false)
+        pending.thumbPath?.let { File(it) }?.takeIf { it.isFile }?.let {
+            croppedThumb = it
+            Glide.with(this).load(it).into(ivPreview)
+        }
+        resumeImport(pending)
     }
 
     private fun bindCategoryDropdown() {
@@ -186,7 +206,9 @@ class CivitaiImportActivity : AppCompatActivity() {
         tvModelName.text = fetched.name
         chipKind.text = CivitaiApi.kindLabel(kind)
         tvTargetDir.text = targetDir.ifBlank { "PCの${CivitaiApi.kindLabel(kind)}フォルダ" }
-        etLabel.setText(fetched.name)
+        if (!keepRestoredDraft) {
+            etLabel.setText(fetched.name)
+        }
 
         val names = fetched.versions.map { versionName(it) }
         val initial = fetched.versions.indexOfFirst { it.id == versionId }.takeIf { it >= 0 } ?: 0
@@ -195,7 +217,10 @@ class CivitaiImportActivity : AppCompatActivity() {
             selectVersion(fetched.versions[position])
         }
         selectVersion(fetched.versions[initial])
-        btnImport.isEnabled = true
+        if (pollJob?.isActive != true) {
+            resetImportButton()
+            btnImport.isEnabled = true
+        }
     }
 
     private fun versionName(version: CivitaiApi.Version): String {
@@ -213,10 +238,21 @@ class CivitaiImportActivity : AppCompatActivity() {
             "${CivitaiApi.formatSize(file.sizeKB)} ・ ${file.format.ifBlank { file.type }}"
         }
         tvTriggerWords.text = version.trainedWords.ifEmpty { listOf("なし") }.joinToString(", ")
-        btnImport.isEnabled = file != null
+        if (pollJob?.isActive != true) {
+            btnImport.isEnabled = file != null
+        }
 
         val images = version.images.filter { it.url.isNotBlank() }
         val preselect = images.firstOrNull { it.prompt.isNotBlank() } ?: images.firstOrNull()
+        if (keepRestoredDraft) {
+            keepRestoredDraft = false
+            showcaseAdapter.submit(images, null)
+            if (croppedThumb == null) {
+                selectedImage = preselect
+                previewSelected()
+            }
+            return
+        }
         selectedImage = preselect
         croppedThumb = null
         showcaseAdapter.submit(images, preselect)
@@ -275,27 +311,34 @@ class CivitaiImportActivity : AppCompatActivity() {
     }
 
     private fun startImport() {
+        if (pollJob?.isActive == true) {
+            return
+        }
+        CivitaiImportStore.loadPending(this)?.let { pending ->
+            if (pending.modelId != openedModelId) {
+                Toast.makeText(this, "別のモデルのインポートが進行中です。", Toast.LENGTH_SHORT).show()
+                return
+            }
+            // Same model: refresh the draft with current edits, then keep polling.
+            resumeImport(pending.copy(label = cardLabel(), mainPrompt = mainPrompt(), negativePrompt = negativePrompt(), category = cardCategory()))
+            return
+        }
         val fetched = model ?: return
         val version = selectedVersion ?: return
         val file = selectedFile ?: return
-        val label = etLabel.text?.toString()?.trim().orEmpty()
-        val mainPrompt = etMainPrompt.text?.toString()?.trim().orEmpty()
+        val label = cardLabel()
         if (label.isEmpty()) {
             Toast.makeText(this, "カード名を入力してね", Toast.LENGTH_SHORT).show()
             return
         }
-        if (mainPrompt.isEmpty()) {
+        if (mainPrompt().isEmpty()) {
             Toast.makeText(this, "メインプロンプトを入力してね", Toast.LENGTH_SHORT).show()
             return
         }
-        if (pollJob?.isActive == true) {
-            return
-        }
-        btnImport.isEnabled = false
-        progress.visibility = View.VISIBLE
-        progress.isIndeterminate = true
-        showStatus("PCへ送信中...")
+        val token = etToken.text?.toString()?.trim().orEmpty()
+        getSharedPreferences("settings", Context.MODE_PRIVATE).edit().putString(TOKEN_KEY, token).apply()
 
+        setImportBusy("PCへ送信中...")
         pollJob = scope.launch {
             try {
                 val thumbB64 = withContext(Dispatchers.IO) {
@@ -313,38 +356,103 @@ class CivitaiImportActivity : AppCompatActivity() {
                     civitaiModelId = fetched.id,
                     civitaiVersionId = version.id,
                     thumbnailUrl = if (thumbB64 == null) selectedImage?.url?.takeIf { it.isNotBlank() } else null,
-                    thumbnailBase64 = thumbB64
+                    thumbnailBase64 = thumbB64,
+                    civitaiToken = token.takeIf { it.isNotBlank() }
                 )
-                var state = GenerationAgentClient.submitModelImport(this@CivitaiImportActivity, request)
-                while (!state.isTerminal) {
-                    renderImportState(state)
-                    delay(1500)
-                    state = GenerationAgentClient.getModelImport(this@CivitaiImportActivity, state.id)
-                }
-                renderImportState(state)
-                if (!state.isOk) {
-                    throw IllegalStateException(state.error ?: "PCでの保存に失敗しました")
-                }
-                finalizeCard(label, mainPrompt, etNegativePrompt.text?.toString()?.trim().orEmpty())
+                val accepted = GenerationAgentClient.submitModelImport(this@CivitaiImportActivity, request)
+                val pending = PendingCivitaiImport(
+                    jobId = accepted.id,
+                    modelId = fetched.id,
+                    versionId = version.id,
+                    filename = file.name,
+                    kind = kind,
+                    label = label,
+                    mainPrompt = mainPrompt(),
+                    negativePrompt = negativePrompt(),
+                    category = cardCategory(),
+                    thumbPath = croppedThumb?.takeIf { it.isFile }?.absolutePath,
+                    thumbUrl = selectedImage?.url?.takeIf { it.isNotBlank() }
+                )
+                CivitaiImportStore.savePending(this@CivitaiImportActivity, pending)
+                resumeImport(pending)
             } catch (error: Exception) {
-                progress.isIndeterminate = false
-                progress.visibility = View.GONE
-                showStatus("失敗: ${error.message}")
+                if (error is CancellationException) {
+                    throw error
+                }
+                resetImportButton()
                 btnImport.isEnabled = true
+                showStatus(friendlySubmitError(error.message))
             }
         }
     }
 
-    private fun renderImportState(state: ModelImportState) {
+    private fun resumeImport(pending: PendingCivitaiImport) {
+        if (pollJob?.isActive == true) {
+            return
+        }
+        // Persist refreshed edits so a kill during polling still finalizes them.
+        CivitaiImportStore.savePending(this, pending)
+        setImportBusy("確認中...")
+        pollJob = scope.launch {
+            try {
+                when (CivitaiImportFinalizer.awaitAndFinalize(this@CivitaiImportActivity, pending, ::renderTick)) {
+                    true -> {
+                        Toast.makeText(this@CivitaiImportActivity, "インポート完了: ${pending.label}", Toast.LENGTH_LONG).show()
+                        setResult(Activity.RESULT_OK)
+                        finish()
+                    }
+                    false -> {
+                        resetImportButton()
+                        btnImport.isEnabled = true
+                        showStatus("失敗: ${CivitaiImportStore.takeLastError(this@CivitaiImportActivity) ?: "PCでの保存に失敗しました"}")
+                    }
+                    null -> {
+                        resetImportButton()
+                        showStatus("バックグラウンドで確認中です。完了したら通知します。")
+                    }
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) {
+                    throw error
+                }
+                resetImportButton()
+                btnImport.isEnabled = true
+                showStatus("接続が切れました。開き直すと続きから確認します: ${error.message}")
+            }
+        }
+    }
+
+    private fun renderTick(state: ModelImportState) {
         if (state.total > 0L) {
             val pct = (state.progress * 100).toInt().coerceIn(0, 100)
-            progress.isIndeterminate = false
-            progress.setProgressCompat(pct, true)
-            showStatus("PCでダウンロード中 $pct% (${mb(state.downloaded)}/${mb(state.total)})")
+            btnImport.setFill(state.progress)
+            btnImport.text = "インポート中 $pct%"
+            showStatus("PCでダウンロード中 ${mb(state.downloaded)}/${mb(state.total)}")
         } else {
-            progress.isIndeterminate = true
+            btnImport.setFill(null)
+            btnImport.text = "インポート中..."
             showStatus("PCでダウンロード中... (${mb(state.downloaded)})")
         }
+    }
+
+    private fun setImportBusy(text: String) {
+        btnImport.isEnabled = false
+        btnImport.setFill(null)
+        btnImport.text = text
+        showStatus(text)
+    }
+
+    private fun resetImportButton() {
+        btnImport.setFill(null)
+        btnImport.text = IDLE_TEXT
+    }
+
+    private fun friendlySubmitError(message: String?): String {
+        val raw = message.orEmpty()
+        if (raw.contains("HTTP 404")) {
+            return "PCエージェントが古いままです。PC側を更新して再起動してください。"
+        }
+        return "失敗: $raw"
     }
 
     private fun mb(bytes: Long): String {
@@ -356,90 +464,10 @@ class CivitaiImportActivity : AppCompatActivity() {
         tvStatus.text = text
     }
 
-    private suspend fun finalizeCard(label: String, mainPrompt: String, negativePrompt: String) {
-        showStatus("プロンプトカードを作成中...")
-        val cardId = UUID.randomUUID().toString()
-        val thumbUri = withContext(Dispatchers.IO) { saveCardThumb(cardId) }
-        val category = actCategory.text?.toString()?.trim().ifNullOrBlank("未分類")
-        val card = PromptCard(
-            id = cardId,
-            label = label,
-            mainPrompt = mainPrompt,
-            negativePrompt = negativePrompt,
-            thumbnailUri = thumbUri,
-            category = category
-        )
-        PromptCardManager.addCard(this, card)
-        Toast.makeText(this, "インポート完了: $label", Toast.LENGTH_LONG).show()
-        setResult(Activity.RESULT_OK)
-        finish()
-    }
-
-    private fun saveCardThumb(cardId: String): android.net.Uri? {
-        val cropped = croppedThumb?.takeIf { it.isFile }
-        val bytes: ByteArray = try {
-            when {
-                cropped != null -> cropped.readBytes()
-                selectedImage != null -> {
-                    val connection = (java.net.URL(selectedImage!!.url).openConnection() as java.net.HttpURLConnection).apply {
-                        requestMethod = "GET"
-                        setRequestProperty("User-Agent", "AndroidToolkits/1.0")
-                        connectTimeout = 15000
-                        readTimeout = 60000
-                    }
-                    try {
-                        connection.inputStream.use { it.readBytes() }
-                    } finally {
-                        connection.disconnect()
-                    }
-                }
-                else -> return null
-            }
-        } catch (_: Exception) {
-            return null
-        }
-        return try {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            var sample = 1
-            while (maxOf(bounds.outWidth, bounds.outHeight) / sample > THUMB_MAX_SIDE * 2 && sample < 16) {
-                sample *= 2
-            }
-            val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
-                inSampleSize = sample
-            }) ?: return null
-            val scaled = scaleDown(decoded)
-            val dir = File(filesDir, "civitai_thumbs").apply { mkdirs() }
-            val out = File(dir, "$cardId.jpg")
-            FileOutputStream(out).use { stream ->
-                scaled.compress(Bitmap.CompressFormat.JPEG, 85, stream)
-            }
-            if (scaled !== decoded) {
-                decoded.recycle()
-            }
-            android.net.Uri.fromFile(out)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun scaleDown(source: Bitmap): Bitmap {
-        val longest = maxOf(source.width, source.height)
-        if (longest <= THUMB_MAX_SIDE) {
-            return source
-        }
-        val ratio = THUMB_MAX_SIDE.toFloat() / longest
-        return Bitmap.createScaledBitmap(
-            source,
-            (source.width * ratio).toInt().coerceAtLeast(1),
-            (source.height * ratio).toInt().coerceAtLeast(1),
-            true
-        )
-    }
-
-    private fun String?.ifNullOrBlank(default: String): String {
-        return if (this.isNullOrBlank()) default else this
-    }
+    private fun cardLabel(): String = etLabel.text?.toString()?.trim().orEmpty()
+    private fun mainPrompt(): String = etMainPrompt.text?.toString()?.trim().orEmpty()
+    private fun negativePrompt(): String = etNegativePrompt.text?.toString()?.trim().orEmpty()
+    private fun cardCategory(): String = actCategory.text?.toString()?.trim().orEmpty().ifEmpty { "未分類" }
 
     override fun onDestroy() {
         pollJob?.cancel()

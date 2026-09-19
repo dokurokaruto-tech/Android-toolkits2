@@ -189,6 +189,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             return
         match = _CANCEL.fullmatch(path)
         if match:
+            self._drain_request_body()
             changed = self.server.service.cancel(match.group(1))
             if not self.server.service.database.get_job(match.group(1)):
                 self._error(HTTPStatus.NOT_FOUND, "job not found")
@@ -197,6 +198,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             return
         match = _STOP_AFTER_CURRENT.fullmatch(path)
         if match:
+            self._drain_request_body()
             changed = self.server.service.stop_after_current(match.group(1))
             if not self.server.service.database.get_job(match.group(1)):
                 self._error(HTTPStatus.NOT_FOUND, "job not found")
@@ -205,6 +207,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             return
         match = _SKIP.fullmatch(path)
         if match:
+            self._drain_request_body()
             try:
                 self._json(HTTPStatus.ACCEPTED, {"accepted": self.server.service.skip(match.group(1))})
             except Exception as error:
@@ -235,6 +238,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/generate-prompt" and self.server.config.legacy_api_url:
             self._proxy_legacy(path)
             return
+        self._drain_request_body()
         self._error(HTTPStatus.NOT_FOUND, "route not found")
 
     def do_DELETE(self) -> None:
@@ -259,6 +263,28 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             return
         self._error(HTTPStatus.NOT_FOUND, "route not found")
 
+    def _drain_request_body(self) -> None:
+        # Routes that answer without reading the body must still consume it,
+        # otherwise leftover bytes are parsed as the next request (HTTP 414).
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length <= 0:
+            return
+        if length > 16 * 1024 * 1024:
+            self.close_connection = True
+            return
+        try:
+            remaining = length
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 128 * 1024))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except Exception:
+            self.close_connection = True
+
     def _authorized(self, query: dict[str, list[str]]) -> bool:
         expected = self.server.config.api_key
         if not expected:
@@ -269,6 +295,8 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         import hmac
         if hmac.compare_digest(expected, bearer) or hmac.compare_digest(expected, query_token):
             return True
+        if self.command == "POST":
+            self._drain_request_body()
         self._error(HTTPStatus.UNAUTHORIZED, "authentication required")
         return False
 
@@ -278,6 +306,8 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         except ValueError as error:
             raise ValueError("invalid Content-Length") from error
         if length <= 0 or length > 10 * 1024 * 1024:
+            # Unread bytes would desync the keep-alive connection, so drop it.
+            self.close_connection = True
             raise ValueError("JSON body is required and must be at most 10 MB")
         try:
             value = json.loads(self.rfile.read(length).decode("utf-8"))
