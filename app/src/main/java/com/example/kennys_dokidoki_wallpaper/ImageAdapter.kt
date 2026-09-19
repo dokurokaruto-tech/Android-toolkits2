@@ -1,6 +1,7 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.content.Context
+import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -90,15 +91,23 @@ class ImageAdapter(
         val context = holder.itemView.context
         
         // PC生成画像の一覧ではサーバー側で圧縮したモバイル用サムネイルを使う。
+        // 端末に保存済みならそれを載せ、無ければストリーミングしつつ裏で保存する。
         // タップ後の全画面だけ entry.uri（オリジナル）を読む。
-        val gridImageUri = entry.thumbnailUri ?: entry.uri
+        val remoteThumb = entry.thumbnailUri?.toString()
+            ?.takeIf { ThumbnailLocalCachePolicy.isRemote(it) }
+        val gridImageUri: Any = when {
+            remoteThumb == null -> entry.thumbnailUri ?: entry.uri
+            else -> ThumbnailLocalCache.existingLibrary(context, remoteThumb) ?: remoteThumb
+        }
+        if (remoteThumb != null) ThumbnailLocalCache.ensureLibrary(context, remoteThumb)
+        val gridModelUri = Uri.parse(gridImageUri.toString())
         Glide.with(holder.imageView.context)
             .load(gridImageUri)
             .override(
                 ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
                 ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
             )
-            .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(gridImageUri))
+            .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(gridModelUri))
             .centerCrop()
             .into(holder.imageView)
         ImageMemoryGovernor.onGridBind(holder.imageView.context)

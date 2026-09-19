@@ -48,4 +48,10 @@ object ThumbnailStoragePolicy {
         if (bytes >= gb && bytes % gb == 0L) return "${bytes / gb}GB"
         return "${bytes / (1024L * 1024)}MB"
     }
+
+    /** 使用量や累計のような端数のある値の表示。 */
+    fun usageLabel(bytes: Long): String = when {
+        bytes >= 1024L * 1024 * 1024 -> "%.2fGB".format(bytes / 1073741824f)
+        else -> "%.1fMB".format(bytes / 1048576f)
+    }
 }

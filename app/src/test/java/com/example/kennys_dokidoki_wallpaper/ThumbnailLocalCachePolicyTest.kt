@@ -137,4 +137,36 @@ class ThumbnailLocalCachePolicyTest {
                 .isEmpty()
         )
     }
+
+    @Test
+    fun libraryNameIsStableAcrossDeliveryPaths() {
+        val mobile = "http://pc:3001/api/v1/mobile-thumbnails/2026-08-23/GEN_one.png?token=a"
+        val original = "http://pc:3001/api/v1/files/2026-08-23/GEN_one.png?token=b"
+        val name = ThumbnailLocalCachePolicy.libraryFileName(mobile)
+        assertEquals(name, ThumbnailLocalCachePolicy.libraryFileName(original))
+        assertTrue(ThumbnailLocalCachePolicy.isManagedFileName(name))
+        assertEquals("lib", name?.substringBefore('_'))
+        assertNull(ThumbnailLocalCachePolicy.libraryFileName("file:///local/a.jpg"))
+    }
+
+    @Test
+    fun libraryFilesAreNeverOrphansAndEvictOldestFirst() {
+        val keep = ThumbnailLocalCachePolicy.keepPrefixes(listOf("alive"), emptyList())
+        val files = listOf(
+            ThumbnailLocalCachePolicy.DiskFile("lib_2026-08-22_a.png_1111.jpg", 40, 1),
+            ThumbnailLocalCachePolicy.DiskFile("lib_2026-08-23_b.png_2222.jpg", 40, 5),
+            ThumbnailLocalCachePolicy.DiskFile("card_alive_aaa.jpg", 40, 3),
+            ThumbnailLocalCachePolicy.DiskFile("card_dead_aaa.jpg", 40, 2)
+        )
+        // 予算内なら閲覧キャッシュは誰に紐づかなくても消えない。
+        val kept = ThumbnailLocalCachePolicy.filesToDelete(files, keep, maxBytes = 10_000)
+        assertFalse(kept.contains("lib_2026-08-22_a.png_1111.jpg"))
+        assertFalse(kept.contains("lib_2026-08-23_b.png_2222.jpg"))
+        assertTrue(kept.contains("card_dead_aaa.jpg"))
+
+        // 予算超過では一番古い閲覧キャッシュから落ちる。
+        val over = ThumbnailLocalCachePolicy.filesToDelete(files, keep, maxBytes = 50)
+        assertTrue(over.contains("lib_2026-08-22_a.png_1111.jpg"))
+        assertFalse(over.contains("lib_2026-08-23_b.png_2222.jpg"))
+    }
 }

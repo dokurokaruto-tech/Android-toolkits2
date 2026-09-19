@@ -137,11 +137,13 @@ object ThumbnailLocalCache {
     /** 現在の保存先。SD 選択でもカードが無ければ本体へ退避する。 */
     internal fun cacheDir(context: Context): File {
         val internal = File(context.filesDir, ThumbnailLocalCachePolicy.DIR_NAME)
-        val chosen = ThumbnailStoragePolicy.resolveDir(
-            preferredLocation(context),
-            internal,
+        val location = preferredLocation(context)
+        val candidates = if (location == ThumbnailStoragePolicy.Location.SD_CARD) {
             externalCandidates(context)
-        )
+        } else {
+            emptyList()
+        }
+        val chosen = ThumbnailStoragePolicy.resolveDir(location, internal, candidates)
         return if (chosen.mkdirs() || chosen.isDirectory) chosen else internal.also { it.mkdirs() }
     }
 
@@ -153,6 +155,79 @@ object ThumbnailLocalCache {
         ThumbnailStoragePolicy.capacityBytes(
             settings(context).getLong(ThumbnailStoragePolicy.PREF_CAPACITY_BYTES, 0L)
         )
+
+    /** 端末に書いたサムネイルの累計バイト。削除しても減らない。 */
+    fun totalSavedBytes(context: Context): Long =
+        settings(context).getLong(ThumbnailStoragePolicy.PREF_TOTAL_SAVED_BYTES, 0L)
+
+    private fun addTotalSaved(context: Context, bytes: Long) {
+        settings(context).edit()
+            .putLong(ThumbnailStoragePolicy.PREF_TOTAL_SAVED_BYTES, totalSavedBytes(context) + bytes)
+            .apply()
+    }
+
+    /** 保存先のサムネイル合計と件数。設定画面の表示用。 */
+    fun usage(context: Context): Pair<Long, Int> {
+        val listed = cacheDir(context).listFiles() ?: return 0L to 0
+        val managed = listed.filter { it.isFile && ThumbnailLocalCachePolicy.isManagedFileName(it.name) }
+        return managed.sumOf { it.length() } to managed.size
+    }
+
+    /**
+     * 閲覧（PC完成画像グリッド）のサムネイルも端末へ残す。
+     * すでにあればそのURI、無ければnull。バインド側はnullのときリモートを出しつつ
+     * ensureLibrary で裏保存する。
+     */
+    fun existingLibrary(context: Context, remoteUrl: String): Uri? {
+        val name = ThumbnailLocalCachePolicy.libraryFileName(remoteUrl) ?: return null
+        val dest = File(cacheDir(context), name)
+        return if (dest.isFile && dest.length() > 0L) Uri.fromFile(dest) else null
+    }
+
+    fun ensureLibrary(context: Context, remoteUrl: String) {
+        val name = ThumbnailLocalCachePolicy.libraryFileName(remoteUrl) ?: return
+        synchronized(inflight) {
+            if (!inflight.add(name)) return
+        }
+        val app = context.applicationContext
+        scope.launch {
+            try {
+                gate.withPermit {
+                    val dir = cacheDir(app)
+                    val dest = File(dir, name)
+                    if (dest.isFile && dest.length() > 0L) return@withPermit
+                    val bytes = downloadBest(app, remoteUrl) ?: return@withPermit
+                    val encoded = encodeThumbnail(bytes)
+                    if (encoded.isEmpty()) return@withPermit
+                    writeEncoded(app, dir, dest, encoded)
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                Log.w(TAG, "Could not persist library thumbnail", error)
+            } finally {
+                synchronized(inflight) { inflight.remove(name) }
+            }
+        }
+    }
+
+    /**
+     * 全サムネイル削除。閲覧キャッシュはPCから再取得できるが、
+     * カード／プリセットのローカルURIは再取得先を失うので呼び出し側で警告する。
+     */
+    fun wipeAll(context: Context): Int {
+        val app = context.applicationContext
+        val dirs = listOf(File(app.filesDir, ThumbnailLocalCachePolicy.DIR_NAME)) +
+            externalCandidates(app).map { it.file }
+        var deleted = 0
+        dirs.forEach { dir ->
+            dir.listFiles()?.forEach { file ->
+                val doomed = (file.isFile && ThumbnailLocalCachePolicy.isManagedFileName(file.name)) ||
+                    file.name.endsWith(".part")
+                if (doomed && file.delete()) deleted++
+            }
+        }
+        return deleted
+    }
 
     /**
      * 保存先を変えた直後に呼ぶ。旧場所の実ファイルを新場所へ移し、
@@ -223,6 +298,14 @@ object ThumbnailLocalCache {
         val bytes = downloadBest(context, remoteText) ?: return null
         val encoded = encodeThumbnail(bytes)
         if (encoded.isEmpty()) return null
+        writeEncoded(context, dir, dest, encoded)
+        if (!dest.isFile || dest.length() <= 0L) return null
+        pruneOthers(dir, target, dest)
+        return Uri.fromFile(dest)
+    }
+
+    /** アトミックな書き込みと、成功時の累計カウント。カード／閲覧の共通経路。 */
+    private fun writeEncoded(context: Context, dir: File, dest: File, encoded: ByteArray) {
         val part = File(dir, dest.name + ".part")
         part.writeBytes(encoded)
         if (dest.exists()) dest.delete()
@@ -230,9 +313,7 @@ object ThumbnailLocalCache {
             dest.writeBytes(encoded)
             part.delete()
         }
-        if (!dest.isFile || dest.length() <= 0L) return null
-        pruneOthers(dir, target, dest)
-        return Uri.fromFile(dest)
+        if (dest.isFile && dest.length() > 0L) addTotalSaved(context, encoded.size.toLong())
     }
 
     private fun pruneOthers(dir: File, target: ThumbnailBindPolicy.Target, keep: File) {

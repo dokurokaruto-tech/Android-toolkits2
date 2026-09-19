@@ -93,4 +93,12 @@ class ThumbnailStoragePolicyTest {
         assertEquals("2GB", ThumbnailStoragePolicy.label(2L * 1024 * 1024 * 1024))
         assertEquals("無制限", ThumbnailStoragePolicy.label(ThumbnailStoragePolicy.UNLIMITED))
     }
+
+    @Test
+    fun usageLabelFormatsPartialSizes() {
+        assertEquals("0.5MB", ThumbnailStoragePolicy.usageLabel(512L * 1024))
+        assertEquals("1.5MB", ThumbnailStoragePolicy.usageLabel(1536L * 1024))
+        assertEquals("1.25GB", ThumbnailStoragePolicy.usageLabel(1280L * 1024 * 1024))
+        assertEquals("0.0MB", ThumbnailStoragePolicy.usageLabel(0L))
+    }
 }

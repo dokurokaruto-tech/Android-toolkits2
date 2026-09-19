@@ -8,7 +8,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import java.io.File
 import java.io.FileInputStream
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -2902,13 +2901,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val usageView = TextView(this).apply { setTextColor(Color.GRAY); textSize = 12f }
         container.addView(usageView)
         lifecycleScope.launch(Dispatchers.IO) {
-            val used = usageBytes(ThumbnailLocalCache.cacheDir(applicationContext))
+            val (bytes, count) = ThumbnailLocalCache.usage(applicationContext)
+            val total = ThumbnailLocalCache.totalSavedBytes(applicationContext)
             withContext(Dispatchers.Main) {
-                usageView.text = "現在の使用量: %.1fMB".format(used / 1048576f)
+                usageView.text =
+                    "現在の使用量: %s（%d件）\n累計保存量: %s（削除しても減らない）".format(
+                        ThumbnailStoragePolicy.usageLabel(bytes),
+                        count,
+                        ThumbnailStoragePolicy.usageLabel(total)
+                    )
             }
         }
 
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
+        val dialog = AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
             .setTitle("サムネイルの保存先と容量")
             .setView(container)
             .setPositiveButton("保存") { _, _ ->
@@ -2932,10 +2937,40 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 ).show()
             }
             .setNegativeButton("キャンセル", null)
-            .show()
+            .setNeutralButton("サムネイルを削除", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                confirmThumbnailWipe(dialog)
+            }
+        }
+        dialog.show()
     }
 
-    private fun usageBytes(dir: File): Long = dir.listFiles()?.sumOf { it.length() } ?: 0L
+    private fun confirmThumbnailWipe(storageDialog: AlertDialog) {
+        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
+            .setTitle("サムネイルを削除")
+            .setMessage(
+                "端末に保存した全サムネイル（カード・プリセット・閲覧キャッシュ）を削除する。\n\n" +
+                    "閲覧キャッシュはPCから再取得されるが、カード／プリセットのサムネイルは" +
+                    "PCに元データが無いと戻らない。本当に削除するか？"
+            )
+            .setPositiveButton("削除する") { _, _ ->
+                storageDialog.dismiss()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val deleted = ThumbnailLocalCache.wipeAll(applicationContext)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "サムネイル ${deleted}件を削除した。",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
 
     private fun showApiKeyDialog() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)

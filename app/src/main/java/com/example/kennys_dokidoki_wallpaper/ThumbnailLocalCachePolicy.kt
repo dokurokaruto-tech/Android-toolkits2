@@ -13,11 +13,14 @@ object ThumbnailLocalCachePolicy {
     const val JPEG_QUALITY = 72
     const val MAX_IN_FLIGHT = 2
 
+    /** 閲覧（PC完成画像グリッド）の端末キャッシュ。カード／プリセット同様に予算管理する。 */
+    const val KIND_LIBRARY = "lib"
+
     private val REMOTE_FILE = Regex(
         """/api/v1/(?:files|thumbnail-files|mobile-thumbnails)/([^/?#]+)/([^/?#]+)"""
     )
     private val DATE = Regex("""^\d{4}-\d{2}-\d{2}$""")
-    private val MANAGED_NAME = Regex("""^(card|preset)_[A-Za-z0-9._-]+_[0-9a-f]+\.jpg$""")
+    private val MANAGED_NAME = Regex("""^(?:card|preset|lib)_[A-Za-z0-9._-]+_[0-9a-f]+\.jpg$""")
 
     data class RemoteRef(val date: String, val name: String)
 
@@ -66,7 +69,7 @@ object ThumbnailLocalCachePolicy {
     fun localSourceKey(uri: String?): String? {
         if (uri.isNullOrBlank()) return null
         val name = uri.substringAfterLast('/').substringBefore('?')
-        return Regex("""^(?:card|preset)_[A-Za-z0-9._-]+_([0-9a-f]+)\.jpg$""")
+        return Regex("""^(?:card|preset|lib)_[A-Za-z0-9._-]+_([0-9a-f]+)\.jpg$""")
             .find(name)
             ?.groupValues
             ?.get(1)
@@ -146,16 +149,19 @@ object ThumbnailLocalCachePolicy {
         maxBytes: Long = ImageMemoryPressurePolicy.THUMB_DISK_MAX_BYTES
     ): List<String> {
         val managed = files.filter { isManagedFileName(it.name) }
+        // 閲覧キャッシュ（lib）はカード/プリセットに紐づかないので孤児扱いしない。
+        // 容量予算だけに従い、古いものから落ちる。
+        val (library, bound) = managed.partition { it.name.startsWith("${KIND_LIBRARY}_") }
         val orphans = if (keepPrefixes.isEmpty()) {
             emptyList()
         } else {
-            managed.filter { file -> keepPrefixes.none { file.name.startsWith(it) } }
+            bound.filter { file -> keepPrefixes.none { file.name.startsWith(it) } }
         }
-        val keepers = if (keepPrefixes.isEmpty()) {
-            managed
+        val keepers = (library + if (keepPrefixes.isEmpty()) {
+            bound
         } else {
-            managed.filter { file -> keepPrefixes.any { file.name.startsWith(it) } }
-        }
+            bound.filter { file -> keepPrefixes.any { file.name.startsWith(it) } }
+        })
             .sortedBy { it.lastModified }
             .toMutableList()
         var total = keepers.fold(0L) { acc, file -> acc + file.bytes }
