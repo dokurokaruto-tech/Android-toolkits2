@@ -19,7 +19,13 @@ object BulkThumbnailPickerPolicy {
         val status: String get() = if (hasThumbnail) STATUS_SET else STATUS_MISSING
     }
 
-    fun hasThumbnail(uri: String?): Boolean = !uri.isNullOrBlank()
+    fun hasThumbnail(uri: String?): Boolean {
+        val trimmed = uri?.trim()
+        if (trimmed.isNullOrEmpty()) return false
+        // 差し先のファイルが消えた・空・壊れは「!」のまま。未設定として扱い、
+        // 一括生成の既定選択と「未設定」フィルタに含める。
+        return !ThumbnailLocalCachePolicy.isBrokenLocalImage(trimmed)
+    }
 
     fun defaultSelected(hasThumbnail: Boolean): Boolean = !hasThumbnail
 

@@ -138,6 +138,34 @@ object ThumbnailLocalCachePolicy {
         return !File(uri.removePrefix("file://")).exists()
     }
 
+    /** 先頭バイトが保存形式（JPEG / PNG / WebP）と一致するか。 */
+    fun looksLikeImage(head: ByteArray): Boolean = when {
+        head.size >= 3 &&
+            head[0] == 0xFF.toByte() && head[1] == 0xD8.toByte() && head[2] == 0xFF.toByte() -> true
+        head.size >= 4 &&
+            head[0] == 0x89.toByte() && head[1] == 0x50.toByte() &&
+            head[2] == 0x4E.toByte() && head[3] == 0x47.toByte() -> true
+        head.size >= 12 &&
+            head[0] == 0x52.toByte() && head[8] == 0x57.toByte() &&
+            head[9] == 0x45.toByte() && head[10] == 0x42.toByte() && head[11] == 0x50.toByte() -> true
+        else -> false
+    }
+
+    /**
+     * file:// の差し先が実際に画像として読めるか。
+     * 消えた・空・壊れたファイルは「!」のままなので、
+     * 一括生成では未設定として扱う。リモートなど判定外は壊れていない扱い。
+     */
+    fun isBrokenLocalImage(uri: String?): Boolean {
+        if (uri.isNullOrBlank() || isRemote(uri) || !uri.startsWith("file://")) return false
+        val file = File(uri.removePrefix("file://"))
+        if (!file.isFile || file.length() <= 0L) return true
+        val head = ByteArray(12)
+        val read = file.inputStream().use { it.read(head) }
+        if (read <= 0) return true
+        return !looksLikeImage(head.copyOf(read))
+    }
+
     fun decodeSampleSize(
         width: Int,
         height: Int,

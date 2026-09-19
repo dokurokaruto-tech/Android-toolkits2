@@ -54,10 +54,12 @@ class BulkThumbnailAdapter(
         val uri = raw?.trim()?.takeIf { it.isNotEmpty() }?.let(Uri::parse)
         if (ImageStoragePolicy.canDisplayWithoutNetwork(uri)) {
             view.imageTintList = null
-            Glide.with(view)
-                .load(uri)
-                .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(uri))
-                .into(view)
+            view.loadThumb(
+                uri,
+                ImageMemoryPressurePolicy.CARD_THUMB_WIDTH,
+                ImageMemoryPressurePolicy.CARD_THUMB_HEIGHT,
+                ImageStoragePolicy.glideDiskCache(uri)
+            )
         } else {
             Glide.with(view).clear(view)
             view.setImageResource(android.R.drawable.ic_menu_gallery)

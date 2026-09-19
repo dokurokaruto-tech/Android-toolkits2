@@ -141,6 +141,74 @@ class ThumbnailLocalCachePolicyTest {
     }
 
     @Test
+    fun brokenLocalImagesAreDetectedByHeader() {
+        val jpeg = File.createTempFile("ok", ".jpg").also {
+            it.writeBytes(
+                byteArrayOf(
+                    0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(),
+                    0, 0, 0, 0, 0, 0, 0, 0, 0
+                )
+            )
+        }
+        val png = File.createTempFile("ok", ".png").also {
+            it.writeBytes(
+                byteArrayOf(
+                    0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(),
+                    0, 0, 0, 0, 0, 0, 0, 0
+                )
+            )
+        }
+        val webp = File.createTempFile("ok", ".webp").also {
+            it.writeBytes(
+                byteArrayOf(
+                    0x52.toByte(), 0x49.toByte(), 0x46.toByte(), 0x46.toByte(),
+                    0, 0, 0, 0,
+                    0x57.toByte(), 0x45.toByte(), 0x42.toByte(), 0x50.toByte()
+                )
+            )
+        }
+        val empty = File.createTempFile("empty", ".jpg")
+        val garbage = File.createTempFile("bad", ".jpg").also {
+            it.writeBytes(byteArrayOf(1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0))
+        }
+        try {
+            assertFalse(
+                ThumbnailLocalCachePolicy.isBrokenLocalImage("file://" + jpeg.absolutePath)
+            )
+            assertFalse(
+                ThumbnailLocalCachePolicy.isBrokenLocalImage("file://" + png.absolutePath)
+            )
+            assertFalse(
+                ThumbnailLocalCachePolicy.isBrokenLocalImage("file://" + webp.absolutePath)
+            )
+            assertTrue(
+                ThumbnailLocalCachePolicy.isBrokenLocalImage("file://" + empty.absolutePath)
+            )
+            assertTrue(
+                ThumbnailLocalCachePolicy.isBrokenLocalImage("file://" + garbage.absolutePath)
+            )
+            assertTrue(
+                ThumbnailLocalCachePolicy.isBrokenLocalImage("file:///no/such/file.jpg")
+            )
+            assertFalse(
+                ThumbnailLocalCachePolicy.isBrokenLocalImage(
+                    "http://pc/api/v1/files/2026-08-23/a.png"
+                )
+            )
+            assertFalse(
+                ThumbnailLocalCachePolicy.isBrokenLocalImage("content://media/images/1")
+            )
+            assertFalse(ThumbnailLocalCachePolicy.isBrokenLocalImage(null))
+        } finally {
+            jpeg.delete()
+            png.delete()
+            webp.delete()
+            empty.delete()
+            garbage.delete()
+        }
+    }
+
+    @Test
     fun diskCycleDropsOrphansThenOldestWhenOverBudget() {
         val keep = ThumbnailLocalCachePolicy.keepPrefixes(listOf("alive"), listOf("p1"))
         assertTrue(keep.contains("card_alive_"))
