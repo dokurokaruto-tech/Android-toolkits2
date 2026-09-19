@@ -25,6 +25,7 @@ _MOBILE_THUMBNAIL = re.compile(r"^/api/v1/mobile-thumbnails/([^/]+)/([^/]+)$")
 _PROGRESSIVE_MANIFEST = re.compile(r"^/api/v1/progressive/([^/]+)/([^/]+)/manifest$")
 _PROGRESSIVE_TILE = re.compile(r"^/api/v1/progressive/([^/]+)/([^/]+)/(\d+)$")
 _THUMBNAIL_FILE = re.compile(r"^/api/v1/thumbnail-files/([^/]+)/([^/]+)$")
+_MODEL_IMPORT = re.compile(r"^/api/v1/model-imports/([0-9a-f]{32})$")
 
 
 class AgentServer(ThreadingHTTPServer):
@@ -61,6 +62,8 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 "sd_reachable": self.server.service.sd.health(),
                 "output_dir": str(self.server.config.output_dir),
                 "thumbnail_dir": str(self.server.config.thumbnail_dir),
+                "checkpoint_dir": str(self.server.config.checkpoint_dir),
+                "lora_dir": str(self.server.config.lora_dir),
                 "mobile_thumbnails": True,
                 "progressive_tiles": True,
             })
@@ -89,6 +92,14 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                     self._bytes(HTTPStatus.OK, preview[0], preview[1], cache="no-store")
             except Exception as error:
                 self._error(HTTPStatus.BAD_GATEWAY, str(error))
+            return
+        if path == "/api/v1/model-imports":
+            self._json(HTTPStatus.OK, {"imports": self.server.service.model_imports.list_jobs()})
+            return
+        match = _MODEL_IMPORT.fullmatch(path)
+        if match:
+            job = self.server.service.model_imports.get(match.group(1))
+            self._json(HTTPStatus.OK, job) if job else self._error(HTTPStatus.NOT_FOUND, "import not found")
             return
         if path == "/api/v1/library/dates":
             self._json(HTTPStatus.OK, {"dates": self.server.service.library_dates()})
@@ -207,6 +218,15 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                     self._error(HTTPStatus.NOT_FOUND, "job not found")
                 else:
                     self._json(HTTPStatus.ACCEPTED, job)
+            except ValueError as error:
+                self._error(HTTPStatus.BAD_REQUEST, str(error))
+            except Exception as error:
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
+            return
+        if path == "/api/v1/model-imports":
+            try:
+                body = self._read_json()
+                self._json(HTTPStatus.ACCEPTED, self.server.service.model_imports.submit(body))
             except ValueError as error:
                 self._error(HTTPStatus.BAD_REQUEST, str(error))
             except Exception as error:

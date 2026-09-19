@@ -164,6 +164,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private val civitaiBrowserLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+        }
+    }
+
     private fun processImportedTavernCard(sourceUri: Uri) {
         try {
             val inputStream = contentResolver.openInputStream(sourceUri)
@@ -1184,7 +1192,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             showAddPromptCategoryDialog()
         }
         fabAddPromptCategory.setOnClickListener {
-            showAddPromptCategoryDialog()
+            civitaiBrowserLauncher.launch(Intent(this, CivitaiBrowserActivity::class.java))
         }
     }
 
@@ -1196,7 +1204,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 fabAdd.visibility = View.VISIBLE
             }
             R.id.nav_builder -> {
-                fabAddPromptCategory.visibility = View.GONE
+                fabAddPromptCategory.visibility = View.VISIBLE
             }
         }
     }

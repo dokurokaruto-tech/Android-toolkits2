@@ -18,6 +18,9 @@ Android Toolkits から生成依頼を受け取り、Stable Diffusion WebUI / Fo
 - 閲覧画面の削除はPC上の完成画像も消します。紐づいた仮チャットも一緒に消えます。
 - カード用サムネイルもPCの `thumbnails/YYYY-MM-DD/` に保存します。
 - カード用サムネイルも閲覧と同じ圧縮JPEGを配信し、Androidはそれを端末へ保存してオフライン表示します。
+- AndroidのCivitaiブラウザから依頼されたモデルをPC側で直接ダウンロードし、Checkpointは `checkpoint_dir`、LoRAは `lora_dir` へ保存します。
+- モデルと同じフォルダにプレビュー画像（`<名前>.png` と `<名前>.preview.png`）と `<ファイル名>.civitai.info`（トリガーワード等の覚書）を添えます。
+- 保存後はForgeのモデル一覧を更新（refresh-checkpoints / refresh-loras）します。
 - エージェントを途中で終了しても、次回起動時に未完了キューを再開します。
 
 ## 必要なもの
@@ -70,7 +73,10 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
   "api_key": "",
   "request_timeout_seconds": 600,
   "retry_count": 1,
-  "legacy_api_url": ""
+  "legacy_api_url": "",
+  "checkpoint_dir": "C:\\AI\\StabilityMatrix\\Data\\Packages\\stable-diffusion-webui-forge\\models\\Stable-diffusion\\sd",
+  "lora_dir": "C:\\AI\\StabilityMatrix\\Data\\Packages\\stable-diffusion-webui-forge\\models\\Lora",
+  "civitai_api_key": ""
 }
 ```
 
@@ -88,6 +94,9 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
 | `request_timeout_seconds` | 1枚に許可する最大通信時間 |
 | `retry_count` | 1枚の生成に失敗した場合の再試行回数 |
 | `legacy_api_url` | 既存の `/api/generate-prompt` サーバーを併用するときだけ、そのURLを指定 |
+| `checkpoint_dir` | CivitaiインポートしたCheckpointの保存先（Forgeのモデルフォルダ） |
+| `lora_dir` | CivitaiインポートしたLoRAの保存先（ForgeのLoRAフォルダ） |
+| `civitai_api_key` | 早期アクセス等で認証が必要なCivitaiダウンロード用。空でも通常モデルは取得可能 |
 
 `config.json`、生成画像、SQLite、プロンプトを含むメタデータは `.gitignore` 対象です。
 
@@ -125,6 +134,9 @@ pc-generation-agent/
 - `GET /api/v1/progressive/{date}/{name}/manifest` — 原寸画像の可逆ストリップ情報
 - `GET /api/v1/progressive/{date}/{name}/{index}` — 上から順に読む原寸PNGストリップ
 - `GET /api/v1/thumbnail-files/{date}/{name}` — カード用サムネイル
+- `POST /api/v1/model-imports` — CivitaiモデルのPCダウンロードを開始（`download_url`・`filename`・`kind: checkpoint|lora`・任意で `thumbnail_url` / `thumbnail_base64` / `trigger_words` 等）
+- `GET /api/v1/model-imports/{id}` — ダウンロード進捗（`bytes_downloaded` / `bytes_total` / `progress`）
+- `GET /api/v1/model-imports` — 直近のインポート一覧
 - `/sdapi/v1/*` — 既存機能との互換用にSD APIへ中継
 
 ## 注意

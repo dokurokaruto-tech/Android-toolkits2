@@ -47,6 +47,16 @@
             android:name=".ChubBrowserActivity"
             android:exported="false" />
         <activity
+            android:name=".CivitaiBrowserActivity"
+            android:exported="false" />
+        <activity
+            android:name=".CivitaiImportActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".CivitaiThumbnailCropActivity"
+            android:exported="false" />
+        <activity
             android:name=".CustomFilePickerActivity"
             android:exported="false" />
         <activity

@@ -24,6 +24,11 @@ _png_buffer = io.BytesIO()
 Image.new("RGB", (1200, 1800), (120, 30, 200)).save(_png_buffer, "PNG")
 PNG = _png_buffer.getvalue()
 
+_thumb_buffer = io.BytesIO()
+Image.new("RGB", (100, 160), (10, 200, 90)).save(_thumb_buffer, "JPEG")
+THUMB_JPG = _thumb_buffer.getvalue()
+MODEL_BYTES = b"fake-safetensors-content" * 4096
+
 
 class FakeSdHandler(BaseHTTPRequestHandler):
     generated = 0
@@ -64,6 +69,29 @@ class FakeSdHandler(BaseHTTPRequestHandler):
         pass
 
 
+class FileDownloadHandler(BaseHTTPRequestHandler):
+    hits = 0
+
+    def do_GET(self) -> None:
+        type(self).hits += 1
+        if self.path == "/model.safetensors":
+            self.send_bytes(MODEL_BYTES, "application/octet-stream")
+        elif self.path == "/thumb.jpg":
+            self.send_bytes(THUMB_JPG, "image/jpeg")
+        else:
+            self.send_error(404)
+
+    def send_bytes(self, content: bytes, content_type: str) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        pass
+
+
 class AgentIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         FakeSdHandler.generated = 0
@@ -86,6 +114,8 @@ class AgentIntegrationTest(unittest.TestCase):
             request_timeout_seconds=30,
             retry_count=0,
             legacy_api_url="",
+            checkpoint_dir=root / "checkpoints",
+            lora_dir=root / "loras",
         )
         self.service = GenerationService(self.config)
         self.agent_server = AgentServer(self.config, self.service)
@@ -350,6 +380,86 @@ class AgentIntegrationTest(unittest.TestCase):
             server.shutdown()
             server.server_close()
             service.database.close()
+
+    def test_model_import_saves_file_preview_and_info(self) -> None:
+        FileDownloadHandler.hits = 0
+        server = ThreadingHTTPServer(("127.0.0.1", 0), FileDownloadHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            status, job = self.request("/api/v1/model-imports", "POST", {
+                "download_url": f"{base}/model.safetensors",
+                "filename": "test-lora.safetensors",
+                "kind": "lora",
+                "model_name": "Test LoRA",
+                "version_name": "v1",
+                "trigger_words": ["kw-one", "kw-two"],
+                "thumbnail_url": f"{base}/thumb.jpg",
+            })
+            self.assertEqual(202, status)
+            state = self.wait_import(job["id"])
+            self.assertEqual("completed", state["status"])
+            target = self.config.lora_dir / "test-lora.safetensors"
+            self.assertEqual(str(target), state["target_path"])
+            self.assertEqual(MODEL_BYTES, target.read_bytes())
+            preview = self.config.lora_dir / "test-lora.png"
+            self.assertTrue(preview.is_file())
+            self.assertTrue((self.config.lora_dir / "test-lora.preview.png").is_file())
+            with Image.open(preview) as image:
+                self.assertLessEqual(max(image.size), 768)
+            info = json.loads(
+                (self.config.lora_dir / "test-lora.safetensors.civitai.info").read_text(encoding="utf-8")
+            )
+            self.assertEqual(["kw-one", "kw-two"], info["trigger_words"])
+
+            _, ckpt = self.request("/api/v1/model-imports", "POST", {
+                "download_url": f"{base}/model.safetensors",
+                "filename": "test-checkpoint.safetensors",
+                "kind": "checkpoint",
+                "thumbnail_base64": base64.b64encode(THUMB_JPG).decode(),
+            })
+            self.assertEqual("completed", self.wait_import(ckpt["id"])["status"])
+            self.assertTrue((self.config.checkpoint_dir / "test-checkpoint.safetensors").is_file())
+            self.assertTrue((self.config.checkpoint_dir / "test-checkpoint.preview.png").is_file())
+
+            # Re-import skips bytes but still completes with sidecars refreshed.
+            hits = FileDownloadHandler.hits
+            _, again = self.request("/api/v1/model-imports", "POST", {
+                "download_url": f"{base}/model.safetensors",
+                "filename": "test-lora.safetensors",
+                "kind": "lora",
+            })
+            self.assertEqual("completed", self.wait_import(again["id"])["status"])
+            self.assertEqual(hits, FileDownloadHandler.hits)
+
+            with self.assertRaises(Exception):
+                self.request("/api/v1/model-imports", "POST", {
+                    "download_url": f"{base}/model.safetensors",
+                    "filename": "evil.exe",
+                    "kind": "lora",
+                })
+            with self.assertRaises(Exception):
+                self.request("/api/v1/model-imports", "POST", {
+                    "download_url": f"{base}/model.safetensors",
+                    "filename": "x.safetensors",
+                    "kind": "embedding",
+                })
+            with self.assertRaises(Exception):
+                self.request("/api/v1/model-imports/" + "0" * 32)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def wait_import(self, job_id: str) -> dict:
+        deadline = time.time() + 10
+        state: dict = {}
+        while time.time() < deadline:
+            _, state = self.request(f"/api/v1/model-imports/{job_id}")
+            if state["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.05)
+        return state
 
     def test_database_requeues_interrupted_process_state(self) -> None:
         path = Path(self.temp.name) / "recovery.sqlite3"

@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+DEFAULT_CHECKPOINT_DIR = (
+    r"C:\AI\StabilityMatrix\Data\Packages\stable-diffusion-webui-forge"
+    r"\models\Stable-diffusion\sd"
+)
+DEFAULT_LORA_DIR = (
+    r"C:\AI\StabilityMatrix\Data\Packages\stable-diffusion-webui-forge"
+    r"\models\Lora"
+)
 
 
 @dataclass(frozen=True)
@@ -21,6 +30,9 @@ class AgentConfig:
     request_timeout_seconds: int
     retry_count: int
     legacy_api_url: str
+    checkpoint_dir: Path = field(default_factory=lambda: Path(DEFAULT_CHECKPOINT_DIR))
+    lora_dir: Path = field(default_factory=lambda: Path(DEFAULT_LORA_DIR))
+    civitai_api_key: str = ""
 
     @classmethod
     def load(cls, path: Path) -> "AgentConfig":
@@ -53,4 +65,7 @@ class AgentConfig:
             request_timeout_seconds=max(30, timeout),
             retry_count=max(0, min(retry_count, 10)),
             legacy_api_url=str(raw.get("legacy_api_url", "")).rstrip("/"),
+            checkpoint_dir=resolve(str(raw.get("checkpoint_dir", DEFAULT_CHECKPOINT_DIR))),
+            lora_dir=resolve(str(raw.get("lora_dir", DEFAULT_LORA_DIR))),
+            civitai_api_key=str(raw.get("civitai_api_key", "")).strip(),
         )

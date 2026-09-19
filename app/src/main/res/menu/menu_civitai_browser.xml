@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_web_back"
+        android:icon="@drawable/ic_md3_arrow_back"
+        android:title="戻る"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/action_web_forward"
+        android:icon="@drawable/ic_md3_arrow_forward"
+        android:title="進む"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/action_web_home"
+        android:icon="@drawable/ic_md3_home"
+        android:title="ホーム"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/action_web_refresh"
+        android:icon="@drawable/ic_md3_refresh"
+        android:title="更新"
+        app:showAsAction="always" />
+</menu>

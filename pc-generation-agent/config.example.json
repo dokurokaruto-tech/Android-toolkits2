@@ -10,5 +10,8 @@
   "api_key": "",
   "request_timeout_seconds": 600,
   "retry_count": 1,
-  "legacy_api_url": ""
+  "legacy_api_url": "",
+  "checkpoint_dir": "C:\\AI\\StabilityMatrix\\Data\\Packages\\stable-diffusion-webui-forge\\models\\Stable-diffusion\\sd",
+  "lora_dir": "C:\\AI\\StabilityMatrix\\Data\\Packages\\stable-diffusion-webui-forge\\models\\Lora",
+  "civitai_api_key": ""
 }

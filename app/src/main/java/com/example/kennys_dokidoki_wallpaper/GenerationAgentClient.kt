@@ -51,6 +51,37 @@ data class AgentGeneratedImage(
     val randomEnabledCategories: Set<String> = emptySet()
 )
 
+/** Civitai model download executed on the PC, beside Forge model folders. */
+data class ModelImportRequest(
+    val downloadUrl: String,
+    val filename: String,
+    val kind: String,
+    val modelName: String = "",
+    val versionName: String = "",
+    val triggerWords: List<String> = emptyList(),
+    val civitaiModelId: Long? = null,
+    val civitaiVersionId: Long? = null,
+    val thumbnailUrl: String? = null,
+    val thumbnailBase64: String? = null
+)
+
+data class ModelImportState(
+    val id: String,
+    val status: String,
+    val kind: String,
+    val filename: String,
+    val downloaded: Long,
+    val total: Long,
+    val progress: Float,
+    val targetPath: String?,
+    val error: String?
+) {
+    val isTerminal: Boolean
+        get() = status == "completed" || status == "failed"
+    val isOk: Boolean
+        get() = status == "completed"
+}
+
 data class AgentJobState(
     val id: String,
     val status: String,
@@ -686,6 +717,46 @@ object GenerationAgentClient {
         } finally {
             connection.disconnect()
         }
+    }
+
+    suspend fun fetchHealth(context: Context): JSONObject = withContext(Dispatchers.IO) {
+        requestJson(context, "/api/v1/health")
+    }
+
+    suspend fun submitModelImport(context: Context, request: ModelImportRequest): ModelImportState =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject().apply {
+                put("download_url", request.downloadUrl)
+                put("filename", request.filename)
+                put("kind", request.kind)
+                put("model_name", request.modelName)
+                put("version_name", request.versionName)
+                put("trigger_words", JSONArray(request.triggerWords))
+                request.civitaiModelId?.let { put("civitai_model_id", it) }
+                request.civitaiVersionId?.let { put("civitai_version_id", it) }
+                request.thumbnailUrl?.let { put("thumbnail_url", it) }
+                request.thumbnailBase64?.let { put("thumbnail_base64", it) }
+            }
+            parseImport(requestJson(context, "/api/v1/model-imports", "POST", body))
+        }
+
+    suspend fun getModelImport(context: Context, id: String): ModelImportState =
+        withContext(Dispatchers.IO) {
+            parseImport(requestJson(context, "/api/v1/model-imports/$id"))
+        }
+
+    private fun parseImport(json: JSONObject): ModelImportState {
+        return ModelImportState(
+            id = json.getString("id"),
+            status = json.optString("status"),
+            kind = json.optString("kind"),
+            filename = json.optString("filename"),
+            downloaded = json.optLong("bytes_downloaded"),
+            total = json.optLong("bytes_total"),
+            progress = json.optDouble("progress", 0.0).toFloat().coerceIn(0f, 1f),
+            targetPath = json.optString("target_path").takeIf { it.isNotBlank() },
+            error = json.optString("error").takeIf { it.isNotBlank() }
+        )
     }
 
     private suspend fun downloadPreview(context: Context, path: String) = withContext(Dispatchers.IO) {
