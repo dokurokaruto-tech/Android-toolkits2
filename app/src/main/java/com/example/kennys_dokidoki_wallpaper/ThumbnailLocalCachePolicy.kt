@@ -79,6 +79,12 @@ object ThumbnailLocalCachePolicy {
     fun localFileName(kind: String, id: String, sourceUrl: String): String =
         "${safeToken(kind)}_${safeToken(id)}_${sourceKey(sourceUrl)}.jpg"
 
+    fun libraryFileName(remoteUrl: String): String? {
+        val key = sourceKey(remoteUrl)
+        if (key.isEmpty()) return null
+        return "${KIND_LIBRARY}_lib_${key}.jpg"
+    }
+
     fun managedPrefix(kind: String, id: String): String =
         "${safeToken(kind)}_${safeToken(id)}_"
 

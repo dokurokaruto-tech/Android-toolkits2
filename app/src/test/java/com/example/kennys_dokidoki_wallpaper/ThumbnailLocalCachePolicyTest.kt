@@ -168,7 +168,7 @@ class ThumbnailLocalCachePolicyTest {
         val original = "http://pc:3001/api/v1/files/2026-08-23/GEN_one.png?token=b"
         val name = ThumbnailLocalCachePolicy.libraryFileName(mobile)
         assertEquals(name, ThumbnailLocalCachePolicy.libraryFileName(original))
-        assertTrue(ThumbnailLocalCachePolicy.isManagedFileName(name))
+        assertTrue(name != null && ThumbnailLocalCachePolicy.isManagedFileName(name))
         assertEquals("lib", name?.substringBefore('_'))
         assertNull(ThumbnailLocalCachePolicy.libraryFileName("file:///local/a.jpg"))
     }

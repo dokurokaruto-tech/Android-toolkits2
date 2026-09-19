@@ -9,6 +9,7 @@ import java.io.File
 object ThumbnailStoragePolicy {
     const val PREF_LOCATION = "thumbnail_cache_location"
     const val PREF_CAPACITY_BYTES = "thumbnail_cache_capacity_bytes"
+    const val PREF_TOTAL_SAVED_BYTES = "thumbnail_total_saved_bytes"
 
     enum class Location { INTERNAL, SD_CARD }
 
