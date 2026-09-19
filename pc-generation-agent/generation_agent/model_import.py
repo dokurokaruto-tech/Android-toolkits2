@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import AgentConfig
+from .sd_client import StableDiffusionClient
 
 _MODEL_SUFFIXES = {".safetensors", ".ckpt", ".pt", ".pth", ".bin"}
 _WINDOWS_RESERVED = {
@@ -46,8 +47,9 @@ class ModelImportService:
     this service a direct download URL. The phone never touches multi-GB files.
     """
 
-    def __init__(self, config: AgentConfig):
+    def __init__(self, config: AgentConfig, sd: StableDiffusionClient):
         self._config = config
+        self._sd = sd
         self._lock = threading.Lock()
         self._jobs: dict[str, dict[str, Any]] = {}
 
@@ -123,6 +125,69 @@ class ModelImportService:
     @staticmethod
     def _public_locked(job: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in job.items() if not key.startswith("_")}
+
+    def list_checkpoints(self) -> dict[str, Any]:
+        models: list[dict[str, Any]] = []
+        root = self._config.checkpoint_dir
+        if root.is_dir():
+            for item in sorted(root.iterdir(), key=lambda entry: entry.name.lower()):
+                if item.is_file() and item.suffix.lower() in _MODEL_SUFFIXES:
+                    stat = item.stat()
+                    models.append({
+                        "name": item.name,
+                        "size": stat.st_size,
+                        "modified": datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat(timespec="seconds"),
+                    })
+        return {"checkpoints": models, "active": self._active_checkpoint_name()}
+
+    def _active_checkpoint_name(self) -> str | None:
+        try:
+            name = self._sd.get_options().get("sd_model_checkpoint")
+        except Exception:
+            return None
+        text = str(name or "").strip()
+        return text or None
+
+    def resolve_checkpoint_preview(self, raw_name: Any) -> Path | None:
+        target = self._checkpoint_file(raw_name)
+        if target is None:
+            return None
+        stem = target.with_name(target.stem)
+        for candidate in (
+            stem.with_suffix(".png"),
+            target.with_name(target.stem + ".preview.png"),
+            stem.with_suffix(".jpg"),
+            stem.with_suffix(".jpeg"),
+            stem.with_suffix(".webp"),
+        ):
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def set_active_checkpoint(self, raw_name: Any) -> str:
+        target = self._checkpoint_file(raw_name)
+        if target is None:
+            raise ValueError("checkpoint not found")
+        try:
+            self._sd.set_options({"sd_model_checkpoint": target.name})
+        except Exception as error:
+            raise RuntimeError(f"SD rejected the model switch: {error}") from error
+        print(f"Active checkpoint: {target.name}")
+        return target.name
+
+    def _checkpoint_file(self, raw_name: Any) -> Path | None:
+        name = str(raw_name or "").strip()
+        if not name or Path(name).name != name:
+            return None
+        if Path(name).suffix.lower() not in _MODEL_SUFFIXES:
+            return None
+        root = self._config.checkpoint_dir.resolve()
+        target = (self._config.checkpoint_dir / name).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            return None
+        return target if target.is_file() else None
 
     def _run(self, job_id: str) -> None:
         with self._lock:

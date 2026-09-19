@@ -83,6 +83,13 @@ data class ModelImportState(
         get() = status == "completed"
 }
 
+/** One checkpoint file inside the PC checkpoint folder. */
+data class CheckpointInfo(
+    val name: String,
+    val sizeBytes: Long,
+    val modified: String
+)
+
 data class AgentJobState(
     val id: String,
     val status: String,
@@ -648,7 +655,8 @@ object GenerationAgentClient {
         path: String,
         method: String = "GET",
         body: JSONObject? = null,
-        recordFailure: Boolean = true
+        recordFailure: Boolean = true,
+        timeoutMs: Int = 15_000
     ): JSONObject {
         val bases = candidateBases(context)
         if (bases.isEmpty()) {
@@ -665,7 +673,7 @@ object GenerationAgentClient {
         var lastError: Exception? = null
         for (base in bases) {
             try {
-                val json = requestOnce(context, base, path, method, body)
+                val json = requestOnce(context, base, path, method, body, timeoutMs)
                 rememberGoodBase(context, base)
                 return json
             } catch (error: Exception) {
@@ -690,13 +698,14 @@ object GenerationAgentClient {
         base: String,
         path: String,
         method: String,
-        body: JSONObject?
+        body: JSONObject?,
+        timeoutMs: Int = 15_000
     ): JSONObject {
         val target = if (path.startsWith("http")) path else "$base${if (path.startsWith('/')) path else "/$path"}"
         val connection = (URL(target).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 5000
-            readTimeout = 15000
+            readTimeout = timeoutMs
             setRequestProperty("Accept", "application/json")
             val key = apiKey(context)
             if (key.isNotBlank()) setRequestProperty("Authorization", "Bearer $key")
@@ -723,6 +732,41 @@ object GenerationAgentClient {
     suspend fun fetchHealth(context: Context): JSONObject = withContext(Dispatchers.IO) {
         requestJson(context, "/api/v1/health")
     }
+
+    suspend fun fetchCheckpoints(context: Context): Pair<List<CheckpointInfo>, String?> =
+        withContext(Dispatchers.IO) {
+            val json = requestJson(context, "/api/v1/models/checkpoints")
+            val array = json.optJSONArray("checkpoints") ?: JSONArray()
+            val list = buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.getJSONObject(index)
+                    add(
+                        CheckpointInfo(
+                            item.optString("name"),
+                            item.optLong("size"),
+                            item.optString("modified")
+                        )
+                    )
+                }
+            }
+            list to json.optString("active").takeIf { it.isNotBlank() }
+        }
+
+    suspend fun setActiveCheckpoint(context: Context, name: String): String? =
+        withContext(Dispatchers.IO) {
+            // Weight reload takes a while; outlast the agent-side 150s SD call.
+            val json = requestJson(
+                context,
+                "/api/v1/models/checkpoints/active",
+                "POST",
+                JSONObject().apply { put("name", name) },
+                timeoutMs = 170_000
+            )
+            json.optString("active").takeIf { it.isNotBlank() }
+        }
+
+    fun checkpointPreviewUrl(context: Context, name: String): String =
+        absoluteUrl(context, "/api/v1/models/checkpoints/preview?name=${URLEncoder.encode(name, "UTF-8")}")
 
     suspend fun submitModelImport(context: Context, request: ModelImportRequest): ModelImportState =
         withContext(Dispatchers.IO) {

@@ -29,7 +29,7 @@ class GenerationService:
         self.config.progressive_tile_dir.mkdir(parents=True, exist_ok=True)
         self.database = JobDatabase(config.database_path)
         self.sd = StableDiffusionClient(config.sd_base_url, config.request_timeout_seconds)
-        self.model_imports = ModelImportService(config)
+        self.model_imports = ModelImportService(config, self.sd)
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._worker = threading.Thread(target=self._worker_loop, name="generation-worker", daemon=True)

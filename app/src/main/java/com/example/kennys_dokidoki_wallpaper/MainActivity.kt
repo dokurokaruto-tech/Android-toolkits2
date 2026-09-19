@@ -51,6 +51,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var tagPromptAdapter: TagPromptAdapter
     private lateinit var promptCardAdapter: PromptCardAdapter
     private lateinit var presetAdapter: PresetAdapter
+    private lateinit var baseModelAdapter: BaseModelAdapter
+    private var switchingBaseModel = false
     private lateinit var settingsLayout: LinearLayout
     private lateinit var layoutBuilder: View
     private lateinit var builderScroll: NestedScrollView
@@ -169,6 +171,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     ) { result ->
         if (result.resultCode == RESULT_OK) {
             promptCardAdapter.updateList(PromptCardManager.promptCards)
+            refreshBaseModels(silent = true)
         }
     }
 
@@ -968,6 +971,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         recyclerViewPresets.layoutManager = presetLayoutManager
         recyclerViewPresets.isNestedScrollingEnabled = false
         recyclerViewPresets.adapter = presetAdapter
+
+        baseModelAdapter = BaseModelAdapter { name -> selectBaseModel(name) }
+        findViewById<RecyclerView>(R.id.recycler_view_models).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false)
+            isNestedScrollingEnabled = false
+            adapter = baseModelAdapter
+        }
+        findViewById<View>(R.id.btn_refresh_models).setOnClickListener {
+            refreshBaseModels(silent = false)
+        }
         refreshPresetMatchHighlight()
         ThumbnailBinder.addListener { target, _ ->
             when (target.kind) {
@@ -1232,6 +1245,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             R.id.nav_builder -> {
                 fabAddPromptCategory.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun refreshBaseModels(silent: Boolean) {
+        if (!::baseModelAdapter.isInitialized) {
+            return
+        }
+        lifecycleScope.launch {
+            try {
+                BaseModelManager.load(this@MainActivity)
+                baseModelAdapter.submit(BaseModelManager.models, BaseModelManager.activeName)
+            } catch (error: Exception) {
+                if (!silent) {
+                    Toast.makeText(this@MainActivity, "モデル一覧の取得に失敗: ${error.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun selectBaseModel(name: String) {
+        if (switchingBaseModel || BaseModelManager.activeName == name) {
+            return
+        }
+        switchingBaseModel = true
+        baseModelAdapter.submit(BaseModelManager.models, name)
+        Toast.makeText(this, "ベースモデルを切り替え中...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            try {
+                val switched = BaseModelManager.select(this@MainActivity, name)
+                baseModelAdapter.submit(BaseModelManager.models, BaseModelManager.activeName)
+                if (switched != null) {
+                    Toast.makeText(this@MainActivity, "切り替えました: ${BaseModelManager.displayName(switched)}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "切り替えに失敗しました。", Toast.LENGTH_SHORT).show()
+                }
+            } catch (error: Exception) {
+                baseModelAdapter.submit(BaseModelManager.models, BaseModelManager.activeName)
+                Toast.makeText(this@MainActivity, "切り替えに失敗: ${error.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                switchingBaseModel = false
             }
         }
     }
@@ -2420,6 +2474,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 R.id.nav_builder -> {
                     layoutBuilder.visibility = View.VISIBLE
                     syncBuilderRestorePipButton()
+                    refreshBaseModels(silent = true)
                 }
                 R.id.nav_settings -> { 
                     settingsLayout.visibility = View.VISIBLE

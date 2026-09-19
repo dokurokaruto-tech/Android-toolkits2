@@ -100,3 +100,11 @@ class StableDiffusionClient:
 
     def skip(self) -> None:
         self._request("/sdapi/v1/skip", "POST", {}, timeout=5)
+
+    def get_options(self) -> dict[str, Any]:
+        result = self._request("/sdapi/v1/options", timeout=10)
+        return result if isinstance(result, dict) else {}
+
+    def set_options(self, patch: dict[str, Any]) -> None:
+        # Switching checkpoints reloads weights; Forge can take a minute.
+        self._request("/sdapi/v1/options", "POST", patch, timeout=150)

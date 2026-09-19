@@ -137,6 +137,9 @@ pc-generation-agent/
 - `POST /api/v1/model-imports` — CivitaiモデルのPCダウンロードを開始（`download_url`・`filename`・`kind: checkpoint|lora`・任意で `thumbnail_url` / `thumbnail_base64` / `trigger_words` 等）
 - `GET /api/v1/model-imports/{id}` — ダウンロード進捗（`bytes_downloaded` / `bytes_total` / `progress`）
 - `GET /api/v1/model-imports` — 直近のインポート一覧
+- `GET /api/v1/models/checkpoints` — `checkpoint_dir` 内のモデル一覧と使用中モデル
+- `GET /api/v1/models/checkpoints/preview?name=...` — モデル横のプレビュー画像
+- `POST /api/v1/models/checkpoints/active` — 使用モデルを切替（`{"name": "..."}`）
 - `/sdapi/v1/*` — 既存機能との互換用にSD APIへ中継
 
 ## 注意

@@ -32,10 +32,11 @@ MODEL_BYTES = b"fake-safetensors-content" * 4096
 
 class FakeSdHandler(BaseHTTPRequestHandler):
     generated = 0
+    sd_model = "base.safetensors"
 
     def do_GET(self) -> None:
         if self.path.startswith("/sdapi/v1/options"):
-            self.send_json({})
+            self.send_json({"sd_model_checkpoint": type(self).sd_model})
         elif self.path.startswith("/sdapi/v1/progress"):
             self.send_json({"progress": 0.5, "current_image": base64.b64encode(PNG).decode()})
         else:
@@ -53,6 +54,11 @@ class FakeSdHandler(BaseHTTPRequestHandler):
                 "info": json.dumps({"seed": seed, "all_seeds": [seed]}),
             })
         elif self.path in {"/sdapi/v1/interrupt", "/sdapi/v1/skip"}:
+            self.send_json({})
+        elif self.path == "/sdapi/v1/options":
+            picked = body.get("sd_model_checkpoint")
+            if isinstance(picked, str) and picked.strip():
+                type(self).sd_model = picked.strip()
             self.send_json({})
         else:
             self.send_error(404)
@@ -95,6 +101,7 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
 class AgentIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         FakeSdHandler.generated = 0
+        FakeSdHandler.sd_model = "base.safetensors"
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
         self.sd_server = ThreadingHTTPServer(("127.0.0.1", 0), FakeSdHandler)
@@ -219,7 +226,7 @@ class AgentIntegrationTest(unittest.TestCase):
 
         # Existing Android features (thumbnail generation/progress) keep using SD routes.
         _, options = self.request("/sdapi/v1/options")
-        self.assertEqual({}, options)
+        self.assertIn("sd_model_checkpoint", options)
 
     def test_thumbnail_is_pc_hosted_but_hidden_from_main_library(self) -> None:
         _, job = self.request(
@@ -489,6 +496,36 @@ class AgentIntegrationTest(unittest.TestCase):
             response.read()
         finally:
             conn.close()
+
+    def test_checkpoint_list_preview_and_switch(self) -> None:
+        root = self.config.checkpoint_dir
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "base.safetensors").write_bytes(b"fake-weights")
+        (root / "base.preview.png").write_bytes(PNG)
+        (root / "notes.txt").write_text("ignored")
+        FakeSdHandler.sd_model = "base.safetensors"
+
+        _, listed = self.request("/api/v1/models/checkpoints")
+        self.assertEqual(["base.safetensors"], [item["name"] for item in listed["checkpoints"]])
+        self.assertEqual("base.safetensors", listed["active"])
+
+        with urllib.request.urlopen(
+            self.base + "/api/v1/models/checkpoints/preview?name=base.safetensors&token=secret",
+            timeout=5,
+        ) as response:
+            self.assertEqual(PNG, response.read())
+
+        (root / "second.safetensors").write_bytes(b"fake-weights-2")
+        _, switched = self.request(
+            "/api/v1/models/checkpoints/active", "POST", {"name": "second.safetensors"}
+        )
+        self.assertEqual("second.safetensors", switched["active"])
+        self.assertEqual("second.safetensors", FakeSdHandler.sd_model)
+
+        with self.assertRaises(Exception):
+            self.request("/api/v1/models/checkpoints/active", "POST", {"name": "../evil.safetensors"})
+        with self.assertRaises(Exception):
+            self.request("/api/v1/models/checkpoints/active", "POST", {"name": "missing.safetensors"})
 
     def test_database_requeues_interrupted_process_state(self) -> None:
         path = Path(self.temp.name) / "recovery.sqlite3"

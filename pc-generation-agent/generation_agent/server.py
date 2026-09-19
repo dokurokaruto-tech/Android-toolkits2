@@ -93,6 +93,17 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             except Exception as error:
                 self._error(HTTPStatus.BAD_GATEWAY, str(error))
             return
+        if path == "/api/v1/models/checkpoints":
+            self._json(HTTPStatus.OK, self.server.service.model_imports.list_checkpoints())
+            return
+        if path == "/api/v1/models/checkpoints/preview":
+            preview = self.server.service.model_imports.resolve_checkpoint_preview(query.get("name", [""])[0])
+            if not preview:
+                self._error(HTTPStatus.NOT_FOUND, "preview not found")
+            else:
+                content_type = mimetypes.guess_type(preview.name)[0] or "application/octet-stream"
+                self._send_file(preview, content_type)
+            return
         if path == "/api/v1/model-imports":
             self._json(HTTPStatus.OK, {"imports": self.server.service.model_imports.list_jobs()})
             return
@@ -225,6 +236,15 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 self._error(HTTPStatus.BAD_REQUEST, str(error))
             except Exception as error:
                 self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
+            return
+        if path == "/api/v1/models/checkpoints/active":
+            try:
+                active = self.server.service.model_imports.set_active_checkpoint(self._read_json().get("name", ""))
+                self._json(HTTPStatus.OK, {"active": active})
+            except ValueError as error:
+                self._error(HTTPStatus.BAD_REQUEST, str(error))
+            except Exception as error:
+                self._error(HTTPStatus.BAD_GATEWAY, str(error))
             return
         if path == "/api/v1/model-imports":
             try:
