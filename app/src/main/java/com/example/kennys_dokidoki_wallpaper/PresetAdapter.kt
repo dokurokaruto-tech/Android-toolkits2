@@ -134,15 +134,12 @@ class PresetAdapter(
                 holder.tvDetails.text = "${preset.width}x${preset.height} | Steps:${preset.steps} | Cards:${preset.activePromptStates.size}"
                 
                 if (ImageStoragePolicy.canDisplayWithoutNetwork(preset.thumbnailUri)) {
-                    Glide.with(holder.ivThumbnail)
-                        .load(preset.thumbnailUri)
-                        .override(
-                            ImageMemoryPressurePolicy.CARD_THUMB_WIDTH,
-                            ImageMemoryPressurePolicy.CARD_THUMB_HEIGHT
-                        )
-                        .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(preset.thumbnailUri))
-                        .centerCrop()
-                        .into(holder.ivThumbnail)
+                    holder.ivThumbnail.loadThumb(
+                        preset.thumbnailUri,
+                        ImageMemoryPressurePolicy.CARD_THUMB_WIDTH,
+                        ImageMemoryPressurePolicy.CARD_THUMB_HEIGHT,
+                        ImageStoragePolicy.glideDiskCache(preset.thumbnailUri)
+                    )
                 } else {
                     Glide.with(holder.ivThumbnail).clear(holder.ivThumbnail)
                     holder.ivThumbnail.setImageDrawable(null)

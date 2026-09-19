@@ -99,15 +99,12 @@ class AllImagesAdapter(
         val context = holder.itemView.context
         
         val gridUri = entry.thumbnailUri ?: entry.uri
-        Glide.with(holder.imageView.context)
-            .load(gridUri)
-            .override(
-                ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
-                ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
-            )
-            .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(gridUri, DiskCacheStrategy.RESOURCE))
-            .centerCrop()
-            .into(holder.imageView)
+        holder.imageView.loadThumb(
+            gridUri,
+            ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+            ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT,
+            ImageStoragePolicy.glideDiskCache(gridUri, DiskCacheStrategy.RESOURCE)
+        )
         ImageMemoryGovernor.onGridBind(holder.imageView.context)
         
         // タグの表示設定

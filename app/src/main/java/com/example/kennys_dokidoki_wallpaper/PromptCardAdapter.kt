@@ -169,15 +169,12 @@ class PromptCardAdapter(
                 holder.tvLabel.text = card.label
                 
                 if (ImageStoragePolicy.canDisplayWithoutNetwork(card.thumbnailUri)) {
-                    Glide.with(holder.ivThumbnail.context)
-                        .load(card.thumbnailUri)
-                        .override(
-                            ImageMemoryPressurePolicy.CARD_THUMB_WIDTH,
-                            ImageMemoryPressurePolicy.CARD_THUMB_HEIGHT
-                        )
-                        .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(card.thumbnailUri))
-                        .centerCrop()
-                        .into(holder.ivThumbnail)
+                    holder.ivThumbnail.loadThumb(
+                        card.thumbnailUri,
+                        ImageMemoryPressurePolicy.CARD_THUMB_WIDTH,
+                        ImageMemoryPressurePolicy.CARD_THUMB_HEIGHT,
+                        ImageStoragePolicy.glideDiskCache(card.thumbnailUri)
+                    )
                 } else {
                     Glide.with(holder.ivThumbnail.context).clear(holder.ivThumbnail)
                     holder.ivThumbnail.setImageResource(android.R.drawable.ic_menu_gallery)

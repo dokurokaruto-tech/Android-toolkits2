@@ -75,15 +75,12 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
             val selectedEntry = displayEntries[safeIndex]
             val imageToLoad = selectedEntry.thumbnailUri ?: selectedEntry.uri
             
-            Glide.with(holder.thumbnail.context)
-                .load(imageToLoad)
-                .override(
-                    ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
-                    ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
-                )
-                .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(imageToLoad, DiskCacheStrategy.RESOURCE))
-                .centerCrop()
-                .into(holder.thumbnail)
+            holder.thumbnail.loadThumb(
+                imageToLoad,
+                ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+                ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT,
+                ImageStoragePolicy.glideDiskCache(imageToLoad, DiskCacheStrategy.RESOURCE)
+            )
             ImageMemoryGovernor.onGridBind(holder.thumbnail.context)
                 
             holder.iconCropped.visibility = if (selectedEntry.cropRect != null || selectedEntry.croppedUri != null) View.VISIBLE else View.GONE

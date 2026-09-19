@@ -101,15 +101,12 @@ class ImageAdapter(
         }
         if (remoteThumb != null) ThumbnailLocalCache.ensureLibrary(context, remoteThumb)
         val gridModelUri = Uri.parse(gridImageUri.toString())
-        Glide.with(holder.imageView.context)
-            .load(gridImageUri)
-            .override(
-                ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
-                ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
-            )
-            .diskCacheStrategy(ImageStoragePolicy.glideDiskCache(gridModelUri))
-            .centerCrop()
-            .into(holder.imageView)
+        holder.imageView.loadThumb(
+            gridImageUri,
+            ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+            ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT,
+            ImageStoragePolicy.glideDiskCache(gridModelUri)
+        )
         ImageMemoryGovernor.onGridBind(holder.imageView.context)
             
         // 生成画像閲覧でもケバブは出す。壁紙用のチェックだけ隠す。

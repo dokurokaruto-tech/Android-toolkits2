@@ -380,19 +380,14 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
                     else -> ThumbnailLocalCache.existingLibrary(context, remoteThumb) ?: remoteThumb
                 }
                 if (remoteThumb != null) ThumbnailLocalCache.ensureLibrary(context, remoteThumb)
-                Glide.with(holder.thumbnail)
-                    .load(model)
-                    .override(
-                        ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
-                        ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT
+                holder.thumbnail.loadThumb(
+                    model,
+                    ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+                    ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT,
+                    ImageStoragePolicy.glideDiskCache(
+                        if (model is Uri) model else Uri.parse(model.toString())
                     )
-                    .diskCacheStrategy(
-                        ImageStoragePolicy.glideDiskCache(
-                            if (model is Uri) model else Uri.parse(model.toString())
-                        )
-                    )
-                    .centerCrop()
-                    .into(holder.thumbnail)
+                )
                 ImageMemoryGovernor.onGridBind(holder.thumbnail.context)
             } else {
                 Glide.with(holder.thumbnail).clear(holder.thumbnail)

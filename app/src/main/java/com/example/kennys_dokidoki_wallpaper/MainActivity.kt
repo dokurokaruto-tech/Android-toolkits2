@@ -2913,6 +2913,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
+        container.addView(
+            MaterialButton(this).apply {
+                text = "保存フォルダを開く（エクスプローラー）"
+                setOnClickListener { openThumbnailFolderInExplorer() }
+            }
+        )
+
         val dialog = AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
             .setTitle("サムネイルの保存先と容量")
             .setView(container)
@@ -2945,6 +2952,44 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
         dialog.show()
+    }
+
+    /** 設定ダイアログ用。保存先フォルダをエクスプローラーで開く。 */
+    private fun openThumbnailFolderInExplorer() {
+        lifecycleScope.launch {
+            val dir = withContext(Dispatchers.IO) { ThumbnailLocalCache.cacheDir(applicationContext) }
+            val documentId = FolderExplorerPolicy.documentId(dir.absolutePath)
+            if (documentId == null) {
+                // アプリ専用の内部領域。他アプリは覗けないのでパスだけ案内する。
+                Toast.makeText(
+                    this@MainActivity,
+                    "このフォルダはアプリ専用領域のため、エクスプローラーからは開けません。\n${dir.absolutePath}",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@launch
+            }
+            val docUri = DocumentsContract.buildDocumentUri(
+                "com.android.externalstorage.documents",
+                documentId
+            )
+            val view = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(docUri, DocumentsContract.Document.MIME_TYPE_DIR)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+                startActivity(view)
+                return@launch
+            } catch (_: Exception) {
+            }
+            // フォルダを直接開けるアプリが無いときはピッカーで同じ場所を開く。
+            try {
+                startActivity(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                    putExtra(DocumentsContract.EXTRA_INITIAL_URI, docUri)
+                })
+            } catch (_: Exception) {
+                Toast.makeText(this@MainActivity, dir.absolutePath, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun confirmThumbnailWipe(storageDialog: AlertDialog) {
