@@ -193,6 +193,13 @@ object ThumbnailLocalCache {
         return managed.sumOf { it.length() } to managed.size
     }
 
+    /** フォルダ中身ビューア用。管理対象ファイルを新しい順で返す。 */
+    fun listFiles(context: Context): List<File> =
+        cacheDir(context).listFiles()
+            ?.filter { it.isFile && ThumbnailLocalCachePolicy.isManagedFileName(it.name) }
+            ?.sortedWith(compareByDescending<File> { it.lastModified() }.thenByDescending { it.name })
+            ?: emptyList()
+
     /**
      * 閲覧（PC完成画像グリッド）のサムネイルも端末へ残す。
      * すでにあればそのURI、無ければnull。バインド側はnullのときリモートを出しつつ

@@ -75,6 +75,9 @@
             android:name=".TapSettingsActivity"
             android:exported="false" />
         <activity
+            android:name=".ThumbnailFolderActivity"
+            android:exported="false" />
+        <activity
             android:name=".TagPromptEditorActivity"
             android:exported="false" />
 
