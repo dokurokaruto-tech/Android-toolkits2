@@ -58,6 +58,19 @@ object Md3PopupDialog {
         matchParentChain(view, width, height)
     }
 
+    /** 中身の高さに合わせる小型版。ラジオボタン数個の確認ポップアップ向け。 */
+    fun showCompact(context: Context, view: View): AppCompatDialog {
+        val dialog = AppCompatDialog(view.context, R.style.ThemeOverlay_Kennys_Md3Popup)
+        dialog.supportRequestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.setContentView(view)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.show()
+        val metrics = context.resources.displayMetrics
+        dialog.window?.setLayout(popupWidth(metrics.widthPixels), ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setDimAmount(0.6f)
+        return dialog
+    }
+
     fun matchParentChain(view: View, minWidthPx: Int, minHeightPx: Int) {
         var current: View? = view
         while (current != null) {

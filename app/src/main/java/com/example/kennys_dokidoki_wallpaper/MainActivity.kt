@@ -2854,18 +2854,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         container.addView(TextView(this).apply { text = "圧縮サムネイルの保存先"; setTextColor(Color.LTGRAY) })
-        val internalButton = RadioButton(this).apply {
+        // M3 のラジオで統一。排他は RadioGroup に任せ、ボタン単位のリスナーは持たせない。
+        val internalButton = com.google.android.material.radiobutton.MaterialRadioButton(this).apply {
             id = View.generateViewId()
             text = "本体ストレージ（アプリ内）"
-            setTextColor(Color.WHITE)
-            isChecked = currentLocation == ThumbnailStoragePolicy.Location.INTERNAL
         }
-        val sdButton = RadioButton(this).apply {
+        val sdButton = com.google.android.material.radiobutton.MaterialRadioButton(this).apply {
             id = View.generateViewId()
             text = if (sd != null) "SDカード（${sd.absolutePath}）" else "SDカード（見つかりません）"
-            setTextColor(Color.WHITE)
             isEnabled = sd != null
-            isChecked = currentLocation == ThumbnailStoragePolicy.Location.SD_CARD
         }
         val locationGroup = RadioGroup(this)
         locationGroup.addView(internalButton)
@@ -2877,6 +2874,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 ThumbnailStoragePolicy.Location.INTERNAL
             }
         }
+        locationGroup.check(
+            if (currentLocation == ThumbnailStoragePolicy.Location.SD_CARD) sdButton.id else internalButton.id
+        )
         container.addView(locationGroup)
 
         container.addView(
@@ -2886,16 +2886,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         )
         val capacityGroup = RadioGroup(this)
+        val capacityIds = mutableMapOf<Int, Long>()
         ThumbnailStoragePolicy.CAPACITY_CHOICES.forEach { bytes ->
-            capacityGroup.addView(
-                RadioButton(this).apply {
-                    text = ThumbnailStoragePolicy.label(bytes)
-                    setTextColor(Color.WHITE)
-                    isChecked = bytes == currentCapacity
-                    setOnCheckedChangeListener { _, checked -> if (checked) chosenCapacity = bytes }
-                }
-            )
+            val button = com.google.android.material.radiobutton.MaterialRadioButton(this).apply {
+                text = ThumbnailStoragePolicy.label(bytes)
+            }
+            capacityIds[button.id] = bytes
+            capacityGroup.addView(button)
         }
+        capacityGroup.setOnCheckedChangeListener { _, checkedId ->
+            capacityIds[checkedId]?.let { chosenCapacity = it }
+        }
+        capacityIds.entries.firstOrNull { it.value == currentCapacity }
+            ?.let { capacityGroup.check(it.key) }
         container.addView(capacityGroup)
 
         val usageView = TextView(this).apply { setTextColor(Color.GRAY); textSize = 12f }

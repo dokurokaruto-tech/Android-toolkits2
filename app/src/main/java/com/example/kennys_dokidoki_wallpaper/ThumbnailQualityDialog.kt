@@ -2,12 +2,11 @@ package com.example.kennys_dokidoki_wallpaper
 
 import android.app.Activity
 import android.content.Context
-import android.widget.LinearLayout
-import android.widget.RadioButton
 import android.widget.RadioGroup
-import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.radiobutton.MaterialRadioButton
+import com.google.android.material.textview.MaterialTextView
 
 /**
  * サムネイル生成の前におさえる画質／ステップ数。
@@ -28,19 +27,37 @@ object ThumbnailQualityDialog {
             ThumbnailQualityPolicy.PREF_STEPS,
             ThumbnailQualityPolicy.STEPS_FOLLOW_QUALITY
         )
+        if (!ThumbnailQualityPolicy.STEPS_CHOICES.contains(steps)) {
+            steps = ThumbnailQualityPolicy.STEPS_FOLLOW_QUALITY
+        }
         val sample = items.firstOrNull()?.request
 
-        val container = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 16, 48, 0)
+        // Material3 の浮きポップアップ。チェックの排他は RadioGroup だけに任せる。
+        val (md3, view) = Md3PopupDialog.inflate(activity, R.layout.dialog_thumbnail_quality)
+        val example = view.findViewById<MaterialTextView>(R.id.tv_quality_example)
+        val qualityGroup = view.findViewById<RadioGroup>(R.id.rg_quality)
+        val stepsGroup = view.findViewById<RadioGroup>(R.id.rg_steps)
+
+        val qualityIds = mutableMapOf<Int, ThumbnailQualityPolicy.Quality>()
+        ThumbnailQualityPolicy.Quality.values().forEach { candidate ->
+            val button = MaterialRadioButton(md3).apply {
+                text = "${candidate.label}・既定${candidate.defaultSteps}step"
+            }
+            qualityIds[button.id] = candidate
+            qualityGroup.addView(button)
         }
 
-        val example = TextView(activity).apply {
-            setTextColor(android.graphics.Color.LTGRAY)
-            textSize = 12f
+        var followButton: MaterialRadioButton? = null
+        val stepsIds = mutableMapOf<Int, Int>()
+        ThumbnailQualityPolicy.STEPS_CHOICES.forEach { candidate ->
+            val button = MaterialRadioButton(md3).apply {
+                text = ThumbnailQualityPolicy.stepsLabel(candidate, quality)
+            }
+            if (candidate == ThumbnailQualityPolicy.STEPS_FOLLOW_QUALITY) followButton = button
+            stepsIds[button.id] = candidate
+            stepsGroup.addView(button)
         }
-        // 「画質に従う」の表示は選んだ画質の既定ステップに追従させる。
-        var followButton: RadioButton? = null
+
         fun syncExample() {
             followButton?.text = ThumbnailQualityPolicy.stepsLabel(
                 ThumbnailQualityPolicy.STEPS_FOLLOW_QUALITY,
@@ -52,72 +69,52 @@ object ThumbnailQualityDialog {
                 "${ThumbnailQualityPolicy.stepsOf(steps, quality)}step・アスペクト比は変えない"
         }
 
-        container.addView(TextView(activity).apply { text = "画質"; setTextColor(android.graphics.Color.LTGRAY) })
-        val qualityGroup = RadioGroup(activity)
-        ThumbnailQualityPolicy.Quality.values().forEach { candidate ->
-            qualityGroup.addView(
-                RadioButton(activity).apply {
-                    text = "${candidate.label}・既定${candidate.defaultSteps}step"
-                    setTextColor(android.graphics.Color.WHITE)
-                    isChecked = candidate == quality
-                    setOnCheckedChangeListener { _, checked ->
-                        if (checked) {
-                            quality = candidate
-                            syncExample()
-                        }
-                    }
-                }
-            )
+        qualityGroup.setOnCheckedChangeListener { _, checkedId ->
+            qualityIds[checkedId]?.let {
+                quality = it
+                syncExample()
+            }
         }
-        container.addView(qualityGroup)
+        stepsGroup.setOnCheckedChangeListener { _, checkedId ->
+            stepsIds[checkedId]?.let {
+                steps = it
+                syncExample()
+            }
+        }
 
-        container.addView(TextView(activity).apply { text = "ステップ数"; setTextColor(android.graphics.Color.LTGRAY) })
-        val stepsGroup = RadioGroup(activity)
-        ThumbnailQualityPolicy.STEPS_CHOICES.forEach { candidate ->
-            stepsGroup.addView(
-                RadioButton(activity).apply {
-                    text = ThumbnailQualityPolicy.stepsLabel(candidate, quality)
-                    setTextColor(android.graphics.Color.WHITE)
-                    isChecked = candidate == steps
-                    setOnCheckedChangeListener { _, checked ->
-                        if (checked) {
-                            steps = candidate
-                            syncExample()
-                        }
-                    }
-                }
-            )
-        }
-        container.addView(stepsGroup)
-        container.addView(example)
+        // 初期チェックはグループに載せた後で一括。ボタン単位の isChecked はしない。
+        qualityIds.entries.firstOrNull { it.value == quality }
+            ?.let { qualityGroup.check(it.key) }
+        stepsIds.entries.firstOrNull { it.value == steps }
+            ?.let { stepsGroup.check(it.key) }
         syncExample()
 
-        AlertDialog.Builder(activity, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setTitle("サムネイル生成の画質")
-            .setView(container)
-            .setPositiveButton("生成開始") { _, _ ->
-                prefs.edit()
-                    .putString(ThumbnailQualityPolicy.PREF_QUALITY, quality.name)
-                    .putInt(ThumbnailQualityPolicy.PREF_STEPS, steps)
-                    .apply()
-                val adjusted = items.map { item ->
-                    val (w, h) = ThumbnailQualityPolicy.scaledSize(
-                        item.request.width,
-                        item.request.height,
-                        quality
+        val dialog = Md3PopupDialog.showCompact(activity, view)
+        view.findViewById<MaterialButton>(R.id.btn_quality_cancel).setOnClickListener {
+            dialog.dismiss()
+        }
+        view.findViewById<MaterialButton>(R.id.btn_quality_start).setOnClickListener {
+            prefs.edit()
+                .putString(ThumbnailQualityPolicy.PREF_QUALITY, quality.name)
+                .putInt(ThumbnailQualityPolicy.PREF_STEPS, steps)
+                .apply()
+            val adjusted = items.map { item ->
+                val (w, h) = ThumbnailQualityPolicy.scaledSize(
+                    item.request.width,
+                    item.request.height,
+                    quality
+                )
+                item.copy(
+                    request = item.request.copy(
+                        width = w,
+                        height = h,
+                        steps = ThumbnailQualityPolicy.stepsOf(steps, quality)
                     )
-                    item.copy(
-                        request = item.request.copy(
-                            width = w,
-                            height = h,
-                            steps = ThumbnailQualityPolicy.stepsOf(steps, quality)
-                        )
-                    )
-                }
-                onConfirm(adjusted)
+                )
             }
-            .setNegativeButton("キャンセル", null)
-            .show()
+            dialog.dismiss()
+            onConfirm(adjusted)
+        }
     }
 
     fun busyToast(activity: Activity) {
