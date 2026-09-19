@@ -33,8 +33,21 @@ object ThumbnailGenerationCoordinator {
             return false
         }
         if (isBusy()) {
-            Toast.makeText(activity, "別の生成が終わるまで待ってくれ。", Toast.LENGTH_SHORT).show()
+            ThumbnailQualityDialog.busyToast(activity)
             return false
+        }
+        // 単体も一括もここを通る。画質とステップ数はアスペクト比を
+        // 崩さずにここで決めてから錬成へ渡す。
+        ThumbnailQualityDialog.show(activity, valid) { adjusted ->
+            launch(activity, adjusted)
+        }
+        return true
+    }
+
+    private fun launch(activity: Activity, valid: List<ThumbnailBindPolicy.Item>) {
+        if (isBusy()) {
+            ThumbnailQualityDialog.busyToast(activity)
+            return
         }
         val app = activity.applicationContext
         val requests = valid.map { it.request.copy(purpose = "thumbnail") }
@@ -82,7 +95,6 @@ object ThumbnailGenerationCoordinator {
                 )
             }
         }
-        return true
     }
 
     fun ensureWatching(context: Context) {
