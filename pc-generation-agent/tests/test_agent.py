@@ -32,11 +32,14 @@ MODEL_BYTES = b"fake-safetensors-content" * 4096
 
 class FakeSdHandler(BaseHTTPRequestHandler):
     generated = 0
-    sd_model = "base.safetensors"
+    sd_model = "sd/base.safetensors [abc123]"
+    sd_models: list = []
 
     def do_GET(self) -> None:
         if self.path.startswith("/sdapi/v1/options"):
             self.send_json({"sd_model_checkpoint": type(self).sd_model})
+        elif self.path.startswith("/sdapi/v1/sd-models"):
+            self.send_json(list(type(self).sd_models))
         elif self.path.startswith("/sdapi/v1/progress"):
             self.send_json({"progress": 0.5, "current_image": base64.b64encode(PNG).decode()})
         else:
@@ -56,10 +59,18 @@ class FakeSdHandler(BaseHTTPRequestHandler):
         elif self.path in {"/sdapi/v1/interrupt", "/sdapi/v1/skip"}:
             self.send_json({})
         elif self.path == "/sdapi/v1/options":
+            # Like real SD: only an exact known title switches the model.
             picked = body.get("sd_model_checkpoint")
-            if isinstance(picked, str) and picked.strip():
-                type(self).sd_model = picked.strip()
-            self.send_json({})
+            known = {
+                str(entry.get("title", ""))
+                for entry in type(self).sd_models
+                if isinstance(entry, dict)
+            }
+            if isinstance(picked, str) and picked in known:
+                type(self).sd_model = picked
+                self.send_json({})
+            else:
+                self.send_error(500, "Could not find checkpoint")
         else:
             self.send_error(404)
 
@@ -101,7 +112,8 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
 class AgentIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         FakeSdHandler.generated = 0
-        FakeSdHandler.sd_model = "base.safetensors"
+        FakeSdHandler.sd_model = "sd/base.safetensors [abc123]"
+        FakeSdHandler.sd_models = []
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
         self.sd_server = ThreadingHTTPServer(("127.0.0.1", 0), FakeSdHandler)
@@ -500,13 +512,33 @@ class AgentIntegrationTest(unittest.TestCase):
     def test_checkpoint_list_preview_and_switch(self) -> None:
         root = self.config.checkpoint_dir
         root.mkdir(parents=True, exist_ok=True)
-        (root / "base.safetensors").write_bytes(b"fake-weights")
+        base_file = root / "base.safetensors"
+        base_file.write_bytes(b"fake-weights")
         (root / "base.preview.png").write_bytes(PNG)
         (root / "notes.txt").write_text("ignored")
-        FakeSdHandler.sd_model = "base.safetensors"
+        second_file = root / "second.safetensors"
+        second_file.write_bytes(b"fake-weights-2")
+        FakeSdHandler.sd_models = [
+            {
+                "title": "sd/base.safetensors [abc123]",
+                "model_name": "base",
+                "filename": str(base_file),
+            },
+            {
+                "title": "sd/second.safetensors [def456]",
+                "model_name": "second",
+                # Path SD reports need not match ours; basename still resolves.
+                "filename": "D:\\other\\second.safetensors",
+            },
+        ]
+        FakeSdHandler.sd_model = "sd/base.safetensors [abc123]"
 
         _, listed = self.request("/api/v1/models/checkpoints")
-        self.assertEqual(["base.safetensors"], [item["name"] for item in listed["checkpoints"]])
+        self.assertEqual(
+            ["base.safetensors", "second.safetensors"],
+            [item["name"] for item in listed["checkpoints"]],
+        )
+        self.assertEqual("sd/base.safetensors [abc123]", listed["checkpoints"][0]["sd_title"])
         self.assertEqual("base.safetensors", listed["active"])
 
         with urllib.request.urlopen(
@@ -515,17 +547,22 @@ class AgentIntegrationTest(unittest.TestCase):
         ) as response:
             self.assertEqual(PNG, response.read())
 
-        (root / "second.safetensors").write_bytes(b"fake-weights-2")
         _, switched = self.request(
             "/api/v1/models/checkpoints/active", "POST", {"name": "second.safetensors"}
         )
         self.assertEqual("second.safetensors", switched["active"])
-        self.assertEqual("second.safetensors", FakeSdHandler.sd_model)
+        # The exact SD title must be sent; a bare filename gets SD 500.
+        self.assertEqual("sd/second.safetensors [def456]", FakeSdHandler.sd_model)
 
         with self.assertRaises(Exception):
             self.request("/api/v1/models/checkpoints/active", "POST", {"name": "../evil.safetensors"})
         with self.assertRaises(Exception):
             self.request("/api/v1/models/checkpoints/active", "POST", {"name": "missing.safetensors"})
+
+        # Without the SD model list, the "[hash]" suffix is stripped to find active.
+        FakeSdHandler.sd_models = []
+        _, listed = self.request("/api/v1/models/checkpoints")
+        self.assertEqual("second.safetensors", listed["active"])
 
     def test_database_requeues_interrupted_process_state(self) -> None:
         path = Path(self.temp.name) / "recovery.sqlite3"

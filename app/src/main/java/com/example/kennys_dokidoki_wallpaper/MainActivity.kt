@@ -972,7 +972,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         recyclerViewPresets.isNestedScrollingEnabled = false
         recyclerViewPresets.adapter = presetAdapter
 
-        baseModelAdapter = BaseModelAdapter { name -> selectBaseModel(name) }
+        baseModelAdapter = BaseModelAdapter(
+            { name -> selectBaseModel(name) },
+            { name -> showEditBaseModelDialog(name) }
+        )
         findViewById<RecyclerView>(R.id.recycler_view_models).apply {
             layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false)
             isNestedScrollingEnabled = false
@@ -1413,6 +1416,86 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             presetAdapter.updateList(PresetManager.presets)
             dialog.dismiss()
         }
+    }
+
+    private fun showEditBaseModelDialog(modelName: String) {
+        val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_prompt_card)
+        val etLabel = dialogView.findViewById<EditText>(R.id.et_card_label)
+        val etMainPrompt = dialogView.findViewById<EditText>(R.id.et_main_prompt)
+        val etNegativePrompt = dialogView.findViewById<EditText>(R.id.et_negative_prompt)
+        val tvAppliedTags = dialogView.findViewById<TextView>(R.id.tv_applied_tags_display)
+        val btnEditAppliedTags = dialogView.findViewById<Button>(R.id.btn_edit_applied_tags)
+        ivDialogThumbnailPreview = dialogView.findViewById(R.id.iv_card_thumbnail_preview)
+        val btnPickThumbnail = dialogView.findViewById<Button>(R.id.btn_pick_card_thumbnail)
+        val btnGenerateThumbnail = dialogView.findViewById<Button>(R.id.btn_generate_card_thumbnail)
+        val btnAiConvertPrompt = dialogView.findViewById<View>(R.id.btn_ai_convert_prompt_card)
+        val btnDelete = dialogView.findViewById<Button>(R.id.btn_delete_card)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btn_cancel_edit)
+        val btnSave = dialogView.findViewById<Button>(R.id.btn_save_card)
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tv_dialog_title)
+
+        tvTitle.text = "ベースモデルの編集"
+        etLabel.setText(BaseModelManager.displayName(modelName))
+        etLabel.isEnabled = false
+
+        // A base model only carries a thumbnail; everything else stays hidden.
+        dialogView.findViewById<View>(R.id.til_card_category).visibility = View.GONE
+        etMainPrompt.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.tv_main_prompt_label).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.til_main_prompt).visibility = View.GONE
+        btnAiConvertPrompt.visibility = View.GONE
+        etNegativePrompt.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.tv_negative_prompt_label).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.til_negative_prompt).visibility = View.GONE
+        dialogView.findViewById<View>(R.id.ll_applied_tags_block).visibility = View.GONE
+        tvAppliedTags.visibility = View.GONE
+        btnEditAppliedTags.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.ll_randomizer_block).visibility = View.GONE
+        btnGenerateThumbnail.visibility = View.GONE
+        dialogView.findViewById<Button>(R.id.btn_overwrite_preset_selection).visibility = View.GONE
+
+        tempCardThumbnailUri = BaseModelManager.thumbnailFor(modelName)?.let { Uri.parse(it) }
+        if (tempCardThumbnailUri != null) {
+            loadThumbnailPreview(tempCardThumbnailUri)
+        } else {
+            showBaseModelPcPreview(modelName)
+        }
+
+        val dialog = Md3PopupDialog.show(this, dialogView)
+
+        btnPickThumbnail.setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+            }
+            pickCardThumbnailLauncher.launch(intent)
+        }
+
+        // No model to delete here; the red button clears back to the PC image.
+        btnDelete.visibility = View.VISIBLE
+        btnDelete.text = "サムネイルをクリア"
+        btnDelete.setOnClickListener {
+            tempCardThumbnailUri = null
+            showBaseModelPcPreview(modelName)
+        }
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnSave.setOnClickListener {
+            BaseModelManager.setThumbnail(this, modelName, tempCardThumbnailUri?.toString())
+            baseModelAdapter.submit(BaseModelManager.models, BaseModelManager.activeName)
+            dialog.dismiss()
+        }
+    }
+
+    private fun showBaseModelPcPreview(modelName: String) {
+        val iv = ivDialogThumbnailPreview ?: return
+        iv.imageTintList = null
+        Glide.with(this)
+            .load(GenerationAgentClient.checkpointPreviewUrl(this, modelName))
+            .error(android.R.drawable.ic_menu_gallery)
+            .centerCrop()
+            .into(iv)
     }
 
     private fun scheduleBuilderSelectionUiRefresh() {

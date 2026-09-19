@@ -139,7 +139,7 @@ pc-generation-agent/
 - `GET /api/v1/model-imports` — 直近のインポート一覧
 - `GET /api/v1/models/checkpoints` — `checkpoint_dir` 内のモデル一覧と使用中モデル
 - `GET /api/v1/models/checkpoints/preview?name=...` — モデル横のプレビュー画像
-- `POST /api/v1/models/checkpoints/active` — 使用モデルを切替（`{"name": "..."}`）
+- `POST /api/v1/models/checkpoints/active` — 使用モデルを切替（`{"name": "..."}`、SDの正式タイトルで指定）
 - `/sdapi/v1/*` — 既存機能との互換用にSD APIへ中継
 
 ## 注意

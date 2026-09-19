@@ -11,7 +11,8 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 
 // Horizontal single-select strip mirroring the prompt card look.
 class BaseModelAdapter(
-    private val onSelect: (String) -> Unit
+    private val onSelect: (String) -> Unit,
+    private val onLongClick: (String) -> Unit
 ) : RecyclerView.Adapter<BaseModelAdapter.Holder>() {
 
     private val items = mutableListOf<CheckpointInfo>()
@@ -32,8 +33,9 @@ class BaseModelAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val model = items[position]
         holder.label.text = BaseModelManager.displayName(model.name)
+        val localThumb = BaseModelManager.thumbnailFor(model.name)
         Glide.with(holder.thumb.context)
-            .load(GenerationAgentClient.checkpointPreviewUrl(holder.thumb.context, model.name))
+            .load(localThumb ?: GenerationAgentClient.checkpointPreviewUrl(holder.thumb.context, model.name))
             .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
             .placeholder(android.R.drawable.ic_menu_gallery)
             .error(android.R.drawable.ic_menu_gallery)
@@ -45,6 +47,7 @@ class BaseModelAdapter(
             holder.overlay.setBackgroundResource(R.drawable.bg_card_selected)
         }
         holder.itemView.setOnClickListener { onSelect(model.name) }
+        holder.itemView.setOnLongClickListener { onLongClick(model.name); true }
     }
 
     override fun onViewRecycled(holder: Holder) {

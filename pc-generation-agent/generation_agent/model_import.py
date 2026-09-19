@@ -4,6 +4,7 @@ import base64
 import binascii
 import json
 import os
+import re
 import shutil
 import threading
 import urllib.error
@@ -128,25 +129,82 @@ class ModelImportService:
 
     def list_checkpoints(self) -> dict[str, Any]:
         models: list[dict[str, Any]] = []
-        root = self._config.checkpoint_dir
-        if root.is_dir():
-            for item in sorted(root.iterdir(), key=lambda entry: entry.name.lower()):
-                if item.is_file() and item.suffix.lower() in _MODEL_SUFFIXES:
-                    stat = item.stat()
-                    models.append({
-                        "name": item.name,
-                        "size": stat.st_size,
-                        "modified": datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat(timespec="seconds"),
-                    })
-        return {"checkpoints": models, "active": self._active_checkpoint_name()}
+        titles = self._sd_checkpoint_titles()
+        for item in self._local_checkpoint_files():
+            stat = item.stat()
+            models.append({
+                "name": item.name,
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat(timespec="seconds"),
+                "sd_title": titles.get(item.name),
+            })
+        return {"checkpoints": models, "active": self._active_checkpoint_name(titles)}
 
-    def _active_checkpoint_name(self) -> str | None:
+    def _local_checkpoint_files(self) -> list[Path]:
+        root = self._config.checkpoint_dir
+        if not root.is_dir():
+            return []
+        return [
+            item for item in sorted(root.iterdir(), key=lambda entry: entry.name.lower())
+            if item.is_file() and item.suffix.lower() in _MODEL_SUFFIXES
+        ]
+
+    def _sd_checkpoint_titles(self) -> dict[str, str]:
+        """Map local filename -> exact SD title.
+
+        SD only accepts its own title (e.g. "sd/foo.safetensors [abc123]")
+        for sd_model_checkpoint; a bare filename makes it answer 500.
+        """
         try:
-            name = self._sd.get_options().get("sd_model_checkpoint")
+            entries = self._sd.get_sd_models()
+        except Exception:
+            return {}
+        by_path: dict[str, str] = {}
+        by_base: dict[str, str] = {}
+        for entry in entries:
+            title = str(entry.get("title") or "").strip()
+            filename = str(entry.get("filename") or "").strip()
+            if not title or not filename:
+                continue
+            by_path.setdefault(os.path.normcase(os.path.normpath(filename)), title)
+            by_base.setdefault(os.path.normcase(os.path.basename(filename.replace("\\", "/"))), title)
+        titles: dict[str, str] = {}
+        for item in self._local_checkpoint_files():
+            candidates = [
+                os.path.normcase(os.path.normpath(str(item))),
+                os.path.normcase(item.name),
+            ]
+            try:
+                candidates.insert(0, os.path.normcase(os.path.normpath(str(item.resolve()))))
+            except OSError:
+                pass
+            title = next((by_path[key] for key in candidates if key in by_path), None)
+            if title is None:
+                title = by_base.get(os.path.normcase(item.name))
+            if title:
+                titles[item.name] = title
+        return titles
+
+    def _active_checkpoint_name(self, titles: dict[str, str]) -> str | None:
+        try:
+            raw = self._sd.get_options().get("sd_model_checkpoint")
         except Exception:
             return None
-        text = str(name or "").strip()
-        return text or None
+        value = str(raw or "").strip()
+        if not value:
+            return None
+        for name, title in titles.items():
+            if title == value:
+                return name
+        # Fallback when the SD model list is unavailable: the options value
+        # looks like "sd/foo.safetensors [hash]", so strip and match by file.
+        stem = re.sub(r"\s*\[[^\[\]]*\]\s*$", "", value).strip()
+        base = os.path.basename(stem.replace("\\", "/"))
+        if not base:
+            return None
+        names = list(titles) or [item.name for item in self._local_checkpoint_files()]
+        wanted = os.path.normcase(base)
+        return next((name for name in names if os.path.normcase(name) == wanted), None)
 
     def resolve_checkpoint_preview(self, raw_name: Any) -> Path | None:
         target = self._checkpoint_file(raw_name)
@@ -168,8 +226,10 @@ class ModelImportService:
         target = self._checkpoint_file(raw_name)
         if target is None:
             raise ValueError("checkpoint not found")
+        # SD matches by its own title; a bare filename is rejected with 500.
+        desired = self._sd_checkpoint_titles().get(target.name, target.name)
         try:
-            self._sd.set_options({"sd_model_checkpoint": target.name})
+            self._sd.set_options({"sd_model_checkpoint": desired})
         except Exception as error:
             raise RuntimeError(f"SD rejected the model switch: {error}") from error
         print(f"Active checkpoint: {target.name}")
