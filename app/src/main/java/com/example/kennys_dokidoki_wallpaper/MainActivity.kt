@@ -2955,12 +2955,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         dialog.show()
     }
 
-    /** 設定ダイアログ用。保存先フォルダをエクスプローラーで開く。 */
+    /** 設定ダイアログ用。設定中の保存先フォルダをエクスプローラーで開く。 */
     private fun openThumbnailFolderInExplorer() {
         lifecycleScope.launch {
             val dir = withContext(Dispatchers.IO) { ThumbnailLocalCache.cacheDir(applicationContext) }
-            val documentId = FolderExplorerPolicy.documentId(dir.absolutePath)
-            if (documentId == null) {
+            val docUri = FolderExplorerPolicy.documentId(dir.absolutePath)?.let { id ->
+                DocumentsContract.buildDocumentUri(
+                    "com.android.externalstorage.documents",
+                    id
+                )
+            }
+            if (docUri == null) {
                 // アプリ専用の内部領域。他アプリは覗けないのでパスだけ案内する。
                 Toast.makeText(
                     this@MainActivity,
@@ -2969,10 +2974,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 ).show()
                 return@launch
             }
-            val docUri = DocumentsContract.buildDocumentUri(
-                "com.android.externalstorage.documents",
-                documentId
-            )
+            // VIEW のディレクトリURIは無視してルートを出すファイルマネージャが多い。
+            // INITIAL_URI 付きのピッカーなら、開いた位置が必ず設定中の保存先になる。
+            val picker = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                putExtra(DocumentsContract.EXTRA_INITIAL_URI, docUri)
+            }
+            try {
+                startActivity(picker)
+                return@launch
+            } catch (_: Exception) {
+            }
+            // ピッカーが無い端末向けの代替。URIを解釈するエクスプローラーなら開ける。
             val view = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(docUri, DocumentsContract.Document.MIME_TYPE_DIR)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -2982,14 +2994,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 return@launch
             } catch (_: Exception) {
             }
-            // フォルダを直接開けるアプリが無いときはピッカーで同じ場所を開く。
-            try {
-                startActivity(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-                    putExtra(DocumentsContract.EXTRA_INITIAL_URI, docUri)
-                })
-            } catch (_: Exception) {
-                Toast.makeText(this@MainActivity, dir.absolutePath, Toast.LENGTH_LONG).show()
-            }
+            Toast.makeText(this@MainActivity, dir.absolutePath, Toast.LENGTH_LONG).show()
         }
     }
 
