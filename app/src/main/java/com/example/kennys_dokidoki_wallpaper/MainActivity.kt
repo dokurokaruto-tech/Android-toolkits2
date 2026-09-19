@@ -2952,8 +2952,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .setTitle("サムネイルを削除")
             .setMessage(
                 "端末に保存した全サムネイル（カード・プリセット・閲覧キャッシュ）を削除する。\n\n" +
-                    "閲覧キャッシュはPCから再取得されるが、カード／プリセットのサムネイルは" +
-                    "PCに元データが無いと戻らない。本当に削除するか？"
+                    "削除後は表示時や次回起動時にPCから自動で取り直してまた保存する。\n" +
+                    "PCに元データが無いサムネイルは戻らない。本当に削除するか？"
             )
             .setPositiveButton("削除する") { _, _ ->
                 storageDialog.dismiss()

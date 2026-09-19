@@ -63,17 +63,37 @@ object ThumbnailLocalCache {
         }
         if (cardsDirty) PromptCardManager.saveCards(app)
         if (presetsDirty) PresetManager.savePresets(app)
+        recoverMissing(app)
         return changed
+    }
+
+    /**
+     * 消えたローカルサムネイルを見つけたら、覚えていた元URLから
+     * PCへ取り直してまた端末へ保存する。閲覧キャッシュはバインド毎に
+     * 既に自己修復するので、ここはカード／プリセットが対象。
+     */
+    private fun recoverMissing(context: Context) {
+        val entries =
+            PromptCardManager.promptCards.map { ThumbnailBindPolicy.Target.card(it.id) to it.thumbnailUri?.toString() } +
+                PresetManager.presets.map { ThumbnailBindPolicy.Target.preset(it.id) to it.thumbnailUri?.toString() }
+        entries.forEach { (target, uri) ->
+            if (!ThumbnailLocalCachePolicy.needsRecovery(uri)) return@forEach
+            val remote = ThumbnailBindStore.sourceFor(context, target) ?: return@forEach
+            if (!ThumbnailLocalCachePolicy.needsLocalCopy(remote)) return@forEach
+            enqueue(context, target, Uri.parse(remote))
+        }
     }
 
     fun enqueue(context: Context, target: ThumbnailBindPolicy.Target, remote: Uri) {
         if (!target.isValid) return
         if (!ThumbnailLocalCachePolicy.needsLocalCopy(remote.toString())) return
+        val app = context.applicationContext
+        // 元URLを覚えておく。ローカルファイルが消えたときの再取得に使う。
+        ThumbnailBindStore.rememberSource(app, target, remote.toString())
         val key = ThumbnailBindPolicy.pendingKey(target)
         synchronized(inflight) {
             if (!inflight.add(key)) return
         }
-        val app = context.applicationContext
         scope.launch {
             try {
                 gate.withPermit {

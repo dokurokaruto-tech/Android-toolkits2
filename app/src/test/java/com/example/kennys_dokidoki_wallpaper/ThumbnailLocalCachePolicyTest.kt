@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class ThumbnailLocalCachePolicyTest {
     @Test
@@ -114,6 +115,29 @@ class ThumbnailLocalCachePolicyTest {
             pending
         )
         assertNull(ThumbnailLocalCachePolicy.remoteRef("http://pc/api/v1/jobs/abc"))
+    }
+
+    @Test
+    fun flagsOnlyMissingLocalFilesForRecovery() {
+        val existing = File.createTempFile("thumb", ".jpg")
+        try {
+            assertFalse(
+                ThumbnailLocalCachePolicy.needsRecovery("file://" + existing.absolutePath)
+            )
+        } finally {
+            existing.delete()
+        }
+        assertTrue(
+            ThumbnailLocalCachePolicy.needsRecovery("file:///data/app/card_thumbnails/card_a_1.jpg")
+        )
+        assertFalse(
+            ThumbnailLocalCachePolicy.needsRecovery(
+                "http://pc/api/v1/mobile-thumbnails/2026-08-23/a.png"
+            )
+        )
+        assertFalse(ThumbnailLocalCachePolicy.needsRecovery(null))
+        assertFalse(ThumbnailLocalCachePolicy.needsRecovery(""))
+        assertFalse(ThumbnailLocalCachePolicy.needsRecovery("content://media/external/images/1"))
     }
 
     @Test

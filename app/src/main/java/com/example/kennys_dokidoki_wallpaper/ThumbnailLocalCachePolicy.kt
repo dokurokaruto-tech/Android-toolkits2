@@ -1,5 +1,6 @@
 package com.example.kennys_dokidoki_wallpaper
 
+import java.io.File
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -118,6 +119,17 @@ object ThumbnailLocalCachePolicy {
         if (localUri.isNullOrBlank()) return false
         if (!needsLocalCopy(currentUri)) return false
         return currentUri != localUri
+    }
+
+    /**
+     * 消えたローカルサムネイルの回復判定。
+     * file:// で実ファイルが無いときだけ true。リモートURIは enqueuePending が、
+     * 空はそもそも対象外が扱う。
+     */
+    fun needsRecovery(uri: String?): Boolean {
+        if (uri.isNullOrBlank() || isRemote(uri)) return false
+        if (!uri.startsWith("file://")) return false
+        return !File(uri.removePrefix("file://")).exists()
     }
 
     fun decodeSampleSize(
