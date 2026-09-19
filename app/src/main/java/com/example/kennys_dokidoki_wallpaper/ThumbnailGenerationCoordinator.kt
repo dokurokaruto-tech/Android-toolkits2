@@ -76,11 +76,10 @@ object ThumbnailGenerationCoordinator {
                     thumbnailTargets = targets
                 )
                 val completed = GenerationAgentClient.monitor(app, accepted, silent = false)
-                val bound = ThumbnailBinder.applyCompleted(app, completed.imageUrls, targets)
+                val outcomes = ThumbnailBinder.applyCompleted(app, completed.imageUrls, targets)
                 Toast.makeText(
                     app,
-                    if (bound > 0) "サムネイル ${bound} 枚を紐づけた。"
-                    else (completed.error ?: "サムネイルはできたが紐づけ先が無い。"),
+                    ThumbnailBindPolicy.completionMessage(outcomes, completed.error),
                     Toast.LENGTH_LONG
                 ).show()
             } catch (error: Exception) {

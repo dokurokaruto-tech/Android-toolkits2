@@ -30,6 +30,21 @@ object ThumbnailBindPolicy {
 
     fun pendingKey(target: Target): String = "${target.kind}:${target.id}"
 
+    /**
+     * 紐づけの結果。監視中の seed と完了後の apply で二重に走るので、
+     * 2回目は ALREADY（もう載っている）になる。それは成功であって失敗ではない。
+     */
+    enum class BindOutcome { CHANGED, ALREADY, PENDING, SKIPPED }
+
+    fun isBound(outcome: BindOutcome): Boolean = outcome != BindOutcome.SKIPPED
+
+    fun boundCount(outcomes: List<BindOutcome>): Int = outcomes.count { isBound(it) }
+
+    fun completionMessage(outcomes: List<BindOutcome>, error: String?): String =
+        boundCount(outcomes).takeIf { it > 0 }
+            ?.let { bound -> "サムネイル $bound 枚を紐づけた。" }
+            ?: (error?.takeIf { it.isNotBlank() } ?: "サムネイルはできたが紐づけ先が無い。")
+
     fun parseTarget(kind: String?, id: String?): Target? {
         val target = Target((kind ?: "").trim(), (id ?: "").trim())
         return target.takeIf { it.isValid }

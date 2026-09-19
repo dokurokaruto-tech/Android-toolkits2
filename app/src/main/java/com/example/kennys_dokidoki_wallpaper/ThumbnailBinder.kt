@@ -36,9 +36,15 @@ object ThumbnailBinder {
         }
     }
 
-    fun applyCompleted(context: Context, urls: List<String>, targets: List<ThumbnailBindPolicy.Target>): Int {
-        if (urls.isEmpty() || targets.isEmpty()) return 0
-        var bound = 0
+    fun applyCompleted(
+        context: Context,
+        urls: List<String>,
+        targets: List<ThumbnailBindPolicy.Target>
+    ): List<ThumbnailBindPolicy.BindOutcome> {
+        if (urls.isEmpty() || targets.isEmpty()) {
+            return targets.map { ThumbnailBindPolicy.BindOutcome.SKIPPED }
+        }
+        val outcomes = mutableListOf<ThumbnailBindPolicy.BindOutcome>()
         var cardsDirty = false
         var presetsDirty = false
         ThumbnailBindPolicy.pairUrls(urls, targets).forEach { (target, url) ->
@@ -49,24 +55,31 @@ object ThumbnailBinder {
             when (applyLoaded(context, target, uri)) {
                 ApplyResult.CARD -> {
                     cardsDirty = true
-                    bound++
                     notifyBound(target, uri)
+                    outcomes.add(ThumbnailBindPolicy.BindOutcome.CHANGED)
                 }
                 ApplyResult.PRESET -> {
                     presetsDirty = true
-                    bound++
                     notifyBound(target, uri)
+                    outcomes.add(ThumbnailBindPolicy.BindOutcome.CHANGED)
                 }
                 ApplyResult.PENDING -> {
-                    bound++
                     notifyBound(target, uri)
+                    outcomes.add(ThumbnailBindPolicy.BindOutcome.PENDING)
                 }
-                ApplyResult.UNCHANGED -> notifyBound(target, uri)
+                ApplyResult.ALREADY -> {
+                    notifyBound(target, uri)
+                    outcomes.add(ThumbnailBindPolicy.BindOutcome.ALREADY)
+                }
+                else -> {
+                    notifyBound(target, uri)
+                    outcomes.add(ThumbnailBindPolicy.BindOutcome.SKIPPED)
+                }
             }
         }
         if (cardsDirty) PromptCardManager.saveCards(context)
         if (presetsDirty) PresetManager.savePresets(context)
-        return bound
+        return outcomes
     }
 
     fun applyOne(context: Context, target: ThumbnailBindPolicy.Target, uri: Uri): Boolean {
@@ -82,7 +95,7 @@ object ThumbnailBinder {
                 notifyBound(target, uri)
                 true
             }
-            ApplyResult.PENDING, ApplyResult.UNCHANGED -> {
+            ApplyResult.PENDING, ApplyResult.ALREADY, ApplyResult.UNCHANGED -> {
                 notifyBound(target, uri)
                 true
             }
@@ -112,7 +125,7 @@ object ThumbnailBinder {
         return fallback ?: ThumbnailBindStore.consumePending(context, target)
     }
 
-    enum class ApplyResult { CARD, PRESET, PENDING, UNCHANGED }
+    enum class ApplyResult { CARD, PRESET, PENDING, ALREADY, UNCHANGED }
 
     private fun persistRemote(context: Context, target: ThumbnailBindPolicy.Target, uri: Uri) {
         if (ThumbnailLocalCachePolicy.needsLocalCopy(uri.toString())) {
@@ -143,7 +156,7 @@ object ThumbnailBinder {
                         )
                 ) {
                     ThumbnailBindStore.consumePending(context, target)
-                    ApplyResult.UNCHANGED
+                    ApplyResult.ALREADY
                 } else {
                     card.thumbnailUri = uri
                     ThumbnailBindStore.consumePending(context, target)
@@ -166,7 +179,7 @@ object ThumbnailBinder {
                         )
                 ) {
                     ThumbnailBindStore.consumePending(context, target)
-                    ApplyResult.UNCHANGED
+                    ApplyResult.ALREADY
                 } else {
                     preset.thumbnailUri = uri
                     ThumbnailBindStore.consumePending(context, target)

@@ -1,72 +1,64 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * サムネイル紐づけは二重に走る（監視中の seed と完了後の apply）。
+ * 2回目は ALREADY になるが、それは失敗ではなく「もう載っている」。
+ */
 class ThumbnailBindPolicyTest {
+
     @Test
-    fun encodeAndDecodeKeepCardAndPresetTargets() {
-        val encoded = ThumbnailBindPolicy.encodeTargets(
-            listOf(
-                ThumbnailBindPolicy.Target.card("card-a"),
-                ThumbnailBindPolicy.Target.preset("preset-b"),
-                ThumbnailBindPolicy.Target("nope", ""),
-                ThumbnailBindPolicy.Target.card("  card-c  ")
-            )
-        )
-        assertEquals(
-            listOf(
-                ThumbnailBindPolicy.Target.card("card-a"),
-                ThumbnailBindPolicy.Target.preset("preset-b"),
-                ThumbnailBindPolicy.Target.card("card-c")
-            ),
-            ThumbnailBindPolicy.decodeTargets(encoded)
-        )
-        assertTrue(ThumbnailBindPolicy.decodeTargets(null).isEmpty())
-        assertNull(ThumbnailBindPolicy.parseTarget("other", "x"))
+    fun alreadyBoundCountsAsBound() {
+        assertTrue(ThumbnailBindPolicy.isBound(ThumbnailBindPolicy.BindOutcome.ALREADY))
+        assertTrue(ThumbnailBindPolicy.isBound(ThumbnailBindPolicy.BindOutcome.CHANGED))
+        assertTrue(ThumbnailBindPolicy.isBound(ThumbnailBindPolicy.BindOutcome.PENDING))
+        assertFalse(ThumbnailBindPolicy.isBound(ThumbnailBindPolicy.BindOutcome.SKIPPED))
     }
 
     @Test
-    fun pairUsesTaskIndexSoAFailedMiddleTaskDoesNotShiftTargets() {
-        val targets = listOf(
-            ThumbnailBindPolicy.Target.card("one"),
-            ThumbnailBindPolicy.Target.card("two"),
-            ThumbnailBindPolicy.Target.preset("three")
-        )
-        val paired = ThumbnailBindPolicy.pairUrls(
-            listOf(
-                "http://pc/api/v1/files/2026-08-23/THUMB_stamp_abcd_0001.png",
-                "http://pc/api/v1/files/2026-08-23/THUMB_stamp_abcd_0003.png?token=x"
-            ),
-            targets
-        )
+    fun boundCountIgnoresSkipped() {
         assertEquals(
-            listOf(
-                targets[0] to "http://pc/api/v1/files/2026-08-23/THUMB_stamp_abcd_0001.png",
-                targets[2] to "http://pc/api/v1/files/2026-08-23/THUMB_stamp_abcd_0003.png?token=x"
-            ),
-            paired
+            2,
+            ThumbnailBindPolicy.boundCount(
+                listOf(
+                    ThumbnailBindPolicy.BindOutcome.ALREADY,
+                    ThumbnailBindPolicy.BindOutcome.SKIPPED,
+                    ThumbnailBindPolicy.BindOutcome.CHANGED
+                )
+            )
         )
     }
 
     @Test
-    fun pendingMapSurvivesEncode() {
-        val encoded = ThumbnailBindPolicy.encodePending(
-            mapOf(
-                "card:draft-1" to "http://pc/a.png",
-                " preset:p " to " ",
-                "" to "http://pc/b.png"
+    fun messageReportsSuccessEvenWhenNothingChanged() {
+        assertEquals(
+            "サムネイル 1 枚を紐づけた。",
+            ThumbnailBindPolicy.completionMessage(
+                listOf(ThumbnailBindPolicy.BindOutcome.ALREADY),
+                null
+            )
+        )
+    }
+
+    @Test
+    fun messageFallsBackToErrorThenDefault() {
+        assertEquals(
+            "PCが応答しない",
+            ThumbnailBindPolicy.completionMessage(
+                listOf(ThumbnailBindPolicy.BindOutcome.SKIPPED),
+                "PCが応答しない"
             )
         )
         assertEquals(
-            mapOf("card:draft-1" to "http://pc/a.png"),
-            ThumbnailBindPolicy.decodePending(encoded)
-        )
-        assertEquals(
-            "card:draft-1",
-            ThumbnailBindPolicy.pendingKey(ThumbnailBindPolicy.Target.card("draft-1"))
+            "サムネイルはできたが紐づけ先が無い。",
+            ThumbnailBindPolicy.completionMessage(
+                listOf(ThumbnailBindPolicy.BindOutcome.SKIPPED),
+                "  "
+            )
         )
     }
 }
