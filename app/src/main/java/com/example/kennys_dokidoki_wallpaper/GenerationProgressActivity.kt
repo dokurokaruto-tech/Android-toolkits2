@@ -85,10 +85,7 @@ class GenerationProgressActivity : AppCompatActivity() {
         // 開始したらすぐにPiPに入るわよ！
         ivProgress.post {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(9, 16))
-                    .build()
-                enterPictureInPictureMode(params)
+                enterPictureInPictureMode(pipParams())
             }
         }
     }
@@ -112,12 +109,7 @@ class GenerationProgressActivity : AppCompatActivity() {
     private fun restorePipOverOriginalScreen() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (!GenerationPipExpandPolicy.shouldOfferRestorePip(isInPictureInPictureMode)) return
-        val ratio = if (isLargePiP) Rational(1, 1) else Rational(9, 16)
-        enterPictureInPictureMode(
-            PictureInPictureParams.Builder()
-                .setAspectRatio(ratio)
-                .build()
-        )
+        enterPictureInPictureMode(pipParams())
     }
 
     private fun syncRestorePipButton() {
@@ -172,12 +164,25 @@ class GenerationProgressActivity : AppCompatActivity() {
     private fun togglePiPSize() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             isLargePiP = !isLargePiP
-            val ratio = if (isLargePiP) Rational(1, 1) else Rational(9, 16)
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(ratio)
-                .build()
-            setPictureInPictureParams(params)
+            setPictureInPictureParams(pipParams())
         }
+    }
+
+    /**
+     * PiP の形は常に生成中画像の縦横比から出す。
+     * 比率を載せずに更新すると端末既定へ戻され、縦長画像でも横長になる。
+     */
+    private fun pipParams(actions: List<RemoteAction>? = null): PictureInPictureParams {
+        val image = GenerationProgressManager.state.value.currentImage
+        val ratio = GenerationPipLayoutPolicy.windowRatio(
+            image?.width ?: 0,
+            image?.height ?: 0,
+            isLargePiP
+        )
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(ratio.width, ratio.height))
+        if (actions != null) builder.setActions(actions)
+        return builder.build()
     }
 
     private fun observeProgress() {
@@ -240,9 +245,7 @@ class GenerationProgressActivity : AppCompatActivity() {
                 )
             )
 
-            val params = PictureInPictureParams.Builder()
-                .setActions(actions)
-                .build()
+            val params = pipParams(actions)
             setPictureInPictureParams(params)
         }
     }
@@ -250,7 +253,7 @@ class GenerationProgressActivity : AppCompatActivity() {
     override fun onUserLeaveHint() {
         // ホームボタンを押した時とかに自動でPiPに入るわよ！
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            enterPictureInPictureMode(PictureInPictureParams.Builder().build())
+            enterPictureInPictureMode(pipParams())
         }
     }
 
