@@ -267,6 +267,7 @@ class ModelImportService:
             job["progress"] = 1.0
             job["target_path"] = str(destination)
             job["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
+            print(f"Model import completed: {destination}")
 
     def _fail(self, job_id: str, message: str) -> None:
         with self._lock:
@@ -276,3 +277,4 @@ class ModelImportService:
             job["status"] = "failed"
             job["error"] = message[:500]
             job["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
+            print(f"Model import failed: {message[:500]}")

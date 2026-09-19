@@ -374,7 +374,7 @@ class CivitaiImportActivity : AppCompatActivity() {
                     thumbUrl = selectedImage?.url?.takeIf { it.isNotBlank() }
                 )
                 CivitaiImportStore.savePending(this@CivitaiImportActivity, pending)
-                resumeImport(pending)
+                pollPending(pending)
             } catch (error: Exception) {
                 if (error is CancellationException) {
                     throw error
@@ -393,32 +393,34 @@ class CivitaiImportActivity : AppCompatActivity() {
         // Persist refreshed edits so a kill during polling still finalizes them.
         CivitaiImportStore.savePending(this, pending)
         setImportBusy("確認中...")
-        pollJob = scope.launch {
-            try {
-                when (CivitaiImportFinalizer.awaitAndFinalize(this@CivitaiImportActivity, pending, ::renderTick)) {
-                    true -> {
-                        Toast.makeText(this@CivitaiImportActivity, "インポート完了: ${pending.label}", Toast.LENGTH_LONG).show()
-                        setResult(Activity.RESULT_OK)
-                        finish()
-                    }
-                    false -> {
-                        resetImportButton()
-                        btnImport.isEnabled = true
-                        showStatus("失敗: ${CivitaiImportStore.takeLastError(this@CivitaiImportActivity) ?: "PCでの保存に失敗しました"}")
-                    }
-                    null -> {
-                        resetImportButton()
-                        showStatus("バックグラウンドで確認中です。完了したら通知します。")
-                    }
+        pollJob = scope.launch { pollPending(pending) }
+    }
+
+    private suspend fun pollPending(pending: PendingCivitaiImport) {
+        try {
+            when (CivitaiImportFinalizer.awaitAndFinalize(this, pending, ::renderTick)) {
+                true -> {
+                    Toast.makeText(this, "インポート完了: ${pending.label}", Toast.LENGTH_LONG).show()
+                    setResult(Activity.RESULT_OK)
+                    finish()
                 }
-            } catch (error: Exception) {
-                if (error is CancellationException) {
-                    throw error
+                false -> {
+                    resetImportButton()
+                    btnImport.isEnabled = true
+                    showStatus("失敗: ${CivitaiImportStore.takeLastError(this) ?: "PCでの保存に失敗しました"}")
                 }
-                resetImportButton()
-                btnImport.isEnabled = true
-                showStatus("接続が切れました。開き直すと続きから確認します: ${error.message}")
+                null -> {
+                    resetImportButton()
+                    showStatus("バックグラウンドで確認中です。完了したら通知します。")
+                }
             }
+        } catch (error: Exception) {
+            if (error is CancellationException) {
+                throw error
+            }
+            resetImportButton()
+            btnImport.isEnabled = true
+            showStatus("接続が切れました。開き直すと続きから確認します: ${error.message}")
         }
     }
 
