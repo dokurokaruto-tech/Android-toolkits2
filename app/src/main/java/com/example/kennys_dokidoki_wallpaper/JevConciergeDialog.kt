@@ -276,7 +276,7 @@ internal object JevConciergeDialog {
         var bestMain = ""
         var bestNegative = target.negativePrompt
         var bestScore = -1.0
-        for (_ in 0 until DRAFT_TRIES) {
+        for (i in 0 until DRAFT_TRIES) {
             setStatus("変更案を作成中…")
             val draft = runCatching {
                 PromptCardAiResponseParser.parse(
@@ -355,7 +355,7 @@ internal object JevConciergeDialog {
 
         var bestText = ""
         var bestScore = -1.0
-        for (_ in 0 until DRAFT_TRIES) {
+        for (i in 0 until DRAFT_TRIES) {
             setStatus("変更案を作成中…")
             val draft = runCatching {
                 JevConciergePolicy.parseTagText(
