@@ -545,6 +545,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private var variantPickerShownForImage: String? = null
 
     private lateinit var tvOpenRouterCounter: TextView
+    private var openRouterBalanceLabel: OpenRouterBalanceLabel? = null
 
     private lateinit var chatInput: EditText
     private lateinit var btnSend: ImageButton
@@ -565,16 +566,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
     private fun updateCounter() {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val provider = prefs.getString("chat_cloud_provider", "GROK")
-        if (provider == "OPENROUTER") {
-            val total = OpenRouterManager.getTotalUsage(this)
-            val maxQuota = OpenRouterManager.getTotalDailyMax(this)
-            tvOpenRouterCounter.text = "OR: $total/$maxQuota"
-            tvOpenRouterCounter.visibility = View.VISIBLE
-        } else {
-            tvOpenRouterCounter.visibility = View.GONE
-        }
+        openRouterBalanceLabel?.refresh()
     }
 
     // タップ判定用
@@ -1079,6 +1071,16 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         btnSend = findViewById(R.id.btn_send)
         chatInput = findViewById(R.id.chat_input)
         tvOpenRouterCounter = findViewById(R.id.tv_openrouter_counter)
+        openRouterBalanceLabel = OpenRouterBalanceLabel(tvOpenRouterCounter, this) {
+            val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val engine = prefs.getString("chat_llm_engine", "CLOUD")
+            val provider = prefs.getString("chat_cloud_provider", "GROK")
+            if (engine == "CLOUD" && provider == "OPENROUTER") {
+                prefs.getString("chat_openrouter_model", "deepseek/deepseek-v4-flash:free")
+            } else {
+                null
+            }
+        }
         tvOpenRouterCounter.setOnClickListener {
             showOpenRouterKeySelector()
         }

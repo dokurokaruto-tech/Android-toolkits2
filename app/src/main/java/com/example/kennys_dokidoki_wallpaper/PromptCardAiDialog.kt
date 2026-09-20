@@ -50,15 +50,13 @@ class PromptCardAiDialog(private val activity: AppCompatActivity) {
         var selectedPresetName: String? = null
         var selectedSystemPrompt = PromptCardInstructionPolicy.DEFAULT_PROMPT
 
+        val balanceLabel = OpenRouterBalanceLabel(usageText, activity) {
+            choice.modelId.takeIf { choice.provider == PromptCardLlmProvider.OPENROUTER }
+        }
+
         fun renderChoice() {
             modelText.text = PromptCardAiCopy.modelLine(choice)
-            if (choice.provider == PromptCardLlmProvider.OPENROUTER) {
-                val limit = OpenRouterManager.getTotalDailyMax(activity)
-                usageText.text = TagAiGenerateCopy.usageLine(OpenRouterManager.getTotalUsage(activity), limit)
-                usageText.visibility = View.VISIBLE
-            } else {
-                usageText.visibility = View.GONE
-            }
+            balanceLabel.refresh()
         }
 
         fun bindPresets() {
@@ -94,6 +92,7 @@ class PromptCardAiDialog(private val activity: AppCompatActivity) {
         useExisting.isChecked = existingMain.isNotBlank() || existingNegative.isNotBlank()
 
         val dialog = Md3PopupDialog.show(activity, view)
+        dialog.setOnDismissListener { balanceLabel.close() }
         changeModel.setOnClickListener {
             showModelPicker(choice) { selected ->
                 choice = selected
@@ -136,6 +135,7 @@ class PromptCardAiDialog(private val activity: AppCompatActivity) {
                     Toast.makeText(activity, PromptCardAiCopy.DONE, Toast.LENGTH_SHORT).show()
                     dialog.dismiss()
                 }.onFailure { error ->
+                    balanceLabel.refresh()
                     progress.hide()
                     generate.isEnabled = true
                     changeModel.isEnabled = true

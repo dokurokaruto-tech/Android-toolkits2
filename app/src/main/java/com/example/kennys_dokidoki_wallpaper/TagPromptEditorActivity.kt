@@ -570,6 +570,14 @@ class TagPromptEditorActivity : AppCompatActivity() {
             TagInstructionEditor.delete(this, selectedPresetName) { bindPresets() }
         }
 
+        val balanceLabel = OpenRouterBalanceLabel(tvUsageCounter, this) {
+            if (prefs.getString("chat_cloud_provider", "GROK") == "OPENROUTER") {
+                prefs.getString("chat_openrouter_model", "deepseek/deepseek-v4-flash:free")
+            } else {
+                null
+            }
+        }
+
         fun updateDialogModelStatus() {
             val provider = prefs.getString("chat_cloud_provider", "GROK") ?: "GROK"
             val model = if (provider == "OPENROUTER") {
@@ -578,13 +586,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
                 "grok-4-1-fast-non-reasoning"
             }
             tvModelInfo.text = TagAiGenerateCopy.modelLine(provider, model.orEmpty())
-            if (provider == "OPENROUTER") {
-                val limit = OpenRouterManager.getTotalDailyMax(this)
-                tvUsageCounter.text = TagAiGenerateCopy.usageLine(OpenRouterManager.getTotalUsage(this), limit)
-                tvUsageCounter.visibility = View.VISIBLE
-            } else {
-                tvUsageCounter.visibility = View.GONE
-            }
+            balanceLabel.refresh()
         }
         updateDialogModelStatus()
         btnChangeModel.setOnClickListener {
@@ -594,6 +596,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
         cbUseTagName.isChecked = etTagName.text.toString().trim().isNotEmpty()
         cbUseExisting.isChecked = variantEditText?.text?.toString()?.trim()?.isNotEmpty() == true
         hybridDialog = Md3PopupDialog.show(this, dialogView)
+        hybridDialog?.setOnDismissListener { balanceLabel.close() }
 
         btnPickImage.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {

@@ -16,7 +16,7 @@ object OpenRouterManager {
     private const val KEY_LAST_RESET_TIME = "last_reset_time"
     private const val KEY_MANUAL_SELECTED_KEY = "manual_selected_key"
     private const val CACHED_MODELS_KEY = "cached_openrouter_models"
-    private const val FREE_MODEL_SUFFIX = ":free"
+    private const val CREDIT_TIMEOUT_MS = 15_000
     private const val CREDITS_URL = "https://openrouter.ai/api/v1/credits"
 
     /** 無料アカウントの無料モデル使用回数上限 (OpenRouter フリーティア) */
@@ -157,25 +157,11 @@ object OpenRouterManager {
         incrementUsage(context, apiKey)
     }
 
-    /** 無料モデルかどうかを判定する。キャッシュ済みのモデル価格を参照し、未登録なら :free サフィックスで決める。 */
+    /** モデル価格が不明な場合は、無料モデルと明示された識別子だけを無料とする。 */
     fun isModelFree(context: Context, modelId: String): Boolean {
         val cached = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getString(CACHED_MODELS_KEY, null) ?: return modelId.endsWith(FREE_MODEL_SUFFIX)
-        return try {
-            val dataArray = JSONObject(cached).getJSONArray("data")
-            for (i in 0 until dataArray.length()) {
-                val obj = dataArray.getJSONObject(i)
-                if (obj.optString("id") != modelId) continue
-                val pricing = obj.optJSONObject("pricing")
-                    ?: return modelId.endsWith(FREE_MODEL_SUFFIX)
-                val prompt = pricing.optDouble("prompt", 0.0)
-                val completion = pricing.optDouble("completion", 0.0)
-                return prompt == 0.0 && completion == 0.0
-            }
-            modelId.endsWith(FREE_MODEL_SUFFIX)
-        } catch (e: Exception) {
-            modelId.endsWith(FREE_MODEL_SUFFIX)
-        }
+            .getString(CACHED_MODELS_KEY, null)
+        return OpenRouterBalancePolicy.isFree(modelId, cached)
     }
 
     /**
@@ -183,19 +169,23 @@ object OpenRouterManager {
      * ブロッキング呼び出しなのでバックグラウンドスレッドで使うこと。失敗時は null。
      */
     fun fetchCreditInfo(apiKey: String): CreditInfo? {
-        if (apiKey.isBlank()) return null
+        if (apiKey.isBlank()) {
+            return null
+        }
         val conn = URL(CREDITS_URL).openConnection() as HttpURLConnection
         conn.apply {
             requestMethod = "GET"
             setRequestProperty("Authorization", "Bearer $apiKey")
-            connectTimeout = 15000
-            readTimeout = 15000
+            connectTimeout = CREDIT_TIMEOUT_MS
+            readTimeout = CREDIT_TIMEOUT_MS
         }
         return try {
-            if (conn.responseCode != 200) return null
-            val data = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-                .getJSONObject("data")
-            CreditInfo(data.optDouble("total_credits", 0.0), data.optDouble("total_usage", 0.0))
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                return null
+            }
+            val response = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val (total, used) = OpenRouterBalancePolicy.parseCredits(response) ?: return null
+            CreditInfo(total, used)
         } catch (e: Exception) {
             null
         } finally {
