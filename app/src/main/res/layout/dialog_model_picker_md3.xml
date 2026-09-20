@@ -97,6 +97,13 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="無料" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_fav"
+                style="@style/Widget.Material3.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="お気に入り" />
         </com.google.android.material.chip.ChipGroup>
 
         <!-- 件数 + 並び替え -->
@@ -124,6 +131,43 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 app:icon="@drawable/ic_md3_sort" />
+        </LinearLayout>
+
+        <!-- 選択中モデルの常設バー（一覧の上に常に出ておく） -->
+        <LinearLayout
+            android:id="@+id/current_model_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="4dp"
+            android:background="@drawable/bg_md3_surface_chip"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="8dp">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/tv_current_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="選択中"
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:textColor="?attr/colorPrimary" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/tv_current_model"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textAppearance="?attr/textAppearanceTitleSmall"
+                android:textColor="?attr/colorOnSurface" />
         </LinearLayout>
 
         <!-- リスト領域 -->

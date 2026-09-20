@@ -196,7 +196,8 @@ class PromptCardAiDialog(private val activity: AppCompatActivity) {
                             name = it.displayName,
                             contextLength = it.contextLength,
                             isFree = it.isFree,
-                            pricePerMillion = it.pricePerMillion
+                            pricePerMillion = it.pricePerMillion,
+                            outputPricePerMillion = it.outputPricePerMillion
                         )
                     },
                     selectedId = current.key

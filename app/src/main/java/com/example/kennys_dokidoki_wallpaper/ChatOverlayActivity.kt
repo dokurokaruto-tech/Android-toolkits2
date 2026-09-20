@@ -530,6 +530,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private val OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+    /** OpenRouter未選択時に使う既定モデル */
+    private val DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-flash:free"
+
     private var chatTree = ChatTree(mutableMapOf(), null)
     private val displayMessages = mutableListOf<ChatDisplayItem>()
     private lateinit var adapter: ChatAdapter
@@ -546,6 +549,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private lateinit var tvOpenRouterCounter: TextView
     private var openRouterBalanceLabel: OpenRouterBalanceLabel? = null
+
+    /** 残数表記の左に出す「現在のモデル」ボタン。タップでモデル選択を開く */
+    private lateinit var btnCurrentModel: TextView
 
     private lateinit var chatInput: EditText
     private lateinit var btnSend: ImageButton
@@ -567,6 +573,35 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun updateCounter() {
         openRouterBalanceLabel?.refresh()
+        refreshCurrentModelButton()
+    }
+
+    /** 残数表記の左の「現在のモデル」ボタンを最新化する。OpenRouter以外のエンジンでは隠す */
+    private fun refreshCurrentModelButton() {
+        if (!::btnCurrentModel.isInitialized) {
+            return
+        }
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val engine = prefs.getString("chat_llm_engine", "CLOUD")
+        val provider = prefs.getString("chat_cloud_provider", "GROK")
+        if (engine != "CLOUD" || provider != "OPENROUTER") {
+            btnCurrentModel.visibility = View.GONE
+            return
+        }
+        val modelId = prefs.getString("chat_openrouter_model", DEFAULT_OPENROUTER_MODEL)
+        btnCurrentModel.text = modelDisplayName(modelId)
+        btnCurrentModel.visibility = View.VISIBLE
+    }
+
+    /** モデルIDの表示名。キャッシュ済み一覧にあれば人間 readable な名前、無ければIDそのもの */
+    private fun modelDisplayName(modelId: String?): String {
+        if (modelId == null) {
+            return getString(R.string.model_current_none)
+        }
+        if (openRouterModels.none { it.id == modelId }) {
+            loadCachedOpenRouterModels()
+        }
+        return openRouterModels.firstOrNull { it.id == modelId }?.name ?: modelId
     }
 
     // タップ判定用
@@ -1077,13 +1112,17 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             val engine = prefs.getString("chat_llm_engine", "CLOUD")
             val provider = prefs.getString("chat_cloud_provider", "GROK")
             if (engine == "CLOUD" && provider == "OPENROUTER") {
-                prefs.getString("chat_openrouter_model", "deepseek/deepseek-v4-flash:free")
+                prefs.getString("chat_openrouter_model", DEFAULT_OPENROUTER_MODEL)
             } else {
                 null
             }
         }
         tvOpenRouterCounter.setOnClickListener {
             showOpenRouterKeySelector()
+        }
+        btnCurrentModel = findViewById(R.id.btn_current_model)
+        btnCurrentModel.setOnClickListener {
+            showMaterialModelPicker()
         }
 
         updateCounter()
@@ -1377,6 +1416,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val isFree: Boolean,
         val contextLength: Int,
         val pricePerMillion: Double,
+        val outputPricePerMillion: Double,
         val created: Long
     )
 
@@ -1394,6 +1434,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 val pricing = obj.optJSONObject("pricing")
                 val isFree = pricing?.optString("prompt") == "0" && pricing?.optString("completion") == "0"
                 val price = pricing?.optDouble("prompt", 0.0) ?: 0.0
+                val outputPrice = pricing?.optDouble("completion", 0.0) ?: 0.0
                 
                 newList.add(RemoteModel(
                     id = obj.getString("id"),
@@ -1401,6 +1442,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     isFree = isFree,
                     contextLength = obj.optInt("context_length", 0),
                     pricePerMillion = price * 1000000.0,
+                    outputPricePerMillion = outputPrice * 1000000.0,
                     created = obj.optLong("created", 0)
                 ))
             }
@@ -1427,6 +1469,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                         val isFree = (pricing?.optString("prompt") == "0" || pricing?.optDouble("prompt", 1.0) == 0.0) &&
                                      (pricing?.optString("completion") == "0" || pricing?.optDouble("completion", 1.0) == 0.0)
                         val price = pricing?.optDouble("prompt", 0.0) ?: 0.0
+                        val outputPrice = pricing?.optDouble("completion", 0.0) ?: 0.0
 
                         newList.add(RemoteModel(
                             id = obj.getString("id"),
@@ -1434,6 +1477,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                             isFree = isFree,
                             contextLength = obj.optInt("context_length", 0),
                             pricePerMillion = price * 1000000.0,
+                            outputPricePerMillion = outputPrice * 1000000.0,
                             created = obj.optLong("created", 0)
                         ))
                     }
@@ -1473,6 +1517,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val count = view.findViewById<TextView>(R.id.tv_count)
         val chipAll = view.findViewById<com.google.android.material.chip.Chip>(R.id.chip_all)
         val chipFree = view.findViewById<com.google.android.material.chip.Chip>(R.id.chip_free)
+        val chipFav = view.findViewById<com.google.android.material.chip.Chip>(R.id.chip_fav)
+        val tvCurrentModel = view.findViewById<TextView>(R.id.tv_current_model)
         val btnSort = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_sort)
         val btnRefresh = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_refresh)
 
@@ -1482,10 +1528,20 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         var providerPicker: androidx.appcompat.app.AppCompatDialog? = null
         dialog.setOnDismissListener { providerPicker?.dismiss() }
 
-        var freeOnly = false
+        var filter = ModelListFilter.ALL
+        var favorites = ModelFavorites.load(prefs)
         var isLoading = false
 
+        // 未選択なら既定モデルが実質の選択中。表示名はキャッシュ済み一覧から解決する
+        val currentModelId = currentModel ?: DEFAULT_OPENROUTER_MODEL
+
+        fun updateCurrentBar() {
+            tvCurrentModel.text = openRouterModels
+                .firstOrNull { it.id == currentModelId }?.name ?: currentModelId
+        }
+
         fun render() {
+            updateCurrentBar()
             // 取得中はリストも空表示も隠し、スピナーだけを出す（MD3らしい挙動）
             if (isLoading) {
                 rv.visibility = View.GONE
@@ -1494,7 +1550,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
             val query = search.text.toString()
             val filtered = openRouterModels.filter {
-                (!freeOnly || it.isFree) && ModelSearch.matches(it.name, it.id, query)
+                val passFilter = when (filter) {
+                    ModelListFilter.ALL -> true
+                    ModelListFilter.FREE -> it.isFree
+                    ModelListFilter.FAVORITE -> it.id in favorites
+                }
+                passFilter && ModelSearch.matches(it.name, it.id, query)
             }
             val sorted = if (openRouterSortByDate) {
                 filtered.sortedByDescending { it.created }
@@ -1512,9 +1573,19 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 empty.visibility = View.GONE
                 rv.visibility = View.VISIBLE
                 val items = sorted.map {
-                    ModelMd3Item(it.id, it.name, it.contextLength, it.isFree, it.pricePerMillion)
+                    ModelMd3Item(
+                        it.id, it.name, it.contextLength, it.isFree,
+                        it.pricePerMillion, it.outputPricePerMillion
+                    )
                 }
-                rv.adapter = ModelMd3Adapter(items, currentModel) onSelect@ { item ->
+                rv.adapter = ModelMd3Adapter(
+                    items, currentModel,
+                    onToggleFavorite = { item ->
+                        // 星だけ押した場合はリストを作り直さず差し替える（スクロール位置維持）
+                        favorites = ModelFavorites.toggle(prefs, item.id)
+                        (rv.adapter as? ModelMd3Adapter)?.updateFavorites(favorites)
+                    }
+                ) onSelect@ { item ->
                     if (providerPicker?.isShowing == true) {
                         return@onSelect
                     }
@@ -1551,11 +1622,16 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         search.doAfterTextChanged { render() }
 
         val filterClick = View.OnClickListener {
-            freeOnly = chipFree.isChecked
+            filter = when {
+                chipFree.isChecked -> ModelListFilter.FREE
+                chipFav.isChecked -> ModelListFilter.FAVORITE
+                else -> ModelListFilter.ALL
+            }
             render()
         }
         chipAll.setOnClickListener(filterClick)
         chipFree.setOnClickListener(filterClick)
+        chipFav.setOnClickListener(filterClick)
 
         fun updateSortLabel() {
             btnSort.text = if (openRouterSortByDate) "新着順" else "名前順"

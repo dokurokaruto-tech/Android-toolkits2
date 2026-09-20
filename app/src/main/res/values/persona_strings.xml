@@ -4,6 +4,9 @@
     <string name="model_search_empty">一致するモデルがありません。\n検索語やフィルターを変更してください。</string>
     <string name="model_load_empty">モデルを取得できませんでした。\n更新ボタンでやり直してください。</string>
     <string name="model_result_count">%1$d 個のモデル</string>
+    <string name="model_favorite">お気に入りに追加</string>
+    <string name="model_unfavorite">お気に入りを解除</string>
+    <string name="model_current_none">未選択</string>
     <string name="persona_switch">ペルソナ切替</string>
     <string name="persona_switch_hint">タップで切替 · メニューから編集・複製・削除</string>
     <string name="persona_none">ペルソナを使用していません</string>

@@ -311,7 +311,8 @@ object PromptCardAiGenerator {
                             displayName = "OpenRouter • ${model.optString("name", id)}",
                             contextLength = model.optInt("context_length", 0),
                             isFree = free,
-                            pricePerMillion = promptPrice * 1_000_000.0
+                            pricePerMillion = promptPrice * 1_000_000.0,
+                            outputPricePerMillion = completionPrice * 1_000_000.0
                         )
                     )
                 }

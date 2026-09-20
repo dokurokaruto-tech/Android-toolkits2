@@ -28,7 +28,8 @@ import java.net.URL
  */
 internal object JevModelPicker {
     private data class Entry(val id: String, val name: String, val isFree: Boolean,
-                             val contextLength: Int, val pricePerMillion: Double, val created: Long)
+                             val contextLength: Int, val pricePerMillion: Double,
+                             val outputPricePerMillion: Double, val created: Long)
 
     private const val LIST_URL = "https://openrouter.ai/api/v1/models"
     private const val CACHE_KEY = "cached_openrouter_models"
@@ -44,18 +45,30 @@ internal object JevModelPicker {
         val count = view.findViewById<TextView>(R.id.tv_count)
         val chipAll = view.findViewById<Chip>(R.id.chip_all)
         val chipFree = view.findViewById<Chip>(R.id.chip_free)
+        val chipFav = view.findViewById<Chip>(R.id.chip_fav)
+        val tvCurrentModel = view.findViewById<TextView>(R.id.tv_current_model)
         val btnSort = view.findViewById<MaterialButton>(R.id.btn_sort)
         val btnRefresh = view.findViewById<MaterialButton>(R.id.btn_refresh)
+
+        val prefs = activity.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
         list.layoutManager = LinearLayoutManager(view.context)
         val dialog = Md3PopupDialog.show(activity, view)
 
         var entries = loadCached(activity)
-        var freeOnly = false
+        var filter = ModelListFilter.ALL
+        var favorites = ModelFavorites.load(prefs)
         var sortByDate = true
         var isLoading = false
 
+        // 一覧の上に常設する「選択中」バー。表示名はキャッシュ済み一覧から解決する
+        fun updateCurrentBar() {
+            tvCurrentModel.text = entries.firstOrNull { it.id == currentId }?.name
+                ?: (currentId ?: activity.getString(R.string.model_current_none))
+        }
+
         fun render() {
+            updateCurrentBar()
             if (isLoading) {
                 list.visibility = View.GONE
                 empty.visibility = View.GONE
@@ -63,7 +76,12 @@ internal object JevModelPicker {
             }
             val query = search.text.toString()
             val filtered = entries.filter {
-                (!freeOnly || it.isFree) && ModelSearch.matches(it.name, it.id, query)
+                val passFilter = when (filter) {
+                    ModelListFilter.ALL -> true
+                    ModelListFilter.FREE -> it.isFree
+                    ModelListFilter.FAVORITE -> it.id in favorites
+                }
+                passFilter && ModelSearch.matches(it.name, it.id, query)
             }
             val shown = if (sortByDate) filtered.sortedByDescending { it.created }
                 else filtered.sortedBy { it.name.lowercase() }
@@ -77,8 +95,19 @@ internal object JevModelPicker {
             empty.visibility = View.GONE
             list.visibility = View.VISIBLE
             list.adapter = ModelMd3Adapter(
-                shown.map { ModelMd3Item(it.id, it.name, it.contextLength, it.isFree, it.pricePerMillion) },
-                currentId) { item ->
+                shown.map {
+                    ModelMd3Item(
+                        it.id, it.name, it.contextLength, it.isFree,
+                        it.pricePerMillion, it.outputPricePerMillion
+                    )
+                },
+                currentId,
+                onToggleFavorite = { item ->
+                    // 星だけ押した場合はリストを作り直さず差し替える（スクロール位置維持）
+                    favorites = ModelFavorites.toggle(prefs, item.id)
+                    (list.adapter as? ModelMd3Adapter)?.updateFavorites(favorites)
+                }
+            ) { item ->
                 (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
                     .hideSoftInputFromWindow(search.windowToken, 0)
                 onPick(item.id)
@@ -118,11 +147,16 @@ internal object JevModelPicker {
         }
 
         val filterClick = View.OnClickListener {
-            freeOnly = chipFree.isChecked
+            filter = when {
+                chipFree.isChecked -> ModelListFilter.FREE
+                chipFav.isChecked -> ModelListFilter.FAVORITE
+                else -> ModelListFilter.ALL
+            }
             render()
         }
         chipAll.setOnClickListener(filterClick)
         chipFree.setOnClickListener(filterClick)
+        chipFav.setOnClickListener(filterClick)
 
         fun updateSortLabel() {
             btnSort.text = if (sortByDate) "新着順" else "名前順"
@@ -162,6 +196,7 @@ internal object JevModelPicker {
                 isFree = isFree,
                 contextLength = obj.optInt("context_length", 0),
                 pricePerMillion = (pricing?.optDouble("prompt", 0.0) ?: 0.0) * 1_000_000.0,
+                outputPricePerMillion = (pricing?.optDouble("completion", 0.0) ?: 0.0) * 1_000_000.0,
                 created = obj.optLong("created", 0)))
         }
         return result
