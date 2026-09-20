@@ -42,8 +42,7 @@ class JevElementPolicyTest {
 
     @Test
     fun decisionBody_embedsStateAndOptions() {
-        val state = JSONObject().put("element", "笑顔")
-        val body = JevElementPolicy.decisionBody(state, catalog, "typesafe/jev-1.13")
+        val body = JevElementPolicy.decisionBody("笑顔", catalog, "typesafe/jev-1.13")
         assertEquals("typesafe/jev-1.13", body.getString("model"))
         assertEquals("笑顔", body.getJSONObject("state").getString("element"))
         val card = body.getJSONObject("questions").getJSONObject("card_category")
@@ -57,7 +56,7 @@ class JevElementPolicyTest {
     fun decisionBody_rejectsTooManyCategories() {
         val huge = ElementCatalog(List(241) { "c$it" }, listOf("a"))
         assertThrows(IllegalArgumentException::class.java) {
-            JevElementPolicy.decisionBody(JSONObject(), huge, "m")
+            JevElementPolicy.decisionBody("x", huge, "m")
         }
     }
 
@@ -125,6 +124,26 @@ class JevElementPolicyTest {
         assertThrows(IllegalArgumentException::class.java) {
             JevElementPolicy.validate(ok.copy(text = ok.text.copy(main = "")), catalog, listOf())
         }
+    }
+
+    @Test
+    fun decisionBody_sendsOnlyWordAndCategories() {
+        val body = JevElementPolicy.decisionBody("笑顔", catalog, "typesafe/jev-1.13")
+        val state = body.getJSONObject("state")
+        assertEquals(1, state.length())
+        val questions = body.getJSONObject("questions")
+        assertEquals(true, questions.getJSONObject("card_category").getJSONObject("criteria").has("none"))
+        // 分類に必要なのは要素と候補名だけ（サンプル一覧は送らない）
+        assertEquals(false, state.has("card_categories"))
+    }
+
+    @Test
+    fun writerBody_embedsInstructionAndWord() {
+        val body = JevElementPolicy.writerBody("笑顔", "deepseek/deepseek-v4-flash:free", "指示書X")
+        val messages = body.getJSONArray("messages")
+        assertEquals("system", messages.getJSONObject(0).getString("role"))
+        assertEquals("指示書X", messages.getJSONObject(0).getString("content"))
+        assertEquals(true, messages.getJSONObject(1).getString("content").contains("笑顔"))
     }
 
     @Test

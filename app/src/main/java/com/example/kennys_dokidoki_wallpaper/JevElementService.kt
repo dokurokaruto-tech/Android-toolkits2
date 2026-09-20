@@ -9,9 +9,8 @@ import org.json.JSONObject
 internal object JevElementService {
     private const val FALLBACK_CARD_CATEGORY = "未分類"
     private const val FALLBACK_TAG_CATEGORY = "その他"
-    private const val SAMPLES_PER_CATEGORY = 30
 
-    data class Settings(val endpoint: String, val jev: String, val writer: String)
+    data class Settings(val endpoint: String, val jev: String, val writer: String, val instruction: String)
 
     fun settings(context: Context): Settings {
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -21,7 +20,9 @@ internal object JevElementService {
             jev = JevElementPolicy.model(
                 prefs.getString("jev_model", null) ?: JevElementPolicy.DEFAULT_JEV),
             writer = JevElementPolicy.writer(
-                prefs.getString("jev_writer_model", null) ?: JevElementPolicy.DEFAULT_WRITER))
+                prefs.getString("jev_writer_model", null) ?: JevElementPolicy.DEFAULT_WRITER),
+            instruction = prefs.getString("jev_writer_instruction", null)
+                ?.takeIf { it.isNotBlank() } ?: JevElementPolicy.DEFAULT_INSTRUCTION)
     }
 
     fun catalog(): ElementCatalog {
@@ -41,29 +42,9 @@ internal object JevElementService {
         }
     }
 
-    /** Jevの判断材料。カテゴリー名だけでなく代表要素を見せて誤分類を減らす。 */
-    fun decisionState(word: String, catalog: ElementCatalog): JSONObject = JSONObject()
-        .put("element", word)
-        .put("card_categories", JSONArray().apply {
-            catalog.cards.forEach { name ->
-                val samples = PromptCardManager.promptCards
-                    .filter { it.category.trim() == name }
-                    .map { "${it.label}: ${it.mainPrompt}".take(160) }
-                    .take(SAMPLES_PER_CATEGORY)
-                put(JSONObject().put("name", name).put("items", JSONArray(samples)))
-            }
-        })
-        .put("tag_categories", JSONArray().apply {
-            catalog.tags.forEach { name ->
-                val samples = TagManager.categories.find { it.name == name }
-                    ?.tags.orEmpty().map { it.take(120) }.take(SAMPLES_PER_CATEGORY)
-                put(JSONObject().put("name", name).put("items", JSONArray(samples)))
-            }
-        })
-
     suspend fun decide(endpoint: String, key: String, word: String,
                        catalog: ElementCatalog, model: String): Pair<ElementCategory, ElementCategory> {
-        val body = JevElementPolicy.decisionBody(decisionState(word, catalog), catalog, model)
+        val body = JevElementPolicy.decisionBody(word, catalog, model)
         val response = JevElementClient.post(endpoint, key, body)
         val answers = response.optJSONObject("answers")
             ?: throw IllegalStateException("判断APIの応答にanswersがありません。")
@@ -78,8 +59,9 @@ internal object JevElementService {
         return card to tag
     }
 
-    suspend fun write(endpoint: String, key: String, word: String, writer: String): ElementText {
-        val response = JevElementClient.post(endpoint, key, JevElementPolicy.writerBody(word, writer))
+    suspend fun write(endpoint: String, key: String, word: String,
+                      writer: String, instruction: String): ElementText {
+        val response = JevElementClient.post(endpoint, key, JevElementPolicy.writerBody(word, writer, instruction))
         val content = response.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
             ?.optString("content")?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("生成APIの応答に文章がありません。")
@@ -126,7 +108,6 @@ internal object JevElementService {
             TagManager.tagPromptVariants[draft.name] =
                 mutableListOf(TagPromptVariant(TagVariantPolicy.ORIGINAL_NAME, draft.text.chat))
             PromptCardManager.promptCards.add(card)
-            PromptCardManager.selectionLevels[card.id] = 1
             TagManager.saveTags(context)
             PromptCardManager.saveCards(context)
         } catch (error: Exception) {
@@ -140,7 +121,6 @@ internal object JevElementService {
                          oldCategories: String?, oldVariants: String?) {
         runCatching {
             PromptCardManager.promptCards.removeAll { it.id == cardId }
-            PromptCardManager.selectionLevels.remove(cardId)
             TagManager.categories.forEach { it.tags.remove(tag) }
             TagManager.tagPromptVariants.remove(tag)
             restore(context.getSharedPreferences("prompt_card_prefs", Context.MODE_PRIVATE),

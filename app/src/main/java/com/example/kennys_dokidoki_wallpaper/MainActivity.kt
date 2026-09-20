@@ -2630,6 +2630,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val tilCommand = view.findViewById<TextInputLayout>(R.id.til_jev_command)
         val progress = view.findViewById<LinearProgressIndicator>(R.id.jev_progress)
         val tvStatus = view.findViewById<TextView>(R.id.tv_jev_status)
+        val btnSettings = view.findViewById<MaterialButton>(R.id.btn_jev_open_settings)
         val btnGenerate = view.findViewById<MaterialButton>(R.id.btn_jev_generate)
         val btnSave = view.findViewById<MaterialButton>(R.id.btn_jev_save)
         val btnCancel = view.findViewById<MaterialButton>(R.id.btn_jev_cancel)
@@ -2666,6 +2667,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             jevJob = null
         }
         btnCancel.setOnClickListener { dialog.dismiss() }
+        btnSettings.setOnClickListener { showJevSettingsDialog() }
 
         btnGenerate.setOnClickListener {
             val word = etCommand.text.toString().trim()
@@ -2740,13 +2742,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     JevElementService.persist(this@MainActivity, draft)
                     val saved = draft.name
                     promptCardAdapter.updateList(PromptCardManager.promptCards)
-                    notifyLiveBatchBuilderChanged()
                     if (::tagPromptAdapter.isInitialized) {
                         tagPromptAdapter.refreshItemsFromManager()
                         applyQuickFilter()
                     }
                     dialog.dismiss()
-                    Toast.makeText(this@MainActivity, "『$saved』を保存し、次の生成に追加しました。", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "『$saved』を保存しました。生成で使うときはカードを選択してください。", Toast.LENGTH_LONG).show()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
@@ -2778,21 +2779,41 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val etEndpoint = view.findViewById<EditText>(R.id.et_jev_endpoint)
         val etJevModel = view.findViewById<EditText>(R.id.et_jev_model)
         val etWriter = view.findViewById<EditText>(R.id.et_jev_writer)
+        val etInstruction = view.findViewById<EditText>(R.id.et_jev_instruction)
         val tvError = view.findViewById<TextView>(R.id.tv_jev_settings_error)
 
         etEndpoint.setText(prefs.getString("jev_endpoint", null) ?: JevElementPolicy.DEFAULT_ENDPOINT)
         etJevModel.setText(prefs.getString("jev_model", null) ?: JevElementPolicy.DEFAULT_JEV)
         etWriter.setText(prefs.getString("jev_writer_model", null) ?: JevElementPolicy.DEFAULT_WRITER)
+        etInstruction.setText(prefs.getString("jev_writer_instruction", null)
+            ?: JevElementPolicy.DEFAULT_INSTRUCTION)
 
-        val dialog = Md3PopupDialog.showCompact(this, view)
+        val dialog = Md3PopupDialog.show(this, view)
+        view.findViewById<MaterialButton>(R.id.btn_pick_jev).setOnClickListener {
+            JevModelPicker.show(this, "判断モデル（Jev）", etJevModel.text.toString().trim()) { id ->
+                etJevModel.setText(id)
+            }
+        }
+        view.findViewById<MaterialButton>(R.id.btn_pick_writer).setOnClickListener {
+            JevModelPicker.show(this, "文章生成用LLM", etWriter.text.toString().trim()) { id ->
+                etWriter.setText(id)
+            }
+        }
         view.findViewById<MaterialButton>(R.id.btn_jev_default).setOnClickListener {
             etEndpoint.setText(JevElementPolicy.DEFAULT_ENDPOINT)
             etJevModel.setText(JevElementPolicy.DEFAULT_JEV)
             etWriter.setText(JevElementPolicy.DEFAULT_WRITER)
+            etInstruction.setText(JevElementPolicy.DEFAULT_INSTRUCTION)
             tvError.visibility = View.GONE
         }
         view.findViewById<MaterialButton>(R.id.btn_jev_settings_cancel).setOnClickListener { dialog.dismiss() }
         view.findViewById<MaterialButton>(R.id.btn_jev_settings_save).setOnClickListener {
+            val instruction = etInstruction.text.toString().trim()
+            if (instruction.isEmpty()) {
+                tvError.text = "自動生成に使う指示書を空にはできません。"
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
             try {
                 val endpoint = JevElementPolicy.endpoint(etEndpoint.text.toString())
                 val jevModel = JevElementPolicy.model(etJevModel.text.toString())
@@ -2801,6 +2822,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     .putString("jev_endpoint", endpoint)
                     .putString("jev_model", jevModel)
                     .putString("jev_writer_model", writer)
+                    .putString("jev_writer_instruction", instruction)
                     .apply()
                 Toast.makeText(this, "Jevの接続設定を保存しました。", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
@@ -2906,7 +2928,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             })
 
             addView(createSettingsRow("AIのAPI Keyを設定") { showApiKeyDialog() })
-            addView(createSettingsRow("Jev一括生成の接続設定", "判断APIのURLとモデルIDの変更（通常は変更不要）") { showJevSettingsDialog() })
             addView(createSettingsRow("AIへの指示（システムプロンプト）の編集") { showAiPromptDialog() })
             addView(createSettingsRow("⚙️ ローカルLLMモデルの管理") { startActivity(Intent(this@MainActivity, LocalModelActivity::class.java)) })
             
