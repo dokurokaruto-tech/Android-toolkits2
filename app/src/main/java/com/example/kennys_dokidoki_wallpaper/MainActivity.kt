@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
 import java.io.FileInputStream
 import android.view.LayoutInflater
@@ -32,7 +34,10 @@ import com.bumptech.glide.Glide
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -816,11 +821,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 intent.putExtra("CREATE_NEW_SET", true)
                 startActivity(intent)
             } else if (recyclerViewTagPrompts.visibility == View.VISIBLE) {
-                val options = arrayOf("新しいジャンル（カテゴリー）", "新しいタグ")
+                val options = arrayOf("新しいジャンル（カテゴリー）", "新しいタグ", "Jevでカードとタグを一括生成")
                 AlertDialog.Builder(this)
                     .setTitle("新しく作るものを選んでね")
                     .setItems(options) { _, which ->
-                        if (which == 0) showAddCategoryDialog() else showAddTagDialog()
+                        when (which) {
+                            0 -> showAddCategoryDialog()
+                            1 -> showAddTagDialog()
+                            2 -> launchJevElementDialog()
+                        }
                     }
                     .show()
             }
@@ -1235,7 +1244,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             showAddPromptCategoryDialog()
         }
         fabAddPromptCategory.setOnClickListener {
-            civitaiBrowserLauncher.launch(Intent(this, CivitaiBrowserActivity::class.java))
+            val options = arrayOf("Civitaiブラウザでモデルを探す", "Jevでカードとタグを一括生成")
+            AlertDialog.Builder(this)
+                .setTitle("追加する方法を選んでね")
+                .setItems(options) { _, which ->
+                    if (which == 0) {
+                        civitaiBrowserLauncher.launch(Intent(this, CivitaiBrowserActivity::class.java))
+                    } else {
+                        launchJevElementDialog()
+                    }
+                }
+                .show()
         }
     }
 
@@ -2583,6 +2602,215 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }.setNegativeButton("キャンセル", null).show()
     }
 
+    // --- Jevによるカード＋タグの一括生成 ---
+
+    private var jevJob: Job? = null
+    private var jevRunId = 0
+
+    private fun launchJevElementDialog() {
+        if (!TagManager.isLoaded) {
+            Toast.makeText(this, "タグを読み込み中です。表示を切り替えてからもう一度開いてください。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        JevElementService.ensureCategories(this)
+        val firstCatalog = JevElementService.catalog()
+        if (firstCatalog.cards.isEmpty() || firstCatalog.tags.isEmpty()) {
+            Toast.makeText(this, "カードとタグのカテゴリーが必要です。", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_jev_element)
+        val etCommand = view.findViewById<EditText>(R.id.et_jev_command)
+        val etCardName = view.findViewById<EditText>(R.id.et_jev_card_name)
+        val ddCardCategory = view.findViewById<AutoCompleteTextView>(R.id.dd_jev_card_category)
+        val ddTagCategory = view.findViewById<AutoCompleteTextView>(R.id.dd_jev_tag_category)
+        val etMainPrompt = view.findViewById<EditText>(R.id.et_jev_main_prompt)
+        val etNegativePrompt = view.findViewById<EditText>(R.id.et_jev_negative_prompt)
+        val etChatInstruction = view.findViewById<EditText>(R.id.et_jev_chat_instruction)
+        val tilCommand = view.findViewById<TextInputLayout>(R.id.til_jev_command)
+        val progress = view.findViewById<LinearProgressIndicator>(R.id.jev_progress)
+        val tvStatus = view.findViewById<TextView>(R.id.tv_jev_status)
+        val btnGenerate = view.findViewById<MaterialButton>(R.id.btn_jev_generate)
+        val btnSave = view.findViewById<MaterialButton>(R.id.btn_jev_save)
+        val btnCancel = view.findViewById<MaterialButton>(R.id.btn_jev_cancel)
+
+        // 既存のカテゴリーからのみ選べるようにする
+        ddCardCategory.setAdapter(
+            ArrayAdapter(view.context, android.R.layout.simple_list_item_1, firstCatalog.cards))
+        ddTagCategory.setAdapter(
+            ArrayAdapter(view.context, android.R.layout.simple_list_item_1, firstCatalog.tags))
+
+        // コマンドの先頭行を名前の初期値にする。手で編集した欄は追従しない。
+        var applyingCommand = false
+        var elementNameEdited = false
+        etCommand.addTextChangedListener(object : SimpleTextWatcher() {
+            override fun afterTextChanged(editable: Editable?) {
+                val base = editable.toString().lineSequence()
+                    .firstOrNull { it.isNotBlank() }?.trim()?.take(JevElementPolicy.MAX_NAME).orEmpty()
+                applyingCommand = true
+                if (!elementNameEdited) {
+                    etCardName.setText(base)
+                }
+                applyingCommand = false
+            }
+        })
+        etCardName.addTextChangedListener(object : SimpleTextWatcher() {
+            override fun afterTextChanged(editable: Editable?) {
+                if (!applyingCommand) elementNameEdited = true
+            }
+        })
+
+        val dialog = Md3PopupDialog.show(this, view)
+        dialog.setOnDismissListener {
+            jevJob?.cancel()
+            jevJob = null
+        }
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnGenerate.setOnClickListener {
+            val word = etCommand.text.toString().trim()
+            if (word.isEmpty()) {
+                tilCommand.error = "追加したい要素を書いてください（例：笑顔）"
+                return@setOnClickListener
+            }
+            tilCommand.error = null
+            jevJob?.cancel()
+            btnGenerate.isEnabled = false
+            btnSave.isEnabled = false
+            progress.visibility = View.VISIBLE
+            tvStatus.text = "既存カテゴリーへの割り当てを判断中…"
+            val runId = ++jevRunId
+            jevJob = lifecycleScope.launch {
+                try {
+                    val key = OpenRouterManager.getActiveApiKey(this@MainActivity)
+                        ?: throw IllegalStateException("OpenRouter APIキーが未設定です。設定画面の『AIのAPI Keyを設定』から登録してください。")
+                    val settings = JevElementService.settings(this@MainActivity)
+                    val catalog = JevElementService.catalog()
+                    val (cardCategory, tagCategory) = JevElementService.decide(
+                        settings.endpoint, key, word, catalog, settings.jev)
+                    tvStatus.text = "画像用・会話用の文章を生成中…"
+                    val text = JevElementService.write(
+                        JevElementClient.CHAT_ENDPOINT, key, word, settings.writer)
+
+                    applyJevChoice(ddCardCategory, cardCategory)
+                    applyJevChoice(ddTagCategory, tagCategory)
+                    etMainPrompt.setText(text.main)
+                    etNegativePrompt.setText(text.negative)
+                    etChatInstruction.setText(text.chat)
+                    tvStatus.text = "Jevの判断: カード「${cardCategory.name ?: "未判定"}」${jevRate(cardCategory)}・" +
+                        "タグ「${tagCategory.name ?: "未判定"}」${jevRate(tagCategory)}\n" +
+                        "違う場合は上のカテゴリー欄を開いて選び直し、内容を確認して保存してください。"
+                    btnSave.isEnabled = true
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    Log.e("MainActivity", "Jev element generation failed", error)
+                    tvStatus.text = "失敗: ${error.message}"
+                } finally {
+                    // 新しい実行に置き換わった後は、その表示を上書きしない
+                    if (runId == jevRunId) {
+                        progress.visibility = View.GONE
+                        btnGenerate.isEnabled = true
+                    }
+                }
+            }
+        }
+
+        btnSave.setOnClickListener {
+            val cardCategory = ddCardCategory.text.toString().trim()
+            val tagCategory = ddTagCategory.text.toString().trim()
+            if (cardCategory.isEmpty() || tagCategory.isEmpty()) {
+                tvStatus.text = "カードとタグのカテゴリーを両方選んでください。"
+                return@setOnClickListener
+            }
+            val draft = ElementDraft(
+                name = etCardName.text.toString().trim(),
+                cardCategory = cardCategory,
+                tagCategory = ddTagCategory.text.toString().trim(),
+                text = ElementText(
+                    main = etMainPrompt.text.toString().trim(),
+                    negative = etNegativePrompt.text.toString().trim(),
+                    chat = etChatInstruction.text.toString().trim()))
+            btnSave.isEnabled = false
+            progress.visibility = View.VISIBLE
+            tvStatus.text = "保存中…"
+            val runId = ++jevRunId
+            jevJob = lifecycleScope.launch {
+                try {
+                    JevElementService.persist(this@MainActivity, draft)
+                    val saved = draft.name
+                    promptCardAdapter.updateList(PromptCardManager.promptCards)
+                    notifyLiveBatchBuilderChanged()
+                    if (::tagPromptAdapter.isInitialized) {
+                        tagPromptAdapter.refreshItemsFromManager()
+                        applyQuickFilter()
+                    }
+                    dialog.dismiss()
+                    Toast.makeText(this@MainActivity, "『$saved』を保存し、次の生成に追加しました。", Toast.LENGTH_LONG).show()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    if (runId == jevRunId) {
+                        Log.e("MainActivity", "Jev element persist failed", error)
+                        tvStatus.text = "保存に失敗: ${error.message}"
+                        progress.visibility = View.GONE
+                        btnSave.isEnabled = true
+                    }
+                }
+            }
+        }
+    }
+
+    private fun applyJevChoice(drop: AutoCompleteTextView, choice: ElementCategory) {
+        if (choice.name == null) {
+            drop.setText("", false)
+            return
+        }
+        drop.setText(choice.name, false)
+    }
+
+    private fun jevRate(choice: ElementCategory): String =
+        choice.probability?.let { "（確度${(it * 100).toInt()}%）" } ?: ""
+
+    private fun showJevSettingsDialog() {
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_jev_settings)
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val etEndpoint = view.findViewById<EditText>(R.id.et_jev_endpoint)
+        val etJevModel = view.findViewById<EditText>(R.id.et_jev_model)
+        val etWriter = view.findViewById<EditText>(R.id.et_jev_writer)
+        val tvError = view.findViewById<TextView>(R.id.tv_jev_settings_error)
+
+        etEndpoint.setText(prefs.getString("jev_endpoint", null) ?: JevElementPolicy.DEFAULT_ENDPOINT)
+        etJevModel.setText(prefs.getString("jev_model", null) ?: JevElementPolicy.DEFAULT_JEV)
+        etWriter.setText(prefs.getString("jev_writer_model", null) ?: JevElementPolicy.DEFAULT_WRITER)
+
+        val dialog = Md3PopupDialog.showCompact(this, view)
+        view.findViewById<MaterialButton>(R.id.btn_jev_default).setOnClickListener {
+            etEndpoint.setText(JevElementPolicy.DEFAULT_ENDPOINT)
+            etJevModel.setText(JevElementPolicy.DEFAULT_JEV)
+            etWriter.setText(JevElementPolicy.DEFAULT_WRITER)
+            tvError.visibility = View.GONE
+        }
+        view.findViewById<MaterialButton>(R.id.btn_jev_settings_cancel).setOnClickListener { dialog.dismiss() }
+        view.findViewById<MaterialButton>(R.id.btn_jev_settings_save).setOnClickListener {
+            try {
+                val endpoint = JevElementPolicy.endpoint(etEndpoint.text.toString())
+                val jevModel = JevElementPolicy.model(etJevModel.text.toString())
+                val writer = JevElementPolicy.writer(etWriter.text.toString())
+                prefs.edit()
+                    .putString("jev_endpoint", endpoint)
+                    .putString("jev_model", jevModel)
+                    .putString("jev_writer_model", writer)
+                    .apply()
+                Toast.makeText(this, "Jevの接続設定を保存しました。", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            } catch (error: IllegalArgumentException) {
+                tvError.text = error.message
+                tvError.visibility = View.VISIBLE
+            }
+        }
+    }
+
     private fun showCategoryOptionsDialog(categoryName: String) {
         val options = arrayOf("名前の変更", "統一規格（親カテゴリー）の設定", "上へ移動", "下へ移動", "削除する")
         AlertDialog.Builder(this).setTitle(categoryName).setItems(options) { _, which ->
@@ -2678,6 +2906,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             })
 
             addView(createSettingsRow("AIのAPI Keyを設定") { showApiKeyDialog() })
+            addView(createSettingsRow("Jev一括生成の接続設定", "判断APIのURLとモデルIDの変更（通常は変更不要）") { showJevSettingsDialog() })
             addView(createSettingsRow("AIへの指示（システムプロンプト）の編集") { showAiPromptDialog() })
             addView(createSettingsRow("⚙️ ローカルLLMモデルの管理") { startActivity(Intent(this@MainActivity, LocalModelActivity::class.java)) })
             
@@ -3362,4 +3591,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         tvFilterCount.text = "${pinned.size} 枚"
         updateActiveImageHighlight()
     }
+}
+
+/** TextWatcher の空実装。afterTextChanged だけ使う箇所のため。 */
+private abstract class SimpleTextWatcher : TextWatcher {
+    override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) {}
+    override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {}
 }
