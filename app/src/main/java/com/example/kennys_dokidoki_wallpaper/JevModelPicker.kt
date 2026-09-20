@@ -100,15 +100,15 @@ internal object JevModelPicker {
         fun refresh() {
             setLoading(true)
             activity.lifecycleScope.launch(Dispatchers.IO) {
-                val fetched = fetch() ?: emptyList()
-                val success = fetched.isNotEmpty()
+                val fetched = fetch()
+                val success = fetched != null
                 if (success) {
                     activity.getSharedPreferences("settings", Context.MODE_PRIVATE)
                         .edit().putString(CACHE_KEY, fetched.toString()).apply()
                 }
                 withContext(Dispatchers.Main) {
                     if (!dialog.isShowing) return@withContext
-                    if (success) entries = parse(fetched)
+                    if (fetched != null) entries = parse(fetched)
                     setLoading(false)
                     if (!success && entries.isEmpty()) {
                         Toast.makeText(activity, "モデルリストの取得に失敗しました。", Toast.LENGTH_SHORT).show()

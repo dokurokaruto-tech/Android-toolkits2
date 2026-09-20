@@ -2692,7 +2692,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         settings.endpoint, key, word, catalog, settings.jev)
                     tvStatus.text = "画像用・会話用の文章を生成中…"
                     val text = JevElementService.write(
-                        JevElementClient.CHAT_ENDPOINT, key, word, settings.writer)
+                        JevElementClient.CHAT_ENDPOINT, key, word, settings.writer, settings.instruction)
 
                     applyJevChoice(ddCardCategory, cardCategory)
                     applyJevChoice(ddTagCategory, tagCategory)
