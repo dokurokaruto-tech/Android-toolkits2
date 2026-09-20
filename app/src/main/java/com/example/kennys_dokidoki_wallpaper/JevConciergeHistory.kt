@@ -200,7 +200,7 @@ internal object HistoryExecute {
                     host.filterImages(payload.getString("tag"))
                     true
                 }
-                ConciergeTool.START_GENERATION, ConciergeTool.THUMBNAILS, ConciergeTool.TALK -> false
+                ConciergeTool.START_GENERATION, ConciergeTool.THUMBNAILS, ConciergeTool.INVESTIGATE, ConciergeTool.TALK -> false
             }
             done
         }.getOrDefault(false)
@@ -250,7 +250,7 @@ internal object HistoryExecute {
                     )
                     true
                 }
-                ConciergeTool.START_GENERATION, ConciergeTool.THUMBNAILS, ConciergeTool.TALK -> false
+                ConciergeTool.START_GENERATION, ConciergeTool.THUMBNAILS, ConciergeTool.INVESTIGATE, ConciergeTool.TALK -> false
             }
             done
         }.getOrDefault(false)

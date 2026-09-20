@@ -39,6 +39,7 @@ internal object JevConciergeDialog {
         class Assistant(val text: String, val detail: String?, val plan: Plan? = null) : Msg() {
             var applied = false
             var recordId: String? = null
+            var suggestions: List<String> = emptyList()
         }
     }
 
@@ -72,7 +73,8 @@ internal object JevConciergeDialog {
         val detail: String?,
         val plan: Plan? = null,
         val record: HistoryRecord? = null,
-        val dismissAfter: Boolean = false
+        val dismissAfter: Boolean = false,
+        val suggestions: List<String> = emptyList()
     )
 
     /** 定型フォームからの指定。対象まで決まっていればJevの判断を飛ばす */
@@ -122,15 +124,6 @@ internal object JevConciergeDialog {
         }
 
         list.layoutManager = LinearLayoutManager(activity)
-        val adapter = ConciergeAdapter(msgs) { msg ->
-            val recordId = msg.recordId
-            if (recordId != null) {
-                openRecordDiff(activity, host, recordId) { syncChat() }
-            } else {
-                openDiff(activity, host, msg) { syncChat() }
-            }
-        }
-        list.adapter = adapter
         val dialog = Md3PopupDialog.show(activity, view)
 
         fun setStatus(text: String?) {
@@ -208,6 +201,7 @@ internal object JevConciergeDialog {
                         rememberTurn("user", displayWish)
                         rememberTurn("assistant", result.text)
                         val assistantMsg = Msg.Assistant(result.text, result.detail, result.plan)
+                        assistantMsg.suggestions = result.suggestions
                         result.record?.let {
                             HistoryStore.add(activity, it)
                             assistantMsg.recordId = it.id
@@ -233,6 +227,20 @@ internal object JevConciergeDialog {
                 }
             }
         }
+
+        val adapter = ConciergeAdapter(
+            msgs,
+            onShowPlan = { msg ->
+                val recordId = msg.recordId
+                if (recordId != null) {
+                    openRecordDiff(activity, host, recordId) { syncChat() }
+                } else {
+                    openDiff(activity, host, msg) { syncChat() }
+                }
+            },
+            onSuggestion = { suggestion -> execute(suggestion, suggestion, null) }
+        )
+        list.adapter = adapter
 
         fun send() {
             val wish = input.text.toString().trim()
@@ -279,7 +287,8 @@ internal object JevConciergeDialog {
                     "・カード編集（例: 制服カードをお腹の素肌が見えるようにして）\n" +
                     "・タグ編集（例: 笑顔タグの文章を優しい感じに直して）\n" +
                     "・新規作成（例: 照れ顔という要素を作って）\n" +
-                    "・プリセット適用・生成カードの選択・画像の絞り込み・サムネイル生成・生成開始",
+                    "・プリセット適用・生成カードの選択・画像の絞り込み・サムネイル生成・生成開始\n" +
+                    "・調査（例: 今の選択で服が違うのはなぜ？）",
                 "判断保留 · Jev確信度${percent(route.confidence)}"
             )
         }
@@ -292,6 +301,7 @@ internal object JevConciergeDialog {
             ConciergeTool.FILTER_IMAGES -> filterImages(activity, host, wish, screen, settings, tags, forced?.targetKey)
             ConciergeTool.START_GENERATION -> startGeneration(activity, host)
             ConciergeTool.THUMBNAILS -> thumbnails(activity, host, wish, screen, settings, forced, setStatus)
+            ConciergeTool.INVESTIGATE -> investigate(activity, host, wish, history, settings, setStatus)
             ConciergeTool.TALK -> talk(activity, wish, history, settings, setStatus)
         }
         if (forced == null || outcome.detail == null) {
@@ -810,6 +820,61 @@ internal object JevConciergeDialog {
         )
     }
 
+    /**
+     * 調査。選択中プロンプト・組み立て結果・ランダム要素・生成設定を読み直して
+     * 証拠パックを作り、文章LLMに原因の説明と次の行動案を出させる。
+     */
+    private suspend fun investigate(
+        activity: AppCompatActivity,
+        host: ConciergeHost,
+        wish: String,
+        history: List<Pair<String, String>>,
+        settings: JevConciergeTools.Settings,
+        setStatus: (String?) -> Unit
+    ): Outcome {
+        val label = ConciergeTool.INVESTIGATE.label
+        setStatus("選択中のプロンプトを読み込み中…")
+        val state = withContext(Dispatchers.Main) { host.builderSnapshot() }
+        val evidence = JevConciergeTools.builderEvidence(state)
+        setStatus("回答を作成中…")
+        val result = runCatching {
+            JevConciergePolicy.parseInvestigate(
+                JevConciergeTools.chat(
+                    activity,
+                    JevConciergePolicy.chatBody(
+                        settings.writer,
+                        JevConciergePolicy.INVESTIGATE_SYSTEM,
+                        JevConciergePolicy.investigateUser(wish, evidence, history)
+                    )
+                )
+            )
+        }.getOrNull()
+        if (result == null || result.answer.isEmpty()) {
+            return Outcome("調査に失敗しました。文章モデルを変えるか、質問を言い換えてください。", null)
+        }
+        val detail = "🔍 $label · 選択${state.selection.size}件"
+        return Outcome(
+            result.answer,
+            detail,
+            suggestions = result.suggestions,
+            record = HistoryRecord(
+                id = HistoryStore.newId(),
+                time = System.currentTimeMillis(),
+                tool = ConciergeTool.INVESTIGATE,
+                title = wish.take(40),
+                detail = detail,
+                status = HistoryStatus.APPLIED,
+                reversible = false,
+                rows = listOf(
+                    HistoryRow("質問", "―", wish),
+                    HistoryRow("選択カード", "―", selSummary(state.selection.keys)),
+                    HistoryRow("回答", "―", result.answer.take(500))
+                ),
+                payload = HistoryPayload.empty()
+            )
+        )
+    }
+
     private suspend fun talk(
         activity: AppCompatActivity,
         wish: String,
@@ -1182,12 +1247,13 @@ internal object JevConciergeDialog {
             categories.map { it to it }
         }
         ConciergeTool.NEW_ELEMENT, ConciergeTool.SELECT_CARDS,
-        ConciergeTool.START_GENERATION, ConciergeTool.TALK -> emptyList()
+        ConciergeTool.START_GENERATION, ConciergeTool.INVESTIGATE, ConciergeTool.TALK -> emptyList()
     }
 
     private fun formNeedWish(tool: ConciergeTool): Boolean = when (tool) {
         ConciergeTool.EDIT_CARD, ConciergeTool.EDIT_TAG,
-        ConciergeTool.NEW_ELEMENT, ConciergeTool.SELECT_CARDS -> true
+        ConciergeTool.NEW_ELEMENT, ConciergeTool.SELECT_CARDS,
+        ConciergeTool.INVESTIGATE -> true
         ConciergeTool.APPLY_PRESET, ConciergeTool.FILTER_IMAGES,
         ConciergeTool.START_GENERATION, ConciergeTool.THUMBNAILS, ConciergeTool.TALK -> false
     }
@@ -1195,7 +1261,8 @@ internal object JevConciergeDialog {
     /** チャット1行分を描くアダプタ。提案には確認ボタンを添える */
     private class ConciergeAdapter(
         private val msgs: List<Msg>,
-        private val onShowPlan: (Msg.Assistant) -> Unit
+        private val onShowPlan: (Msg.Assistant) -> Unit,
+        private val onSuggestion: (String) -> Unit
     ) : RecyclerView.Adapter<ConciergeAdapter.VH>() {
 
         class VH(view: View) : RecyclerView.ViewHolder(view) {
@@ -1206,6 +1273,7 @@ internal object JevConciergeDialog {
             val detail: TextView = view.findViewById(R.id.tv_concierge_detail)
             val applied: TextView = view.findViewById(R.id.tv_concierge_applied)
             val action: MaterialButton = view.findViewById(R.id.btn_concierge_action)
+            val suggestions: LinearLayout = view.findViewById(R.id.ll_concierge_suggestions)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -1239,6 +1307,23 @@ internal object JevConciergeDialog {
                         holder.action.setText(R.string.concierge_confirm_view)
                     }
                     holder.action.setOnClickListener { onShowPlan(msg) }
+                    holder.suggestions.removeAllViews()
+                    if (msg.suggestions.isEmpty()) {
+                        holder.suggestions.visibility = View.GONE
+                    } else {
+                        holder.suggestions.visibility = View.VISIBLE
+                        msg.suggestions.forEach { suggestion ->
+                            val button = MaterialButton(
+                                holder.itemView.context, null,
+                                com.google.android.material.R.attr.materialButtonOutlinedStyle
+                            ).apply {
+                                text = suggestion
+                                isAllCaps = false
+                            }
+                            button.setOnClickListener { onSuggestion(suggestion) }
+                            holder.suggestions.addView(button)
+                        }
+                    }
                 }
             }
         }

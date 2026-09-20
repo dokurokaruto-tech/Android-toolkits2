@@ -72,5 +72,14 @@
             android:layout_marginStart="4dp"
             android:text="@string/concierge_confirm_view"
             android:visibility="gone" />
+
+        <!-- 調査の次の行動案。最大3件のボタンを動的に並べる -->
+        <LinearLayout
+            android:id="@+id/ll_concierge_suggestions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:orientation="vertical"
+            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

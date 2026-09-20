@@ -120,6 +120,68 @@ internal object JevConciergeTools {
     fun applyTag(context: Context, target: JevGenieTagRef, newText: String): Boolean =
         JevGenieTools.applyTag(context, JevGeniePlan.EditTag(target, newText, ""))
 
+    /**
+     * 調査の証拠パック。選択中カード・組み立て後プロンプト・ランダム要素・生成設定を
+     * その場で読み直して文章化する。組み立て規則は生成本体(GeneratedImageTagBinding)と同一。
+     */
+    fun builderEvidence(state: ConciergeBuilderState): String = buildString {
+        val cards = PromptCardManager.promptCards.associateBy { it.id }
+        val order = PromptCardManager.categoryOrder
+        val selected = state.selection.keys.mapNotNull { cards[it] }
+            .sortedBy { order.indexOf(it.category).let { i -> if (i >= 0) i else Int.MAX_VALUE } }
+        appendLine("【選択中のカード ${selected.size}件】（強調Lv2は×1.2、Lv3は×1.6で効く）")
+        if (selected.isEmpty()) {
+            appendLine("（なし）")
+        }
+        selected.forEach { card ->
+            val level = state.selection[card.id] ?: 1
+            appendLine("・[${card.category}] ${card.label}（強調Lv$level）")
+            appendLine("  prompt: ${card.mainPrompt.ifEmpty { "（空）" }}")
+            if (card.negativePrompt.isNotEmpty()) {
+                appendLine("  negative: ${card.negativePrompt}")
+            }
+        }
+        val prompt = selected.joinToString(", ") { card ->
+            when (state.selection[card.id] ?: 1) {
+                2 -> "(${card.mainPrompt}:1.2)"
+                3 -> "(${card.mainPrompt}:1.6)"
+                else -> card.mainPrompt
+            }
+        }.trim()
+        val negative = selected.map { it.negativePrompt }
+            .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
+        appendLine("【組み立て後のプロンプト（選択分のみ。ランダム分は生成ごとに変わる）】")
+        appendLine(prompt.ifEmpty { "（なし）" })
+        appendLine("【組み立て後の除外プロンプト】")
+        appendLine(negative.ifEmpty { "（なし）" })
+        appendLine("【ランダム要素（生成ごとに変わる）】")
+        if (state.random.isEmpty()) {
+            appendLine("・カテゴリ抽選: なし")
+        } else {
+            state.random.sorted().forEach { category ->
+                val pool = PromptCardManager.promptCards.filter { it.category == category }
+                val names = pool.take(12).joinToString("、") { it.label }
+                val extra = if (pool.size > 12) " 他${pool.size - 12}件" else ""
+                appendLine("・カテゴリ抽選『$category』: 毎回1枚（候補${pool.size}件: $names$extra）")
+            }
+        }
+        val solo = PromptCardManager.promptCards.filter { it.useIndividualRandomizer }
+        if (solo.isEmpty()) {
+            appendLine("・個別ランダマイザー: なし")
+        } else {
+            solo.forEach { appendLine("・個別ランダマイザー『${it.label}』: ${it.randomizerProbability}%で追加") }
+        }
+        appendLine(
+            "【生成設定】${state.width}×${state.height} / steps=${state.steps} " +
+                "/ batch=${state.batch} / sampler=${state.sampler}"
+        )
+        val tagCount = if (TagManager.isLoaded) "${TagManager.allTags.size}件" else "不明"
+        appendLine(
+            "【件数】カード${PromptCardManager.promptCards.size}件・タグ$tagCount" +
+                "・プリセット${PresetManager.presets.size}件"
+        )
+    }.take(6000)
+
     fun generationReady(): Boolean =
         PromptCardManager.selectionLevels.isNotEmpty() ||
             PromptCardManager.randomEnabledCategories.isNotEmpty()

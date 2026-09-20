@@ -6,7 +6,7 @@
     <string name="concierge_send">依頼を送る</string>
     <string name="concierge_pick_jev">判断モデル（Jev）</string>
     <string name="concierge_pick_writer">文章生成モデル</string>
-    <string name="concierge_greeting">%1$sの画面からこんにちは。カード・タグの編集、新規作成、プリセット適用、生成の準備までおまかせください。</string>
+    <string name="concierge_greeting">%1$sの画面からこんにちは。カード・タグの編集、新規作成、プリセット適用、生成の準備、結果の調査までおまかせください。</string>
     <string name="concierge_confirm_view">変更内容を確認</string>
     <string name="concierge_applied">✓ 適用済み</string>
     <string name="concierge_diff_title">変更内容の確認</string>

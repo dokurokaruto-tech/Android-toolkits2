@@ -24,6 +24,7 @@ internal enum class ConciergeTool(val id: String, val label: String) {
     FILTER_IMAGES("filter_images", "画像の絞り込み"),
     START_GENERATION("start_generation", "生成開始"),
     THUMBNAILS("thumbnails", "サムネイル生成"),
+    INVESTIGATE("investigate", "調査"),
     TALK("talk", "会話");
 }
 
@@ -113,6 +114,7 @@ internal object JevConciergePolicy {
             .put(ConciergeTool.FILTER_IMAGES.id, "タグで画像一覧を絞り込む・探す")
             .put(ConciergeTool.START_GENERATION.id, "いま選んでいる内容で画像生成を始める")
             .put(ConciergeTool.THUMBNAILS.id, "カードやプリセットのサムネイル画像を作り直す・補う")
+            .put(ConciergeTool.INVESTIGATE.id, "今の選択や設定が生成結果にどう影響するかの調査・原因究明。「なぜ〜」「どうして〜」「〜が違う」と理由を聞く質問")
             .put(ConciergeTool.TALK.id, "上記のどれでもない。使い方の質問・雑談・判断できない依頼")
         val question = JSONObject()
             .put("type", "choice")
@@ -388,6 +390,45 @@ internal object JevConciergePolicy {
         return JevElementPolicy.name(name)
     }
 
+    /** 調査の回答と次の行動案。suggestionsはタップでそのまま再依頼できる文 */
+    data class InvestigateResult(val answer: String, val suggestions: List<String>)
+
+    const val INVESTIGATE_SYSTEM =
+        "あなたは画像生成プロンプトの調査役。入力JSONのquestionに、evidenceだけを根拠に日本語で答える。" +
+        "証拠にない断定（生成結果の見た目の推測など）はせず、分からない点は「確認が必要」と書く。" +
+        "出力はJSONオブジェクトのみ。前後に説明やコードフェンスを付けない。" +
+        "必須キーは answer（調査結果の本文。関係するカード名・設定値を具体的に挙げる）と " +
+        "suggestions（次に起こせる行動の依頼文を最大3件。例:「制服カードをお腹の素肌が見えるようにして」" +
+        "「制服と笑顔だけを選んで」「生成して」。コンシェルジュにそのまま頼める文にすること。なければ空配列）。"
+
+    fun investigateUser(wish: String, evidence: String, history: List<Pair<String, String>>): String =
+        JSONObject()
+            .put("question", wish)
+            .put("evidence", evidence)
+            .put("history", historyText(history))
+            .toString()
+
+    /** 調査応答の読み取り。JSONでなければ本文全体を回答として使う */
+    fun parseInvestigate(raw: String): InvestigateResult {
+        val cleaned = raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+        val start = cleaned.indexOf('{')
+        val end = cleaned.lastIndexOf('}')
+        if (start < 0 || end <= start) {
+            return InvestigateResult(cleaned.take(MAX_TEXT), emptyList())
+        }
+        val json = runCatching { JSONObject(cleaned.substring(start, end + 1)) }.getOrNull()
+            ?: return InvestigateResult(cleaned.take(MAX_TEXT), emptyList())
+        val answer = json.optString("answer").trim().ifEmpty { cleaned.take(MAX_TEXT) }
+        val suggestions = mutableListOf<String>()
+        val array = json.optJSONArray("suggestions")
+        if (array != null) {
+            for (i in 0 until array.length().coerceAtMost(3)) {
+                array.optString(i).trim().takeIf { it.isNotEmpty() }?.let { suggestions += it.take(120) }
+            }
+        }
+        return InvestigateResult(answer.take(MAX_TEXT), suggestions)
+    }
+
     /** 「〜だけ」の指定があれば選択の入れ替え、なければ追加 */
     fun selectionMode(wish: String): CardSelectionMode {
         val replace = listOf("だけ", "のみ", "入れ替え", "入れかえ", "切り替え", "きりかえ", "リセット")
@@ -410,6 +451,6 @@ internal object JevConciergePolicy {
         "プロンプトカードを組み合わせる画像生成（PC連携）、カード選択の保存プリセット、キャラチャット、壁紙設定。" +
         "コンシェルジュへの依頼例: 「○○カードのプロンプトを〜に変えて」「○○タグの文章を直して」" +
         "「○○という要素を作って」「プリセット○○を適用して」「○○と○○を選んで生成して」「○○の画像を探して」" +
-        "「○○のサムネイルを作って」。" +
+        "「○○のサムネイルを作って」「今の選択で服が違うのはなぜか調べて」。" +
         "実行が必要な依頼には、対応可否と頼み方の例を短く返す。設定変更や保存の断定はしない。"
 }
