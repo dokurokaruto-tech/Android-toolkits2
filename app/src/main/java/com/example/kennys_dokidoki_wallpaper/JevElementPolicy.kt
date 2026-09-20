@@ -118,7 +118,7 @@ internal object JevElementPolicy {
         val json = JSONObject(cleaned)
         fun field(key: String): String {
             val value = json.get(key)
-            require(value is String && value.length <= MAX_TEXT) { "生成結果の$keyが不正です。" }
+            require(value is String && value.length <= MAX_TEXT) { "生成結果の${key}が不正です。" }
             return value.trim()
         }
         val result = ElementText(field("main_prompt"), field("negative_prompt"), field("chat_instruction"))
