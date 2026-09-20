@@ -1,64 +1,73 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:padding="14dp"
     android:layout_marginBottom="8dp"
-    android:background="@drawable/bg_persona_item">
+    android:clickable="true"
+    android:focusable="true"
+    app:cardBackgroundColor="?attr/colorSurfaceVariant"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
 
-    <!-- ペルソナ情報 -->
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp">
 
-        <TextView
-            android:id="@+id/tv_persona_name"
-            android:layout_width="match_parent"
+        <!-- ペルソナ情報 -->
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textColor="#E6E1E5"
-            android:textSize="16sp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_persona_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?attr/colorOnSurface"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tv_persona_description"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+        <!-- アクティブインジケーター -->
+        <TextView
+            android:id="@+id/tv_active_indicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/persona_active"
+            android:textColor="?attr/colorPrimary"
+            android:textAppearance="?attr/textAppearanceLabelMedium"
             android:textStyle="bold"
-            android:maxLines="1"
-            android:ellipsize="end" />
+            android:visibility="gone"
+            android:layout_marginStart="12dp" />
 
-        <TextView
-            android:id="@+id/tv_persona_description"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#AAFFFFFF"
-            android:textSize="13sp"
-            android:maxLines="2"
-            android:ellipsize="end"
-            android:layout_marginTop="4dp" />
+        <!-- メニュー（ケバブアイコン） -->
+        <ImageButton
+            android:id="@+id/btn_persona_menu"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_md3_more_vert"
+            android:scaleType="centerInside"
+            android:contentDescription="@string/persona_options"
+            android:layout_marginStart="8dp"
+            app:tint="?attr/colorOnSurface" />
+
     </LinearLayout>
-
-    <!-- アクティブインジケーター -->
-    <TextView
-        android:id="@+id/tv_active_indicator"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="✓"
-        android:textColor="#FF0088"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:visibility="gone"
-        android:layout_marginStart="12dp" />
-
-    <!-- メニュー（ケバブアイコン） -->
-    <ImageButton
-        android:id="@+id/btn_persona_menu"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@drawable/ic_more_vert"
-        android:scaleType="centerInside"
-        android:contentDescription="@null"
-        android:layout_marginStart="8dp"
-        app:tint="#E6E1E5" />
-
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

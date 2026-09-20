@@ -6,6 +6,8 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.color.MaterialColors
 
 class UserPersonaAdapter(
     private val personas: List<UserPersona>,
@@ -39,14 +41,15 @@ class UserPersonaAdapter(
             "（設定なし）"
         }
 
-        // アクティブ状態の表示
-        if (isActive) {
-            holder.tvActiveIndicator.visibility = View.VISIBLE
-            holder.rootItem.setBackgroundResource(R.drawable.bg_persona_item_active)
+        holder.tvActiveIndicator.visibility = if (isActive) View.VISIBLE else View.GONE
+        holder.rootItem.isSelected = isActive
+        val card = holder.rootItem as MaterialCardView
+        val background = if (isActive) {
+            com.google.android.material.R.attr.colorSecondaryContainer
         } else {
-            holder.tvActiveIndicator.visibility = View.GONE
-            holder.rootItem.setBackgroundResource(R.drawable.bg_persona_item)
+            com.google.android.material.R.attr.colorSurfaceVariant
         }
+        card.setCardBackgroundColor(MaterialColors.getColor(card, background))
 
         // タップで切り替え
         holder.rootItem.setOnClickListener { onPersonaClick(persona) }

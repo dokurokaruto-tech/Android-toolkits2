@@ -1,123 +1,109 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@drawable/bg_persona_dialog"
-    android:padding="20dp">
+    app:cardBackgroundColor="?attr/colorSurface"
+    app:cardCornerRadius="28dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
 
-    <!-- タイトル -->
-    <TextView
-        android:id="@+id/tv_edit_persona_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="✨ ペルソナを編集"
-        android:textColor="#E6E1E5"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginBottom="12dp" />
-
-    <!-- ペルソナ名 -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="ペルソナの名称"
-        android:textColor="#CCFFFFFF"
-        android:textSize="12sp"
-        android:layout_marginBottom="4dp" />
-
-    <EditText
-        android:id="@+id/et_persona_name"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/bg_persona_item"
-        android:hint="例: 優しい彼氏、ツンデレマスター"
-        android:textColor="#E6E1E5"
-        android:textColorHint="#66FFFFFF"
-        android:textSize="14sp"
-        android:padding="12dp"
-        android:inputType="text"
-        android:maxLines="1"
-        android:layout_marginBottom="12dp" />
-
-    <!-- 複数カスタム指示の見出しと操作 -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="6dp">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="24dp">
 
-        <TextView
-            android:layout_width="0dp"
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tv_edit_persona_title"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="@string/persona_edit"
+            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+            android:textColor="?attr/colorOnSurface" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/til_persona_name"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:hint="@string/persona_name"
+            app:errorEnabled="true">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_persona_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textCapSentences"
+                android:singleLine="true" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/persona_instructions"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorOnSurface" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_add_instruction"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/persona_instruction_add"
+                app:icon="@drawable/ic_md3_add" />
+
+        </LinearLayout>
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tv_instruction_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="@string/persona_instruction_hint"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_instructions"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
-            android:text="カスタム指示一覧 (上から順に連結されるわ☆)"
-            android:textColor="#CCFFFFFF"
-            android:textSize="12sp" />
+            android:clipToPadding="false"
+            android:paddingBottom="8dp" />
 
-        <!-- ＋ 指示追加ボタン -->
-        <TextView
-            android:id="@+id/btn_add_instruction"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_counter_bubble"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="4dp"
-            android:text="➕ 追加"
-            android:textColor="#D0BCFF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:clickable="true"
-            android:focusable="true" />
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:paddingTop="8dp">
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_cancel_persona"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/persona_cancel" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_save_persona"
+                android:layout_marginStart="8dp"
+                style="@style/Widget.Material3.Button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/persona_save" />
+
+        </LinearLayout>
     </LinearLayout>
-
-    <!-- 指示リスト（ドラッグ＆ドロップ対応のRecyclerView） -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rv_instructions"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginBottom="16dp"
-        android:clipToPadding="false"
-        android:paddingBottom="8dp" />
-
-    <!-- ボタンエリア -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="end">
-
-        <TextView
-            android:id="@+id/btn_cancel_persona"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:gravity="center"
-            android:text="キャンセル"
-            android:textColor="#88FFFFFF"
-            android:textSize="14sp"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:clickable="true"
-            android:focusable="true" />
-
-        <TextView
-            android:id="@+id/btn_save_persona"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:gravity="center"
-            android:text="💾 保存"
-            android:textColor="#FF0088"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:layout_marginStart="8dp"
-            android:clickable="true"
-            android:focusable="true" />
-    </LinearLayout>
-
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="model_search_hint">モデル名・IDで検索</string>
+    <string name="model_search_empty">一致するモデルがありません。\n検索語やフィルターを変更してください。</string>
+    <string name="model_load_empty">モデルを取得できませんでした。\n更新ボタンでやり直してください。</string>
+    <string name="model_result_count">%1$d 個のモデル</string>
+    <string name="persona_switch">ペルソナ切替</string>
+    <string name="persona_switch_hint">タップで切替 · メニューから編集・複製・削除</string>
+    <string name="persona_none">ペルソナを使用していません</string>
+    <string name="persona_current">使用中：%1$s</string>
+    <string name="persona_empty">ペルソナがありません。\n追加して、名前やカスタム指示を設定できます。</string>
+    <string name="persona_add">新しいペルソナを追加</string>
+    <string name="persona_clear">ペルソナを解除</string>
+    <string name="persona_close">閉じる</string>
+    <string name="persona_edit">ペルソナを編集</string>
+    <string name="persona_new">新しいペルソナ</string>
+    <string name="persona_name">ペルソナの名称</string>
+    <string name="persona_name_required">名称を入力してください</string>
+    <string name="persona_instructions">カスタム指示</string>
+    <string name="persona_instruction_add">追加</string>
+    <string name="persona_instruction_hint">有効な指示を上から順に適用します。\n右端のハンドルをドラッグして並べ替えられます。</string>
+    <string name="persona_instruction_edit">カスタム指示を編集</string>
+    <string name="persona_detail_hint">呼び方や接し方など、AIキャラへの指示を入力してください。</string>
+    <string name="persona_instruction_body">指示内容</string>
+    <string name="persona_instruction_placeholder">タップして指示を入力</string>
+    <string name="persona_cancel">キャンセル</string>
+    <string name="persona_save">保存</string>
+    <string name="persona_confirm">確定</string>
+    <string name="persona_active">使用中</string>
+    <string name="persona_options">ペルソナの操作</string>
+    <string name="persona_enable_instruction">指示を有効にする</string>
+    <string name="persona_delete_instruction">指示を削除</string>
+    <string name="persona_reorder_instruction">指示を並べ替え</string>
+</resources>

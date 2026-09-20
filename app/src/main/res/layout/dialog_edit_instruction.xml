@@ -1,82 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="@drawable/bg_persona_dialog"
-    android:padding="20dp">
+    android:layout_height="match_parent"
+    app:cardBackgroundColor="?attr/colorSurface"
+    app:cardCornerRadius="28dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
 
-    <!-- タイトル -->
-    <TextView
-        android:id="@+id/tv_dialog_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="✨ 指示内容の編集"
-        android:textColor="#E6E1E5"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="12dp" />
-
-    <!-- 説明文 -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="AIキャラへの詳しい指示をここに記述してね♪"
-        android:textColor="#CCFFFFFF"
-        android:textSize="12sp"
-        android:layout_marginBottom="10dp" />
-
-    <!-- 指示内容編集エリア（大きなEditText） -->
-    <EditText
-        android:id="@+id/et_instruction_detail"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:minHeight="180dp"
-        android:background="@drawable/bg_persona_item"
-        android:hint="例: ユーザーのことは『ケニー』と呼んで、優しくてちょっと照れ屋な態度で接してね！"
-        android:textColor="#E6E1E5"
-        android:textColorHint="#55FFFFFF"
-        android:textSize="14sp"
-        android:padding="16dp"
-        android:gravity="top|start"
-        android:inputType="textMultiLine"
-        android:scrollbars="vertical"
-        android:layout_marginBottom="16dp" />
-
-    <!-- ボタンエリア -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="end">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="24dp">
 
-        <TextView
-            android:id="@+id/btn_cancel_instruction"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:gravity="center"
-            android:text="キャンセル"
-            android:textColor="#88FFFFFF"
-            android:textSize="14sp"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:clickable="true"
-            android:focusable="true" />
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tv_dialog_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="@string/persona_instruction_edit"
+            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+            android:textColor="?attr/colorOnSurface" />
 
-        <TextView
-            android:id="@+id/btn_save_instruction"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:gravity="center"
-            android:text="確定"
-            android:textColor="#D0BCFF"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:layout_marginStart="8dp"
-            android:clickable="true"
-            android:focusable="true" />
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tv_detail_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="@string/persona_detail_hint"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:hint="@string/persona_instruction_body">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_instruction_detail"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="top|start"
+                android:inputType="textMultiLine|textCapSentences"
+                android:scrollbars="vertical" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:paddingTop="8dp">
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_cancel_instruction"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/persona_cancel" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_save_instruction"
+                android:layout_marginStart="8dp"
+                style="@style/Widget.Material3.Button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/persona_confirm" />
+
+        </LinearLayout>
     </LinearLayout>
-
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

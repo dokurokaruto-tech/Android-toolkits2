@@ -53,6 +53,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.GridLayoutManager
@@ -1430,6 +1431,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val currentModel = prefs.getString("chat_openrouter_model", null)
 
         val view = LayoutInflater.from(md3).inflate(R.layout.dialog_model_picker_md3, null)
+        val search = view.findViewById<EditText>(R.id.et_model_search)
         val rv = view.findViewById<RecyclerView>(R.id.rv_models)
         val progress = view.findViewById<com.google.android.material.progressindicator.CircularProgressIndicator>(R.id.progress_models)
         val empty = view.findViewById<TextView>(R.id.tv_empty)
@@ -1441,9 +1443,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         rv.layoutManager = LinearLayoutManager(md3)
 
-        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(md3)
-            .setView(view)
-            .create()
+        val dialog = createChatPopup(view)
 
         var freeOnly = false
         var isLoading = false
@@ -1455,13 +1455,19 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 empty.visibility = View.GONE
                 return
             }
-            val filtered = if (freeOnly) openRouterModels.filter { it.isFree } else openRouterModels
+            val query = search.text.toString()
+            val filtered = openRouterModels.filter {
+                (!freeOnly || it.isFree) && ModelSearch.matches(it.name, it.id, query)
+            }
             val sorted = if (openRouterSortByDate) {
                 filtered.sortedByDescending { it.created }
             } else {
                 filtered.sortedBy { it.name.lowercase() }
             }
-            count.text = "${filtered.size} 個のモデル"
+            count.text = getString(R.string.model_result_count, filtered.size)
+            empty.setText(
+                if (openRouterModels.isEmpty()) R.string.model_load_empty else R.string.model_search_empty
+            )
             if (sorted.isEmpty()) {
                 rv.visibility = View.GONE
                 empty.visibility = View.VISIBLE
@@ -1498,6 +1504,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             render()
         }
 
+        search.doAfterTextChanged { render() }
+
         val filterClick = View.OnClickListener {
             freeOnly = chipFree.isChecked
             render()
@@ -1528,15 +1536,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         btnRefresh.setOnClickListener { doRefresh() }
 
-        // リストの高さを画面の60%に
-        val listHeight = (resources.displayMetrics.heightPixels * 0.6).toInt()
-        (rv.layoutParams as FrameLayout.LayoutParams).height = listHeight
-
         dialog.show()
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.95).toInt(),
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
 
         // 開くたびに必ず最新リストを取得してから表示
         doRefresh()
@@ -3891,18 +3891,49 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
     }
 
+    private fun createChatPopup(view: View): androidx.appcompat.app.AppCompatDialog {
+        val dialog = androidx.appcompat.app.AppCompatDialog(view.context, R.style.ThemeOverlay_Kennys_Md3Popup)
+        dialog.supportRequestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dialog.setCanceledOnTouchOutside(true)
+
+        // リストだけを伸縮させ、検索欄と操作ボタンを画面内に保つ。
+        dialog.setContentView(
+            view,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        dialog.setOnShowListener {
+            val metrics = resources.displayMetrics
+            dialog.window?.setLayout(
+                Md3PopupDialog.popupWidth(metrics.widthPixels),
+                Md3PopupDialog.popupHeight(metrics.heightPixels)
+            )
+            dialog.window?.setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            )
+        }
+        return dialog
+    }
+
     private fun showPersonaDialog() {
         UserPersonaManager.loadPersonas(this)
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_user_persona, null)
+        val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_user_persona)
         val rvPersonas = dialogView.findViewById<RecyclerView>(R.id.rv_personas)
         val btnAdd = dialogView.findViewById<View>(R.id.btn_add_persona)
         val btnClear = dialogView.findViewById<View>(R.id.btn_clear_persona)
         
-        val dialog = MaterialAlertDialogBuilder(md3Context).setView(dialogView).create()
+        val status = dialogView.findViewById<TextView>(R.id.tv_persona_status)
+        val empty = dialogView.findViewById<View>(R.id.tv_personas_empty)
+        val dialog = createChatPopup(dialogView)
         dialog.show()
+        dialogView.findViewById<View>(R.id.btn_close_persona).setOnClickListener { dialog.dismiss() }
+        rvPersonas.layoutManager = LinearLayoutManager(dialogView.context)
 
         fun refreshList() {
-            rvPersonas.layoutManager = LinearLayoutManager(this)
+            val active = UserPersonaManager.activePersona
+            status.text = active?.let { getString(R.string.persona_current, it.name) }
+                ?: getString(R.string.persona_none)
+            btnClear.isEnabled = active != null
+            empty.visibility = if (UserPersonaManager.personas.isEmpty()) View.VISIBLE else View.GONE
             rvPersonas.adapter = UserPersonaAdapter(
                 UserPersonaManager.personas.toList(),
                 UserPersonaManager.activePersonaId,
@@ -4048,7 +4079,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun showPersonaOptionsDialog(persona: UserPersona, anchor: View, onUpdate: () -> Unit) {
-        val popup = PopupMenu(this, anchor)
+        val popup = PopupMenu(anchor.context, anchor)
         popup.menu.add("名前と設定を編集")
         popup.menu.add("このペルソナを複製")
         popup.menu.add("このペルソナを削除")
@@ -4081,16 +4112,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun showDetailEditDialog(item: PersonaItem, onSave: (String) -> Unit) {
-        val detailView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_instruction, null)
+        val (_, detailView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_instruction)
         val etDetail = detailView.findViewById<EditText>(R.id.et_instruction_detail)
         val btnCancel = detailView.findViewById<View>(R.id.btn_cancel_instruction)
         val btnSave = detailView.findViewById<View>(R.id.btn_save_instruction)
 
         etDetail.setText(item.content)
 
-        val detailDialog = MaterialAlertDialogBuilder(md3Context)
-            .setView(detailView)
-            .create()
+        val detailDialog = createChatPopup(detailView)
 
         btnCancel.setOnClickListener {
             detailDialog.dismiss()
@@ -4103,17 +4132,13 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
 
         detailDialog.show()
-        
-        detailDialog.window?.let { window ->
-            val displayMetrics = resources.displayMetrics
-            val width = (displayMetrics.widthPixels * 0.90).toInt()
-            window.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
     }
 
     private fun showEditPersonaDialog(persona: UserPersona?, onUpdate: () -> Unit) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_persona, null)
+        val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_persona)
         val etName = dialogView.findViewById<EditText>(R.id.et_persona_name)
+        val nameInput = dialogView.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.til_persona_name)
+        etName.doAfterTextChanged { nameInput.error = null }
         val tvTitle = dialogView.findViewById<TextView>(R.id.tv_edit_persona_title)
         val btnCancel = dialogView.findViewById<View>(R.id.btn_cancel_persona)
         val btnSave = dialogView.findViewById<View>(R.id.btn_save_persona)
@@ -4123,15 +4148,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         val itemsList = mutableListOf<PersonaItem>()
         if (persona != null) {
-            tvTitle.text = "ペルソナの編集"
+            tvTitle.setText(R.string.persona_edit)
             etName.setText(persona.name)
             itemsList.addAll(persona.items.map { it.copy() }) 
         } else {
-            tvTitle.text = "✨ 新しいペルソナ"
+            tvTitle.setText(R.string.persona_new)
             itemsList.add(PersonaItem(content = "", isEnabled = true))
         }
 
-        rvInstructions.layoutManager = LinearLayoutManager(this)
+        rvInstructions.layoutManager = LinearLayoutManager(dialogView.context)
         
         var touchHelper: ItemTouchHelper? = null
         val adapter = PersonaInstructionsAdapter(
@@ -4142,7 +4167,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             onItemClick = { item, position ->
                 showDetailEditDialog(item) { updatedContent ->
                     item.content = updatedContent
-                    adapter.notifyItemChanged(position)
+                    rvInstructions.adapter?.notifyItemChanged(position)
                 }
             }
         )
@@ -4163,9 +4188,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
         }
 
-        val dialog = MaterialAlertDialogBuilder(md3Context)
-            .setView(dialogView)
-            .create()
+        val dialog = createChatPopup(dialogView)
 
         btnCancel.setOnClickListener {
             dialog.dismiss()
@@ -4184,18 +4207,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 onUpdate()
                 dialog.dismiss()
             } else {
-                Toast.makeText(this, "名称を入力してください。", Toast.LENGTH_SHORT).show()
+                nameInput.error = getString(R.string.persona_name_required)
+                etName.requestFocus()
             }
         }
 
         dialog.show()
-        
-        dialog.window?.let { window ->
-            val displayMetrics = resources.displayMetrics
-            val width = (displayMetrics.widthPixels * 0.95).toInt()
-            val height = (displayMetrics.heightPixels * 0.90).toInt()
-            window.setLayout(width, height)
-        }
     }
 
 }

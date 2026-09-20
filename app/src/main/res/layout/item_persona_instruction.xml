@@ -5,31 +5,18 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:padding="8dp"
+    android:padding="4dp"
     android:layout_marginBottom="8dp"
-    android:background="@drawable/bg_persona_item">
-
-    <!-- ドラッグハンドル (ハンバーガーアイコン) -->
-    <TextView
-        android:id="@+id/tv_drag_handle"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:gravity="center"
-        android:text="☰"
-        android:textColor="#D0BCFF"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:clickable="false"
-        android:focusable="false"
-        android:layout_marginEnd="4dp" />
+    android:background="@drawable/bg_persona_instruction_md3">
 
     <!-- 有効 / 無効切り替えチェックボックス -->
-    <CheckBox
+    <com.google.android.material.checkbox.MaterialCheckBox
         android:id="@+id/cb_enabled"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:buttonTint="#FF0088"
-        android:layout_marginEnd="6dp" />
+        android:contentDescription="@string/persona_enable_instruction"
+        app:useMaterialThemeColors="true"
+        android:layout_marginEnd="0dp" />
 
     <!-- 指示テキスト表示枠 -->
     <TextView
@@ -38,9 +25,9 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:background="?attr/selectableItemBackground"
-        android:hint="指示内容（例: ユーザーのことは『ケニー』と呼んでね）"
-        android:textColor="#E6E1E5"
-        android:textColorHint="#55FFFFFF"
+        android:hint="@string/persona_instruction_placeholder"
+        android:textColor="?attr/colorOnSurface"
+        android:textColorHint="?attr/colorOnSurfaceVariant"
         android:textSize="14sp"
         android:minHeight="48dp"
         android:gravity="center_vertical|start"
@@ -53,11 +40,21 @@
     <!-- 削除ボタン -->
     <ImageButton
         android:id="@+id/btn_delete_instruction"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@android:drawable/ic_menu_close_clear_cancel"
-        app:tint="#FF4444"
-        android:contentDescription="削除" />
+        android:src="@drawable/ic_md3_delete"
+        app:tint="?attr/colorOnSurfaceVariant"
+        android:contentDescription="@string/persona_delete_instruction" />
+
+    <!-- 右端のドラッグハンドル -->
+    <ImageButton
+        android:id="@+id/tv_drag_handle"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_md3_drag_handle"
+        android:contentDescription="@string/persona_reorder_instruction"
+        app:tint="?attr/colorOnSurfaceVariant" />
 
 </LinearLayout>

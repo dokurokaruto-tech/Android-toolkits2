@@ -18,7 +18,7 @@ class PersonaInstructionsAdapter(
 ) : RecyclerView.Adapter<PersonaInstructionsAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val tvDragHandle: TextView = view.findViewById(R.id.tv_drag_handle)
+        val tvDragHandle: ImageButton = view.findViewById(R.id.tv_drag_handle)
         val cbEnabled: CheckBox = view.findViewById(R.id.cb_enabled)
         val tvContent: TextView = view.findViewById(R.id.tv_instruction_content)
         val btnDelete: ImageButton = view.findViewById(R.id.btn_delete_instruction)
