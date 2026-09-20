@@ -86,7 +86,21 @@ internal object JevConciergeTools {
         if (!TagManager.isLoaded) {
             return emptyList()
         }
-        return JevGenieTools.tagRefs().map { ConciergeCandidate(it.name, it.name, it.text) }
+        return JevGenieTools.tagRefs().map { ConciergeCandidate(it.name, it.name, tagHint(it)) }
+    }
+
+    /** タグ候補の手がかり。性格が複数あれば名前と書き出しを添える */
+    fun tagHint(ref: JevGenieTagRef): String {
+        if (ref.variants.size <= 1) {
+            return ref.text
+        }
+        val heads = ref.variants.joinToString(" ／ ") { "［${it.name}］${oneLine(it.text, 40)}" }
+        return "$heads ｜ 既定: ${oneLine(ref.text, 60)}"
+    }
+
+    private fun oneLine(text: String, limit: Int): String {
+        val one = text.replace(Regex("\\s+"), " ").trim()
+        return if (one.length <= limit) one else one.take(limit) + "…"
     }
 
     /** 判断APIへ投げてanswersを取り出す。Jevの呼び出しはここだけ */

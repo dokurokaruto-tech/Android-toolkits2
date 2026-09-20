@@ -123,8 +123,9 @@ internal object HistoryPayload {
         .put("oldMain", target.mainPrompt).put("oldNeg", target.negativePrompt)
         .put("newMain", newMain).put("newNeg", newNeg).toString()
 
-    fun tag(target: JevGenieTagRef, newText: String): String = JSONObject()
-        .put("name", target.name).put("oldText", target.text).put("newText", newText).toString()
+    fun tag(target: JevGenieTagRef, newText: String, variant: String? = null): String = JSONObject()
+        .put("name", target.name).put("variant", variant ?: JSONObject.NULL)
+        .put("oldText", target.variantText(variant)).put("newText", newText).toString()
 
     fun element(draft: ElementDraft): String = JSONObject()
         .put("name", draft.name).put("cardCategory", draft.cardCategory).put("tagCategory", draft.tagCategory)
@@ -176,7 +177,7 @@ internal object HistoryExecute {
                 }
                 ConciergeTool.EDIT_TAG -> {
                     val name = liveTag(payload.getString("name")) ?: return false
-                    TagManager.setTagPrompt(context, name, payload.getString("newText"))
+                    applyTagText(context, name, payload.optString("variant", ""), payload.getString("newText"))
                     host.refreshTags()
                     true
                 }
@@ -223,7 +224,7 @@ internal object HistoryExecute {
                 }
                 ConciergeTool.EDIT_TAG -> {
                     val name = liveTag(payload.getString("name")) ?: return false
-                    TagManager.setTagPrompt(context, name, payload.getString("oldText"))
+                    applyTagText(context, name, payload.optString("variant", ""), payload.getString("oldText"))
                     host.refreshTags()
                     true
                 }
@@ -259,6 +260,15 @@ internal object HistoryExecute {
     private fun liveCard(id: String, label: String): PromptCard? =
         PromptCardManager.promptCards.firstOrNull { it.id == id }
             ?: PromptCardManager.promptCards.firstOrNull { JevElementPolicy.sameName(it.label, label) }
+
+    /** 性格指定があればその文章だけ、無ければ既定の文章を書き換える */
+    private fun applyTagText(context: Context, name: String, variant: String, text: String) {
+        if (variant.isEmpty()) {
+            TagManager.setTagPrompt(context, name, text)
+        } else {
+            TagManager.setTagPromptVariant(context, name, variant, text)
+        }
+    }
 
     private fun liveTag(name: String): String? =
         TagManager.allTags.firstOrNull { JevElementPolicy.sameName(it, name) }

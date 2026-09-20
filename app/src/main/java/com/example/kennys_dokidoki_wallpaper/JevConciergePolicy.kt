@@ -107,7 +107,7 @@ internal object JevConciergePolicy {
             .put("library", "cards=$cards tags=$tags presets=$presets")
         val criteria = JSONObject()
             .put(ConciergeTool.EDIT_CARD.id, "既存のプロンプトカードの文章を変える。画像生成用の英語タグの修正")
-            .put(ConciergeTool.EDIT_TAG.id, "既存のタグの文章を変える。キャラチャット用の日本語指示の修正")
+            .put(ConciergeTool.EDIT_TAG.id, "既存のタグの文章を変える。キャラチャット用の日本語指示の修正（性格バリエーションの指定可）")
             .put(ConciergeTool.NEW_ELEMENT.id, "存在しない要素を新しく作る。カードとタグの両方を一括生成")
             .put(ConciergeTool.APPLY_PRESET.id, "保存済みプリセットを適用して生成設定を切り替える")
             .put(ConciergeTool.SELECT_CARDS.id, "生成に使うカードを選ぶ・外す。複数可")
@@ -448,6 +448,7 @@ internal object JevConciergePolicy {
     const val TALK_SYSTEM =
         "あなたは画像生成・壁紙・AIキャラチャットアプリ内の案内役。簡潔な日本語で答える。" +
         "このアプリでできること: 全画像の管理とタグ付け、画像セットの管理、タグ別のキャラチャット用指示文の管理、" +
+        "1つのタグに性格違いの文章（例：ニュートラル・優しめ・厳しめ）を複数持てる、" +
         "プロンプトカードを組み合わせる画像生成（PC連携）、カード選択の保存プリセット、キャラチャット、壁紙設定。" +
         "コンシェルジュへの依頼例: 「○○カードのプロンプトを〜に変えて」「○○タグの文章を直して」" +
         "「○○という要素を作って」「プリセット○○を適用して」「○○と○○を選んで生成して」「○○の画像を探して」" +

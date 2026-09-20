@@ -135,19 +135,46 @@
                 tools:ignore="HardcodedText" />
 
             <LinearLayout
-                android:id="@+id/ll_variant_container"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <Spinner
+                    android:id="@+id/sp_variant_selector"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_add_variant"
+                    style="@style/Widget.Material3.Button.OutlinedButton.Icon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="追加"
+                    app:icon="@drawable/ic_md3_add"
+                    tools:ignore="HardcodedText" />
+            </LinearLayout>
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/tv_variant_preview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:ellipsize="end"
+                android:maxLines="6"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textColor="?attr/colorOnSurfaceVariant" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_add_variant"
-                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
+                android:id="@+id/btn_edit_variant"
+                style="@style/Widget.Material3.Button.TonalButton.Icon"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="新しい文章を追加"
-                app:icon="@drawable/ic_md3_add"
+                android:layout_marginTop="8dp"
+                android:text="選んだ文章を閲覧・編集"
+                app:icon="@drawable/ic_md3_edit"
                 tools:ignore="HardcodedText" />
 
             <com.google.android.material.textview.MaterialTextView

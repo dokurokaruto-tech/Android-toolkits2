@@ -57,7 +57,8 @@ internal object JevConciergeDialog {
             val target: JevGenieTagRef,
             val newText: String,
             val confidence: Double,
-            val verify: Double
+            val verify: Double,
+            val variant: String? = null
         ) : Plan()
 
         data class NewElement(
@@ -430,13 +431,16 @@ internal object JevConciergeDialog {
         }
         val target: JevGenieTagRef
         val targetConf: Double
+        val forcedVariant: String?
         if (forcedKey != null) {
-            target = tags.firstOrNull { it.name == forcedKey }
+            val tagName = forcedKey.substringBefore("\n")
+            forcedVariant = forcedKey.substringAfter("\n", "").ifEmpty { null }
+            target = tags.firstOrNull { it.name == tagName }
                 ?: return Outcome("指定のタグが見つかりませんでした。一覧から選び直してください。", "🛠 $label · 対象なし")
             targetConf = 1.0
         } else {
             val ranked = JevConciergePolicy.rankCandidates(
-                wish, tags.map { ConciergeCandidate(it.name, it.name, it.text) }
+                wish, tags.map { ConciergeCandidate(it.name, it.name, JevConciergeTools.tagHint(it)) }
             )
             setStatus("対象のタグを特定中…")
             val pick = pickTarget(activity, settings, wish, screen, "タグ", ranked)
@@ -452,6 +456,36 @@ internal object JevConciergeDialog {
                 )
             }
             targetConf = pick.probability
+            forcedVariant = null
+        }
+
+        val variantName: String?
+        val currentText: String
+        if (forcedVariant != null) {
+            if (target.variants.none { it.name == forcedVariant }) {
+                return Outcome(
+                    "タグ『${target.name}』に『$forcedVariant』が見つかりませんでした。一覧から選び直してください。",
+                    "🛠 $label · 対象なし"
+                )
+            }
+            variantName = forcedVariant
+            currentText = target.variantText(forcedVariant)
+        } else if (target.variants.size <= 1) {
+            variantName = target.variants.firstOrNull()?.name
+            currentText = target.text
+        } else {
+            setStatus("性格を特定中…")
+            val variantRanked = target.variants.map { ConciergeCandidate(it.name, it.name, it.text) }
+            val variantPick = pickTarget(activity, settings, wish, screen, "文章（性格）", variantRanked)
+            val found = variantPick.index?.let { variantRanked[it].key }
+            if (found == null || variantPick.probability < JevConciergePolicy.TARGET_MIN_PROB) {
+                return Outcome(
+                    "タグ『${target.name}』のどの文章を変えますか？（${target.variants.joinToString("・") { it.name }}）",
+                    "🛠 $label · 性格を特定できず"
+                )
+            }
+            variantName = found
+            currentText = target.variantText(found)
         }
 
         var bestText = ""
@@ -465,7 +499,7 @@ internal object JevConciergeDialog {
                         JevConciergePolicy.chatBody(
                             settings.writer,
                             JevConciergePolicy.TAG_REWRITE_SYSTEM,
-                            JevConciergePolicy.tagRewriteUser(target.text, wish)
+                            JevConciergePolicy.tagRewriteUser(currentText, wish)
                         )
                     )
                 )
@@ -477,7 +511,7 @@ internal object JevConciergeDialog {
             val score = JevConciergePolicy.parseVerify(
                 JevConciergeTools.decide(
                     activity, settings.endpoint,
-                    JevConciergePolicy.verifyBody(wish, target.text, draft, settings.jev)
+                    JevConciergePolicy.verifyBody(wish, currentText, draft, settings.jev)
                 )
             )
             if (score > bestScore) {
@@ -491,10 +525,15 @@ internal object JevConciergeDialog {
         if (bestText.isEmpty()) {
             return Outcome("変更案を作れませんでした。文章モデルを変えるか、依頼を言い換えてください。", null)
         }
+        val title = if (variantName != null && target.variants.size > 1) {
+            "タグ『${target.name}』［$variantName］"
+        } else {
+            "タグ『${target.name}』"
+        }
         return Outcome(
-            "タグ『${target.name}』の変更案ができました。内容を確認してください。",
+            "${title}の変更案ができました。内容を確認してください。",
             "🛠 $label · Jev確信度${percent(targetConf)}",
-            Plan.EditTag(target, bestText, targetConf, bestScore)
+            Plan.EditTag(target, bestText, targetConf, bestScore, variantName)
         )
     }
 
@@ -684,7 +723,7 @@ internal object JevConciergeDialog {
             targetConf = 1.0
         } else {
             val ranked = JevConciergePolicy.rankCandidates(
-                wish, tags.map { ConciergeCandidate(it.name, it.name, it.text) }
+                wish, tags.map { ConciergeCandidate(it.name, it.name, JevConciergeTools.tagHint(it)) }
             )
             val pick = pickTarget(activity, settings, wish, screen, "タグ", ranked)
             tag = pick.index?.let { ranked[it].key }
@@ -922,7 +961,7 @@ internal object JevConciergeDialog {
         }
         val payload = when (plan) {
             is Plan.EditCard -> HistoryPayload.card(plan.target, plan.newMain, plan.newNegative)
-            is Plan.EditTag -> HistoryPayload.tag(plan.target, plan.newText)
+            is Plan.EditTag -> HistoryPayload.tag(plan.target, plan.newText, plan.variant)
             is Plan.NewElement -> HistoryPayload.element(plan.draft)
         }
         return HistoryRecord(
@@ -940,7 +979,10 @@ internal object JevConciergeDialog {
 
     private fun planTitle(activity: Context, plan: Plan): String = when (plan) {
         is Plan.EditCard -> "${plan.target.category} / ${plan.target.label}"
-        is Plan.EditTag -> activity.getString(R.string.genie_diff_tag, plan.target.name)
+        is Plan.EditTag -> {
+            val base = activity.getString(R.string.genie_diff_tag, plan.target.name)
+            if (plan.variant == null) base else "$base［${plan.variant}］"
+        }
         is Plan.NewElement -> "新規要素『${plan.draft.name}』"
     }
 
@@ -957,7 +999,10 @@ internal object JevConciergeDialog {
             }
         }
         is Plan.EditTag -> listOf(
-            HistoryRow(JevGeniePolicy.FIELD_TEXT, plan.target.text.ifEmpty { EMPTY_MARK }, plan.newText)
+            HistoryRow(
+                if (plan.variant == null) JevGeniePolicy.FIELD_TEXT else "${JevGeniePolicy.FIELD_TEXT}［${plan.variant}］",
+                plan.target.variantText(plan.variant).ifEmpty { EMPTY_MARK }, plan.newText
+            )
         )
         is Plan.NewElement -> listOf(
             HistoryRow("カードのカテゴリー", NEW_MARK, withConf(plan.draft.cardCategory, plan.cardConf)),
@@ -1239,7 +1284,13 @@ internal object JevConciergeDialog {
     /** フォームの対象候補。(表示名, 識別子) */
     private fun formOptions(tool: ConciergeTool, kind: ThumbKind): List<Pair<String, String>> = when (tool) {
         ConciergeTool.EDIT_CARD -> JevGenieTools.cardRefs().map { "${it.label}（${it.category}）" to it.id }
-        ConciergeTool.EDIT_TAG -> JevGenieTools.tagRefs().map { it.name to it.name }
+        ConciergeTool.EDIT_TAG -> JevGenieTools.tagRefs().flatMap { ref ->
+            if (ref.variants.isEmpty()) {
+                listOf(ref.name to ref.name)
+            } else {
+                ref.variants.map { "${ref.name}［${it.name}］" to "${ref.name}\n${it.name}" }
+            }
+        }
         ConciergeTool.APPLY_PRESET -> PresetManager.presets.map { "${it.name}（${it.category}）" to it.id }
         ConciergeTool.FILTER_IMAGES -> JevGenieTools.tagRefs().map { it.name to it.name }
         ConciergeTool.THUMBNAILS -> {
