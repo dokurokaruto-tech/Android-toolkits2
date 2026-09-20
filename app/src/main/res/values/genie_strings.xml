@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="genie_title">ジーニー</string>
+    <string name="genie_subtitle">願いを伝えれば、既存のカードやタグを賢く編集します</string>
+    <string name="genie_input_hint">願いを入力（例: 制服カードのプロンプトをお腹の素肌を見せるようにして）</string>
+    <string name="genie_send">願いを送る</string>
+    <string name="genie_model_select">ジーニーのモデル</string>
+    <string name="genie_confirm_view">変更内容を確認</string>
+    <string name="genie_applied">✓ 適用済み</string>
+    <string name="genie_diff_title">変更内容の確認</string>
+    <string name="genie_diff_tag">タグ: %1$s</string>
+    <string name="genie_diff_before">変更前</string>
+    <string name="genie_diff_after">変更後</string>
+    <string name="genie_apply">保存</string>
+    <string name="genie_cancel">キャンセル</string>
+    <string name="genie_saved">保存しました</string>
+    <string name="genie_cancelled">変更を破棄しました</string>
+    <string name="genie_apply_failed">保存に失敗しました。対象が既に存在しない可能性があります。</string>
+    <string name="genie_failed">願いを叶えられませんでした: %1$s</string>
+</resources>

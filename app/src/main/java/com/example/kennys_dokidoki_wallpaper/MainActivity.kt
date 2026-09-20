@@ -254,7 +254,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val options = arrayOf(
             "🖼️ ギャラリーから画像を選択 (通常)",
             "🎭 Chub / Tavern キャラカードをインポート (PNG)",
-            "🌐 Chub.ai から直接インポート (アプリ内ブラウザ)"
+            "🌐 Chub.ai から直接インポート (アプリ内ブラウザ)",
+            "🧞 ジーニーに頼む（なんでも依頼）"
         )
         AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
             .setTitle("画像の追加方法を選択")
@@ -275,6 +276,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         val intent = Intent(this, ChubBrowserActivity::class.java)
                         startActivity(intent)
                     }
+                    3 -> JevGenieDialog.show(this)
                 }
             }
             .show()
@@ -817,11 +819,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (recyclerViewAllImages.visibility == View.VISIBLE) {
                 showAddImageOptionsDialog()
             } else if (recyclerViewSets.visibility == View.VISIBLE) {
-                val intent = Intent(this, ImageTagEditorActivity::class.java)
-                intent.putExtra("CREATE_NEW_SET", true)
-                startActivity(intent)
+                val options = arrayOf("新しいセットを作る", "🧞 ジーニーに頼む（なんでも依頼）")
+                AlertDialog.Builder(this)
+                    .setTitle("追加する方法を選んでね")
+                    .setItems(options) { _, which ->
+                        when (which) {
+                            0 -> {
+                                val intent = Intent(this, ImageTagEditorActivity::class.java)
+                                intent.putExtra("CREATE_NEW_SET", true)
+                                startActivity(intent)
+                            }
+                            else -> JevGenieDialog.show(this)
+                        }
+                    }
+                    .show()
             } else if (recyclerViewTagPrompts.visibility == View.VISIBLE) {
-                val options = arrayOf("新しいジャンル（カテゴリー）", "新しいタグ", "Jevでカードとタグを一括生成")
+                val options = arrayOf("新しいジャンル（カテゴリー）", "新しいタグ", "Jevでカードとタグを一括生成", "🧞 ジーニーに頼む（なんでも依頼）")
                 AlertDialog.Builder(this)
                     .setTitle("新しく作るものを選んでね")
                     .setItems(options) { _, which ->
@@ -829,6 +842,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                             0 -> showAddCategoryDialog()
                             1 -> showAddTagDialog()
                             2 -> launchJevElementDialog()
+                            3 -> JevGenieDialog.show(this)
                         }
                     }
                     .show()

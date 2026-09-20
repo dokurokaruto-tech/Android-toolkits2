@@ -18,7 +18,9 @@ internal data class ElementDraft(
 
 internal object JevElementPolicy {
     const val DEFAULT_ENDPOINT = "https://openrouter.ai/api/alpha/decisions"
-    const val DEFAULT_JEV = "typesafe/jev-1.13"
+
+    /** 常に最新版を指すエイリアス。入出力ともに無料のため既定に採用（バージョン固定の1.13は入力側に課金あり） */
+    const val DEFAULT_JEV = "~typesafe/jev-latest"
     const val DEFAULT_WRITER = "deepseek/deepseek-v4-flash:free"
     const val MAX_NAME = 200
     const val MAX_CATEGORIES = 240
