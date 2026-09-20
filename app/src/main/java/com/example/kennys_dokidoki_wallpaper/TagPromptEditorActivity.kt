@@ -579,8 +579,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
             }
             tvModelInfo.text = TagAiGenerateCopy.modelLine(provider, model.orEmpty())
             if (provider == "OPENROUTER") {
-                val keys = OpenRouterManager.getApiKeys(this)
-                val limit = keys.size * 50
+                val limit = OpenRouterManager.getTotalDailyMax(this)
                 tvUsageCounter.text = TagAiGenerateCopy.usageLine(OpenRouterManager.getTotalUsage(this), limit)
                 tvUsageCounter.visibility = View.VISIBLE
             } else {
@@ -841,7 +840,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
             onDelta = onDelta
         )
         if (reply.isNotEmpty()) {
-            OpenRouterManager.incrementUsage(this@TagPromptEditorActivity, apiKey)
+            OpenRouterManager.countFreeUsage(this@TagPromptEditorActivity, apiKey, modelName)
         }
         return reply
     }

@@ -199,7 +199,7 @@ object PromptCardAiGenerator {
         val key = OpenRouterManager.getActiveApiKey(context)
             ?: throw IllegalStateException("OpenRouter APIキーが設定されていません")
         val result = cloudCompletion("https://openrouter.ai/api/v1/chat/completions", key, model, userPrompt, systemPrompt)
-        OpenRouterManager.incrementUsage(context, key)
+        OpenRouterManager.countFreeUsage(context, key, model)
         return result
     }
 

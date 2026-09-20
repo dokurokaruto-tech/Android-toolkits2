@@ -82,7 +82,7 @@ object LlmTranslationHelper {
                         if (conn.responseCode == 200) {
                             val response = conn.inputStream.bufferedReader().use { it.readText() }
                             responseText = JSONObject(response).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
-                            OpenRouterManager.incrementUsage(context, apiKey)
+                            OpenRouterManager.countFreeUsage(context, apiKey, modelName)
                             success = true
                             Log.d(TAG, "OpenRouter translation succeeded!")
                             break

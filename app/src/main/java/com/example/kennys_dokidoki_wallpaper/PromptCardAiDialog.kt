@@ -53,8 +53,7 @@ class PromptCardAiDialog(private val activity: AppCompatActivity) {
         fun renderChoice() {
             modelText.text = PromptCardAiCopy.modelLine(choice)
             if (choice.provider == PromptCardLlmProvider.OPENROUTER) {
-                val keys = OpenRouterManager.getApiKeys(activity)
-                val limit = keys.size * 50
+                val limit = OpenRouterManager.getTotalDailyMax(activity)
                 usageText.text = TagAiGenerateCopy.usageLine(OpenRouterManager.getTotalUsage(activity), limit)
                 usageText.visibility = View.VISIBLE
             } else {

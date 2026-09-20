@@ -568,8 +568,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val provider = prefs.getString("chat_cloud_provider", "GROK")
         if (provider == "OPENROUTER") {
             val total = OpenRouterManager.getTotalUsage(this)
-            val keys = OpenRouterManager.getApiKeys(this)
-            val maxQuota = keys.size * 50
+            val maxQuota = OpenRouterManager.getTotalDailyMax(this)
             tvOpenRouterCounter.text = "OR: $total/$maxQuota"
             tvOpenRouterCounter.visibility = View.VISIBLE
         } else {
@@ -3078,11 +3077,13 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         entries.forEachIndexed { index, entry ->
             val count = OpenRouterManager.getUsageCount(this, entry.key)
+            val max = entry.dailyMax
+            val chargedMark = if (entry.charged) " [課金済み]" else ""
             val isManual = (entry.key == manualKey)
             val isActive = (entry.key == activeKey && manualKey == null)
 
             val btn = Button(this).apply {
-                var btnText = "${index + 1}. ${entry.label} ($count/50)"
+                var btnText = "${index + 1}. ${entry.label}$chargedMark ($count/$max)"
                 if (isManual) btnText = "● $btnText (手動選択中)"
                 else if (isActive) btnText = "○ $btnText (自動選択中)"
                 text = btnText
@@ -3102,7 +3103,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 layoutParams = params
                 
                 setOnClickListener {
-                    if (count >= 50) {
+                    if (count >= max) {
                         Toast.makeText(this@ChatOverlayActivity, "そのアカウントは使い切ってるわよ！別のを選んでね。", Toast.LENGTH_SHORT).show()
                     } else {
                         OpenRouterManager.setManualSelectedKey(this@ChatOverlayActivity, entry.key)
@@ -3340,19 +3341,33 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
         }
 
-        val inputApiKey = EditText(this).apply {
-            setText(entry.key)
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            hint = "sk-or-v1-..."
-            background = ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
-            setPadding(dp16, dp12, dp16, dp12)
-            minHeight = dp48
+        // 最上部: 課金済みアカウントかどうかのトグル＋クレジット残高表示
+        val switchRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val chargedTitle = TextView(this).apply {
+            text = "CHARGED (課金済みアカウント)"
+            setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
+            textSize = 11f
+            letterSpacing = 0.1f
+            setTypeface(null, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
             )
         }
+        val swCharged = SwitchCompat(this).apply { isChecked = entry.charged }
+        switchRow.addView(chargedTitle)
+        switchRow.addView(swCharged)
+        container.addView(switchRow)
+
+        val tvBalance = TextView(this).apply {
+            visibility = View.GONE
+            setTextColor(android.graphics.Color.parseColor("#CAC4D0"))
+            textSize = 12f
+            setPadding(dp12, dp12, 0, dp12)
+        }
+        container.addView(tvBalance)
 
         val inputLabel = EditText(this).apply {
             setText(entry.label)
@@ -3367,13 +3382,42 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        
+
+        val inputApiKey = EditText(this).apply {
+            setText(entry.key)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            hint = "sk-or-v1-..."
+            background = ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
+            setPadding(dp16, dp12, dp16, dp12)
+            minHeight = dp48
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
         val currentCount = OpenRouterManager.getUsageCount(this, entry.key)
         val inputCount = EditText(this).apply {
             setText(currentCount.toString())
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
-            hint = "0-50"
+            hint = "0 - max"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            background = ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
+            setPadding(dp16, dp12, dp16, dp12)
+            minHeight = dp48
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val inputMax = EditText(this).apply {
+            setText(entry.dailyMax.toString())
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            hint = "Default 50, Charged 1000"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             background = ContextCompat.getDrawable(context, R.drawable.bg_persona_item)
             setPadding(dp16, dp12, dp16, dp12)
@@ -3385,7 +3429,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
 
         fun addLabel(text: String) {
-            container.addView(TextView(this).apply { 
+            container.addView(TextView(this).apply {
                 this.text = text
                 setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
                 textSize = 11f
@@ -3394,44 +3438,116 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             })
         }
 
+        addLabel("ACCOUNT LABEL")
+        container.addView(inputLabel)
+
+        container.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp16) })
+
         addLabel("API KEY")
         container.addView(inputApiKey)
 
         container.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp16) })
 
-        addLabel("ACCOUNT LABEL")
-        container.addView(inputLabel)
-        
-        container.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp16) })
-        
-        addLabel("DAILY USAGE COUNT (MAX 50)")
+        addLabel("DAILY USAGE COUNT")
         container.addView(inputCount)
+
+        container.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp16) })
+
+        addLabel("DAILY USAGE MAX")
+        container.addView(inputMax)
 
         val scrollView = android.widget.ScrollView(this).apply {
             addView(container)
         }
 
-        MaterialAlertDialogBuilder(md3Context)
+        val dialog = MaterialAlertDialogBuilder(md3Context)
             .setTitle("ACCOUNT CONFIG")
             .setView(scrollView)
             .setPositiveButton("SAVE") { _, _ ->
                 val newKey = inputApiKey.text.toString().trim().ifEmpty { entry.key }
                 val newLabel = inputLabel.text.toString().trim().ifEmpty { entry.label }
-                val newCountStr = inputCount.text.toString().trim()
-                
+                val newCharged = swCharged.isChecked
+                val newMax = inputMax.text.toString().trim().toIntOrNull()?.coerceAtLeast(1)
+                    ?: if (newCharged) OpenRouterManager.CHARGED_DAILY_MAX else OpenRouterManager.DEFAULT_DAILY_MAX
+
                 val list = OpenRouterManager.getApiKeys(this).toMutableList()
-                list[position] = OpenRouterManager.ApiKeyEntry(newKey, newLabel)
+                list[position] = OpenRouterManager.ApiKeyEntry(newKey, newLabel, newCharged, newMax)
                 OpenRouterManager.saveApiKeys(this, list)
-                
-                val newCount = newCountStr.toIntOrNull()?.coerceIn(0, 50) ?: currentCount
+
+                val newCountStr = inputCount.text.toString().trim()
+                val newCount = newCountStr.toIntOrNull()?.coerceIn(0, newMax) ?: currentCount
                 OpenRouterManager.setUsageCount(this, newKey, newCount)
-                
+
+                hideBalance()
                 onComplete()
                 updateCounter()
                 Toast.makeText(this, "情報を同期したわよ！☆", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("CANCEL", null)
-            .show()
+            .create()
+
+        // 残高取得の制御 (課金済みトグルONのときだけ)
+        var balanceJob: Job? = null
+        val balanceDebounce = Handler(Looper.getMainLooper())
+        var balancePending: Runnable? = null
+
+        fun fetchBalance() {
+            tvBalance.visibility = View.VISIBLE
+            val key = inputApiKey.text.toString().trim()
+            if (key.isEmpty()) {
+                tvBalance.text = "APIキーを入力してください"
+                return
+            }
+            tvBalance.text = "残高確認中..."
+            balanceJob?.cancel()
+            balanceJob = coroutineScope.launch {
+                val info = withContext(Dispatchers.IO) { OpenRouterManager.fetchCreditInfo(key) }
+                if (!dialog.isShowing) return@launch
+                tvBalance.text = if (info == null) {
+                    "残高の確認に失敗しました"
+                } else {
+                    String.format(
+                        "クレジット残高: $%.2f (購入 $%.2f / 使用 $%.2f)",
+                        info.remaining, info.totalCredits, info.totalUsage
+                    )
+                }
+            }
+        }
+
+        fun hideBalance() {
+            balanceJob?.cancel()
+            balancePending?.let { balanceDebounce.removeCallbacks(it) }
+            balancePending = null
+            tvBalance.visibility = View.GONE
+        }
+
+        fun scheduleBalance() {
+            if (!swCharged.isChecked) return
+            balancePending?.let { balanceDebounce.removeCallbacks(it) }
+            balancePending = Runnable { fetchBalance() }
+                .also { balanceDebounce.postDelayed(it, 700L) }
+        }
+
+        swCharged.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                inputMax.setText(OpenRouterManager.CHARGED_DAILY_MAX.toString())
+                fetchBalance()
+            } else {
+                inputMax.setText(OpenRouterManager.DEFAULT_DAILY_MAX.toString())
+                hideBalance()
+            }
+        }
+
+        inputApiKey.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                scheduleBalance()
+            }
+        })
+
+        dialog.show()
+        if (entry.charged) fetchBalance()
     }
 
     private fun showApiKeyInputDialog(provider: String) {

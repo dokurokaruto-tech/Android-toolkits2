@@ -30,8 +30,9 @@ class ApiKeyOrderAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val entry = entries[position]
         val count = OpenRouterManager.getUsageCount(context, entry.key)
-        
-        holder.tvKeyInfo.text = "${position + 1}. ${entry.label} ($count/50)"
+        val chargedMark = if (entry.charged) " [課金済み]" else ""
+
+        holder.tvKeyInfo.text = "${position + 1}. ${entry.label}$chargedMark ($count/${entry.dailyMax})"
         
         // ハンバーガーアイコンを触った瞬間にドラッグを開始するわよ！
         holder.handle.setOnTouchListener { _, event ->

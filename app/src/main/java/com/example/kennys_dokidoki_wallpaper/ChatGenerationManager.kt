@@ -324,7 +324,8 @@ object ChatGenerationManager {
                             }
                         }
                         if (provider == "OPENROUTER" && reply.isNotEmpty()) {
-                            OpenRouterManager.incrementUsage(context, apiKey)
+                            // カウントは無料モデルのみ対象。課金済み×有料モデルは増やさない
+                            OpenRouterManager.countFreeUsage(context, apiKey, modelName)
                         }
                     } else {
                         val errorMsg = conn.errorStream?.bufferedReader()?.readText() ?: "Unknown error"

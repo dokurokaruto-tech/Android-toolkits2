@@ -3,20 +3,40 @@ package com.example.kennys_dokidoki_wallpaper
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Calendar
 import java.util.TimeZone
 
 object OpenRouterManager {
     private const val PREFS_NAME = "openrouter_prefs"
-    private const val KEY_API_KEYS = "api_keys_v2" // JSONArray of { "key": "...", "label": "..." }
+    private const val KEY_API_KEYS = "api_keys_v2" // JSONArray of { "key": "...", "label": "...", "charged": bool, "daily_max": int }
     private const val OLD_KEY_API_KEYS = "api_keys" // Old JSONArray of strings
     private const val KEY_USAGE_DATA = "usage_data" // JSONObject: { "api_key": count }
     private const val KEY_LAST_RESET_TIME = "last_reset_time"
     private const val KEY_MANUAL_SELECTED_KEY = "manual_selected_key"
+    private const val CACHED_MODELS_KEY = "cached_openrouter_models"
+    private const val FREE_MODEL_SUFFIX = ":free"
+    private const val CREDITS_URL = "https://openrouter.ai/api/v1/credits"
+
+    /** 無料アカウントの無料モデル使用回数上限 (OpenRouter フリーティア) */
+    const val DEFAULT_DAILY_MAX = 50
+    /** 課金後 (10クレジット以上) の無料モデル使用回数上限 (OpenRouter 仕様) */
+    const val CHARGED_DAILY_MAX = 1000
 
     private val jstTimeZone = TimeZone.getTimeZone("Asia/Tokyo")
 
-    data class ApiKeyEntry(val key: String, val label: String)
+    data class ApiKeyEntry(
+        val key: String,
+        val label: String,
+        val charged: Boolean = false,
+        val dailyMax: Int = DEFAULT_DAILY_MAX
+    )
+
+    /** OpenRouter のクレジット残高情報 (USD) */
+    data class CreditInfo(val totalCredits: Double, val totalUsage: Double) {
+        val remaining: Double get() = (totalCredits - totalUsage).coerceAtLeast(0.0)
+    }
 
     fun getApiKeys(context: Context): List<ApiKeyEntry> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -27,7 +47,14 @@ object OpenRouterManager {
             val list = mutableListOf<ApiKeyEntry>()
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
-                list.add(ApiKeyEntry(obj.getString("key"), obj.optString("label", "Key #${i + 1}")))
+                list.add(
+                    ApiKeyEntry(
+                        key = obj.getString("key"),
+                        label = obj.optString("label", "Key #${i + 1}"),
+                        charged = obj.optBoolean("charged", false),
+                        dailyMax = obj.optInt("daily_max", DEFAULT_DAILY_MAX)
+                    )
+                )
             }
             return list
         }
@@ -62,6 +89,8 @@ object OpenRouterManager {
             val obj = JSONObject().apply {
                 put("key", entry.key)
                 put("label", entry.label)
+                put("charged", entry.charged)
+                put("daily_max", entry.dailyMax)
             }
             array.put(obj)
         }
@@ -104,6 +133,76 @@ object OpenRouterManager {
         saveUsageData(context, data)
     }
 
+    fun getEntry(context: Context, apiKey: String): ApiKeyEntry? {
+        return getApiKeys(context).find { it.key == apiKey }
+    }
+
+    fun getTotalDailyMax(context: Context): Int {
+        return getApiKeys(context).sumOf { it.dailyMax }
+    }
+
+    /**
+     * daily usage count は無料モデルの使用回数を数えるもの。
+     * 課金済みアカウントが有料モデルを使った場合はカウントしない。
+     */
+    fun shouldCountUsage(context: Context, apiKey: String, modelId: String): Boolean {
+        val entry = getEntry(context, apiKey) ?: return true
+        if (!entry.charged) return true
+        return isModelFree(context, modelId)
+    }
+
+    /** shouldCountUsage の判定が通った場合だけカウントを上げる。 */
+    fun countFreeUsage(context: Context, apiKey: String, modelId: String) {
+        if (!shouldCountUsage(context, apiKey, modelId)) return
+        incrementUsage(context, apiKey)
+    }
+
+    /** 無料モデルかどうかを判定する。キャッシュ済みのモデル価格を参照し、未登録なら :free サフィックスで決める。 */
+    fun isModelFree(context: Context, modelId: String): Boolean {
+        val cached = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getString(CACHED_MODELS_KEY, null) ?: return modelId.endsWith(FREE_MODEL_SUFFIX)
+        return try {
+            val dataArray = JSONObject(cached).getJSONArray("data")
+            for (i in 0 until dataArray.length()) {
+                val obj = dataArray.getJSONObject(i)
+                if (obj.optString("id") != modelId) continue
+                val pricing = obj.optJSONObject("pricing")
+                    ?: return modelId.endsWith(FREE_MODEL_SUFFIX)
+                val prompt = pricing.optDouble("prompt", 0.0)
+                val completion = pricing.optDouble("completion", 0.0)
+                return prompt == 0.0 && completion == 0.0
+            }
+            modelId.endsWith(FREE_MODEL_SUFFIX)
+        } catch (e: Exception) {
+            modelId.endsWith(FREE_MODEL_SUFFIX)
+        }
+    }
+
+    /**
+     * OpenRouter のクレジットAPIで残高を取得するわ。
+     * ブロッキング呼び出しなのでバックグラウンドスレッドで使うこと。失敗時は null。
+     */
+    fun fetchCreditInfo(apiKey: String): CreditInfo? {
+        if (apiKey.isBlank()) return null
+        val conn = URL(CREDITS_URL).openConnection() as HttpURLConnection
+        conn.apply {
+            requestMethod = "GET"
+            setRequestProperty("Authorization", "Bearer $apiKey")
+            connectTimeout = 15000
+            readTimeout = 15000
+        }
+        return try {
+            if (conn.responseCode != 200) return null
+            val data = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                .getJSONObject("data")
+            CreditInfo(data.optDouble("total_credits", 0.0), data.optDouble("total_usage", 0.0))
+        } catch (e: Exception) {
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     fun setManualSelectedKey(context: Context, apiKey: String?) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_MANUAL_SELECTED_KEY, apiKey).apply()
@@ -121,16 +220,17 @@ object OpenRouterManager {
         
         // 手動選択されているキーがあれば、それを最優先するわ！
         val manualKey = getManualSelectedKey(context)
-        if (manualKey != null && entries.any { it.key == manualKey }) {
+        val manualEntry = entries.find { it.key == manualKey }
+        if (manualEntry != null) {
             val usage = getUsageCount(context, manualKey)
-            if (usage < 50) return manualKey
+            if (usage < manualEntry.dailyMax) return manualKey
             // 使い切ってたら手動選択を解除しちゃうわね
             setManualSelectedKey(context, null)
         }
 
         val data = getUsageData(context)
         for (entry in entries) {
-            if (data.optInt(entry.key, 0) < 50) {
+            if (data.optInt(entry.key, 0) < entry.dailyMax) {
                 return entry.key
             }
         }

@@ -691,7 +691,7 @@ class ImageTagEditorActivity : AppCompatActivity() {
                     if (conn.responseCode == 200) {
                         val response = conn.inputStream.bufferedReader().use { it.readText() }
                         reply = JSONObject(response).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
-                        OpenRouterManager.incrementUsage(this@ImageTagEditorActivity, apiKey)
+                        OpenRouterManager.countFreeUsage(this@ImageTagEditorActivity, apiKey, modelName)
                     } else {
                         val error = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP ${conn.responseCode}"
                         throw Exception("OpenRouter Error: $error")
