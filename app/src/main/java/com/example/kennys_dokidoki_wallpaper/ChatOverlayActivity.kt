@@ -49,6 +49,7 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import kotlin.random.Random
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
@@ -1723,9 +1724,208 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         doRefresh()
     }
 
+    /**
+     * チャット画面用のコンシェルジュ実行口。
+     * 単体データ(選択・設定・サムネイル)は直接触り、画面物(生成・絞り込み)はMainへ依頼する。
+     */
+    private fun chatConciergeHost(): ConciergeHost = object : ConciergeHost {
+        // ビルダー画面は無い。MainActivity.onResumeで再同期する
+        override fun refreshBuilder() {
+        }
+
+        // タグ画面は無い。TagManagerは保存時に即時反映済み
+        override fun refreshTags() {
+        }
+
+        override fun applyPreset(preset: Preset) {
+            val available = PromptCardManager.promptCards.mapTo(mutableSetOf()) { it.id }
+            PromptCardManager.selectionLevels.clear()
+            PromptCardManager.selectionLevels.putAll(
+                preset.activePromptStates.filterKeys { it in available }
+            )
+            PromptCardManager.randomEnabledCategories.clear()
+            PromptCardManager.randomEnabledCategories.addAll(preset.randomEnabledCategories)
+            saveChatGenSettings(preset.width, preset.height, preset.steps, preset.batchCount, preset.sampler)
+            PromptCardManager.saveCards(this@ChatOverlayActivity)
+            Toast.makeText(this@ChatOverlayActivity, "プリセット『${preset.name}』を適用しました。", Toast.LENGTH_SHORT).show()
+        }
+
+        override fun selectCards(ids: Collection<String>, mode: CardSelectionMode) {
+            val valid = ids.filter { id -> PromptCardManager.promptCards.any { it.id == id } }.toSet()
+            if (mode == CardSelectionMode.REPLACE) {
+                if (valid.isEmpty()) {
+                    return
+                }
+                PromptCardManager.selectionLevels.clear()
+            }
+            valid.forEach { PromptCardManager.selectionLevels.put(it, 1) }
+            PromptCardManager.saveInteractiveState(this@ChatOverlayActivity)
+        }
+
+        override fun filterImages(tag: String) {
+            openMainForConcierge {
+                putExtra("concierge_filter_apply", true)
+                putExtra("concierge_filter_tag", tag)
+            }
+        }
+
+        override fun startGeneration() {
+            openMainForConcierge { putExtra("concierge_auto_generate", true) }
+        }
+
+        override fun selectionSnapshot(): Map<String, Int> =
+            PromptCardManager.selectionLevels.toMap()
+
+        override fun restoreSelection(levels: Map<String, Int>) {
+            PromptCardManager.selectionLevels.clear()
+            PromptCardManager.selectionLevels.putAll(levels)
+            PromptCardManager.saveInteractiveState(this@ChatOverlayActivity)
+        }
+
+        override fun builderSnapshot(): ConciergeBuilderState {
+            val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            return ConciergeBuilderState(
+                selection = PromptCardManager.selectionLevels.toMap(),
+                random = PromptCardManager.randomEnabledCategories.toSet(),
+                width = prefs.getInt("gen_width", 720),
+                height = prefs.getInt("gen_height", 1280),
+                steps = prefs.getInt("gen_steps", 20),
+                batch = prefs.getInt("gen_batch_count", 1),
+                sampler = prefs.getString("gen_sampler", "Euler a") ?: "Euler a"
+            )
+        }
+
+        override fun restoreBuilder(state: ConciergeBuilderState) {
+            PromptCardManager.selectionLevels.clear()
+            PromptCardManager.selectionLevels.putAll(state.selection)
+            PromptCardManager.randomEnabledCategories.clear()
+            PromptCardManager.randomEnabledCategories.addAll(state.random)
+            saveChatGenSettings(state.width, state.height, state.steps, state.batch, state.sampler)
+            PromptCardManager.saveCards(this@ChatOverlayActivity)
+        }
+
+        // チャット画面に絞り込み表示は無い。履歴の取消はMain側の解除扱いになる
+        override fun filterSnapshot(): ConciergeFilterState = ConciergeFilterState(null, false)
+
+        override fun setFilter(target: String?, has: Boolean) {
+            openMainForConcierge {
+                putExtra("concierge_filter_apply", true)
+                putExtra("concierge_filter_tag", if (has) target else null)
+            }
+        }
+
+        override fun openBulkThumbnails(kind: ThumbKind, category: String, onDone: (Int) -> Unit) {
+            if (kind == ThumbKind.CARD) {
+                val cards = PromptCardManager.promptCards.filter { it.category == category }
+                if (cards.isEmpty()) {
+                    Toast.makeText(this@ChatOverlayActivity, "このカテゴリーには対象がありません。", Toast.LENGTH_SHORT).show()
+                    onDone(0)
+                    return
+                }
+                BulkThumbnailDialog.show(
+                    this@ChatOverlayActivity,
+                    "カードの一括サムネイル",
+                    cards.map { BulkThumbnailPickerPolicy.entry(it.id, it.label, it.thumbnailUri?.toString()) }
+                ) { ids ->
+                    val items = cards.filter { it.id in ids.toSet() }.map { card ->
+                        val (prompt, negative) = concatenatedPromptForCard(card.mainPrompt, card.negativePrompt)
+                        ThumbnailBindPolicy.Item(
+                            ThumbnailBindPolicy.Target.card(card.id),
+                            AgentGenerationRequest(
+                                prompt = prompt,
+                                negativePrompt = negative,
+                                width = 1080,
+                                height = 1920,
+                                steps = 20,
+                                samplerName = "Euler a",
+                                purpose = "thumbnail"
+                            )
+                        )
+                    }
+                    onDone(if (ThumbnailGenerationCoordinator.start(this@ChatOverlayActivity, items)) ids.size else 0)
+                }
+            } else {
+                val presets = PresetManager.presets.filter { it.category == category }
+                if (presets.isEmpty()) {
+                    Toast.makeText(this@ChatOverlayActivity, "このカテゴリーには対象がありません。", Toast.LENGTH_SHORT).show()
+                    onDone(0)
+                    return
+                }
+                BulkThumbnailDialog.show(
+                    this@ChatOverlayActivity,
+                    "プリセットの一括サムネイル",
+                    presets.map { BulkThumbnailPickerPolicy.entry(it.id, it.name, it.thumbnailUri?.toString()) }
+                ) { ids ->
+                    val items = presets.filter { it.id in ids.toSet() }.mapNotNull { preset ->
+                        val request = PresetThumbnailPromptPolicy.request(
+                            preset = preset,
+                            roster = PromptCardManager.promptCards.toList(),
+                            randomizerIncludedIds = PromptCardManager.randomizerIncludedIds.toSet(),
+                            chance = { Random.nextInt(100) },
+                            pickIndex = { size -> Random.nextInt(size) }
+                        ) ?: return@mapNotNull null
+                        ThumbnailBindPolicy.Item(ThumbnailBindPolicy.Target.preset(preset.id), request)
+                    }
+                    if (items.isEmpty()) {
+                        Toast.makeText(this@ChatOverlayActivity, "カードもランダム対象も無い。", Toast.LENGTH_SHORT).show()
+                        onDone(0)
+                        return@show
+                    }
+                    onDone(if (ThumbnailGenerationCoordinator.start(this@ChatOverlayActivity, items)) items.size else 0)
+                }
+            }
+        }
+    }
+
+    /** Main画面へ依頼を投げる。既に居れば手前の画面を畳んで戻る */
+    private fun openMainForConcierge(fill: Intent.() -> Unit) {
+        startActivity(Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            fill()
+        })
+    }
+
+    private fun saveChatGenSettings(width: Int, height: Int, steps: Int, batch: Int, sampler: String) {
+        getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
+            .putInt("gen_width", width)
+            .putInt("gen_height", height)
+            .putInt("gen_steps", steps)
+            .putInt("gen_batch_count", batch)
+            .putString("gen_sampler", sampler)
+            .apply()
+    }
+
+    /** 選択中カード+対象カードの結合プロンプト。MainActivityと同一規則 */
+    private fun concatenatedPromptForCard(targetMain: String, targetNegative: String): Pair<String, String> {
+        val order = PromptCardManager.categoryOrder
+        val selected = PromptCardManager.selectionLevels.keys.mapNotNull { id ->
+            PromptCardManager.promptCards.firstOrNull { it.id == id }
+                ?.let { it to (PromptCardManager.selectionLevels[id] ?: 1) }
+        }.sortedBy { order.indexOf(it.first.category).let { i -> if (i >= 0) i else Int.MAX_VALUE } }
+        val main = (selected.map { (card, level) ->
+            when (level) {
+                2 -> "(${card.mainPrompt}:1.2)"
+                3 -> "(${card.mainPrompt}:1.6)"
+                else -> card.mainPrompt
+            }
+        } + targetMain).filter { it.isNotEmpty() }.joinToString(", ").trim()
+        val negative = (selected.map { it.first.negativePrompt } + targetNegative)
+            .filter { it.isNotEmpty() }.distinct().joinToString(", ").trim()
+        return main to negative
+    }
+
     private fun setupExtraMenu() {
         loadCachedOpenRouterModels()
         showMainMenu()
+        findViewById<View>(R.id.btn_chat_concierge).setOnClickListener {
+            if (PromptCardManager.promptCards.isEmpty()) {
+                PromptCardManager.loadCards(this)
+            }
+            if (PresetManager.presets.isEmpty()) {
+                PresetManager.loadPresets(this)
+            }
+            JevConciergeDialog.show(this, ConciergeEntry.CHAT, chatConciergeHost())
+        }
     }
 
     private fun showMainMenu() {

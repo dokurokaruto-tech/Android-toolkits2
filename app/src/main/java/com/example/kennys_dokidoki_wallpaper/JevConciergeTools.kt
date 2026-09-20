@@ -18,7 +18,8 @@ internal enum class ConciergeEntry(val label: String) {
     ALL_IMAGES("全画像"),
     SETS("セット"),
     TAGS("タグ"),
-    BUILDER("生成");
+    BUILDER("生成"),
+    CHAT("チャット");
 }
 
 

@@ -149,15 +149,71 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
             android:visibility="gone">
-            <GridLayout
-                android:id="@+id/extra_menu_grid"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_md3_surface"
-                android:columnCount="4"
+                android:orientation="vertical"
                 android:padding="12dp">
-                <!-- プログラムから追加されるわ -->
-            </GridLayout>
+
+                <!-- コンシェルジュ呼び出し(右上)。ランプの魔人スタイル -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical|end"
+                    android:orientation="horizontal"
+                    android:paddingBottom="4dp">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="10dp"
+                        android:background="@drawable/bg_concierge_bubble"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingTop="8dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="8dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="🧞 私がお手伝いします！"
+                            android:textColor="#4E342E"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="ランプをこする代わりにポチッとね✨"
+                            android:textColor="#6D4C41"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/btn_chat_concierge"
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:background="@drawable/bg_concierge_button"
+                        android:clickable="true"
+                        android:contentDescription="コンシェルジュを呼ぶ"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackgroundBorderless"
+                        android:gravity="center"
+                        android:text="🧞"
+                        android:textSize="32sp" />
+                </LinearLayout>
+
+                <GridLayout
+                    android:id="@+id/extra_menu_grid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:columnCount="4">
+                    <!-- プログラムから追加されるわ -->
+                </GridLayout>
+            </LinearLayout>
         </androidx.core.widget.NestedScrollView>
 
         <!-- チャット入力枠 -->

@@ -684,6 +684,37 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             }
         }
+        handleChatConciergeExtras(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleChatConciergeExtras(intent)
+    }
+
+    /** チャット画面のコンシェルジュからの依頼。生成開始と画像絞り込みを受け付ける */
+    private fun handleChatConciergeExtras(intent: Intent?) {
+        if (intent == null) {
+            return
+        }
+        if (intent.getBooleanExtra("concierge_auto_generate", false)) {
+            intent.removeExtra("concierge_auto_generate")
+            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId = R.id.nav_builder
+            btnGenerateConcatenatedTop.post { btnGenerateConcatenatedTop.performClick() }
+        }
+        if (intent.hasExtra("concierge_filter_apply")) {
+            intent.removeExtra("concierge_filter_apply")
+            val tag = intent.getStringExtra("concierge_filter_tag")
+            intent.removeExtra("concierge_filter_tag")
+            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId = R.id.nav_all_images
+            currentFilterTarget = tag
+            currentFilterHas = tag != null
+            applyQuickFilter()
+            if (tag != null) {
+                Toast.makeText(this, "タグ『$tag』で絞り込みました。", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -697,10 +728,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onResume()
         DataManager.loadData(this)
         TagManager.loadTags(this)
+        val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        genWidth = settingsPrefs.getInt("gen_width", 720)
+        genHeight = settingsPrefs.getInt("gen_height", 1280)
+        genSteps = settingsPrefs.getInt("gen_steps", 20)
+        genBatchCount = settingsPrefs.getInt("gen_batch_count", 1)
+        genSampler = settingsPrefs.getString("gen_sampler", "Euler a") ?: "Euler a"
+        updateGenSettingsUI()
         applyQuickFilter()
         imageSetAdapter.notifyDataSetChanged()
         tagPromptAdapter.refreshItemsFromManager()
         presetAdapter.updateList(PresetManager.presets)
+        promptCardAdapter.updateList(PromptCardManager.promptCards)
+        updateSelectedCardStrip()
         syncBuilderRestorePipButton()
         resumePendingCivitaiImport()
     }
