@@ -122,13 +122,13 @@ internal object JevGeniePolicy {
         require(key.isNotEmpty()) { "${kind}名が指定されていません。" }
         return list.firstOrNull { JevElementPolicy.sameName(name(it), key) }
             ?: list.firstOrNull { name(it).contains(key, ignoreCase = true) }
-            ?: throw IllegalArgumentException("カタログに『$key』という$kindが見つかりません。")
+            ?: throw IllegalArgumentException("カタログに『$key』という${kind}が見つかりません。")
     }
 
     private fun text(after: JSONObject, key: String, label: String): String {
         val value = after.optString(key).trim()
-        require(value.isNotEmpty()) { "$labelが空です。" }
-        require(value.length <= MAX_TEXT) { "$labelが長すぎます。" }
+        require(value.isNotEmpty()) { "${label}が空です。" }
+        require(value.length <= MAX_TEXT) { "${label}が長すぎます。" }
         return value
     }
 
