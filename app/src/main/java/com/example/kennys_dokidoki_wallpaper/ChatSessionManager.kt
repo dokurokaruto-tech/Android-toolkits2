@@ -112,6 +112,44 @@ object ChatSessionManager {
         }
     }
 
+    /**
+     * チャットごとの閲覧位置。端末に残すので再起動後も復元できる。
+     * nodeIdは先頭メッセージのID。消えていたらpositionへ寄せる。
+     */
+    data class ChatViewport(
+        val nodeId: String?,
+        val position: Int,
+        val offsetPx: Int,
+        val atBottom: Boolean
+    )
+
+    fun saveViewport(context: Context, sessionId: String, viewport: ChatViewport) {
+        if (sessionId.isBlank()) return
+        synchronized(lock) {
+            context.getSharedPreferences("chat_history_$sessionId", Context.MODE_PRIVATE).edit()
+                .putString("viewport_node", viewport.nodeId)
+                .putInt("viewport_pos", viewport.position)
+                .putInt("viewport_offset", viewport.offsetPx)
+                .putBoolean("viewport_bottom", viewport.atBottom)
+                .putBoolean("viewport_set", true)
+                .apply()
+        }
+    }
+
+    fun loadViewport(context: Context, sessionId: String): ChatViewport? {
+        if (sessionId.isBlank()) return null
+        synchronized(lock) {
+            val prefs = context.getSharedPreferences("chat_history_$sessionId", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("viewport_set", false)) return null
+            return ChatViewport(
+                nodeId = prefs.getString("viewport_node", null),
+                position = prefs.getInt("viewport_pos", 0),
+                offsetPx = prefs.getInt("viewport_offset", 0),
+                atBottom = prefs.getBoolean("viewport_bottom", true)
+            )
+        }
+    }
+
     fun getLinkedChatId(context: Context, imageUri: String): String? {
         if (imageUri.isBlank()) return null
         synchronized(lock) {

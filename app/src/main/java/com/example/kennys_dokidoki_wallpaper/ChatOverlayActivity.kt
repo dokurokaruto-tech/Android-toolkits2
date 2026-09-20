@@ -539,6 +539,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
     private var currentChatId: String? = null
+    /** 直近の読み込みで閲覧位置の復元まで済ませたか。壁紙変更時の末尾スクロール抑止用 */
+    private var lastLoadScheduledViewportRestore = false
     private var currentImageEntry: ImageEntry? = null
 
     /** タグごとに発動させる性格（バリエーション名）の選択結果 */
@@ -748,10 +750,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     DataManager.loadData(this@ChatOverlayActivity)
                     val previousChatId = currentChatId
                     loadCurrentSession()
+                    val restored = lastLoadScheduledViewportRestore
+                    lastLoadScheduledViewportRestore = false
                     if (currentChatId != previousChatId) {
-                        chatStick.stickForNewContent()
-                        scrollChatToBottom(force = true)
-                    } else {
+                        if (!restored) {
+                            chatStick.stickForNewContent()
+                            scrollChatToBottom(force = true)
+                        }
+                    } else if (!restored) {
                         followChatIfStuck()
                     }
                 }
@@ -883,6 +889,48 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             runRestore()
             recyclerView.post { runRestore() }
         }
+    }
+
+    /**
+     * 閲覧位置をチャットごとに保存する。端末に書くので再起動後も残る。
+     * 先頭メッセージのIDと位置・ずれ・末尾にいたかを残す。
+     */
+    private fun saveChatViewport() {
+        val chatId = currentChatId ?: return
+        val anchor = captureChatViewport()
+        val nodeId = anchor?.let { displayMessages.getOrNull(it.position)?.node?.id }
+        val atBottom = chatDistanceFromBottomPx() <= chatStick.rejoinThresholdPx
+        ChatSessionManager.saveViewport(
+            this, chatId,
+            ChatSessionManager.ChatViewport(
+                nodeId, anchor?.position ?: 0, anchor?.offsetPx ?: 0, atBottom
+            )
+        )
+    }
+
+    /**
+     * 保存した閲覧位置から再開する。メッセージが消えていたら近い位置へ寄せる。
+     * 末尾にいた・記録なし・空なら今まで通り末尾へ。
+     */
+    private fun restoreSavedChatViewport(sessionId: String) {
+        lastLoadScheduledViewportRestore = true
+        cancelPendingBottomScroll()
+        val saved = ChatSessionManager.loadViewport(this, sessionId)
+        if (saved == null || saved.atBottom || displayMessages.isEmpty()) {
+            chatStick.stickForNewContent()
+            scrollChatToBottom(force = true)
+            return
+        }
+        var index = if (saved.nodeId != null) {
+            displayMessages.indexOfFirst { it.node.id == saved.nodeId }
+        } else {
+            -1
+        }
+        if (index < 0) {
+            index = saved.position.coerceIn(0, displayMessages.lastIndex)
+        }
+        chatStick.release()
+        restoreChatViewportAfterLayout(ChatAutoScrollPolicy.ViewportAnchor(index, saved.offsetPx))
     }
 
     private fun followChatIfStuck() {
@@ -1067,6 +1115,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                             chatStick.onUserMoved(chatDistanceFromBottomPx(), allowRejoin = true)
                         }
                         userScrollingChat = false
+                        saveChatViewport()
                         if (ChatGenerationManager.isGenerating &&
                             ::adapter.isInitialized &&
                             displayMessages.isNotEmpty()
@@ -1968,6 +2017,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             .setMessage("現在の会話履歴をすべて消去し、最初からやり直しますか？\n保存されていないデータは失われます。")
             .setPositiveButton("リセット") { _, _ ->
                 val chatIdToDelete = currentChatId
+                chatIdToDelete?.let {
+                    ChatSessionManager.saveViewport(this, it, ChatSessionManager.ChatViewport(null, 0, 0, true))
+                }
                 bindChatToImage(currentImageEntry, null)
                 currentChatId = null
 
@@ -2160,6 +2212,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             } else if (chatTree.nodes.isEmpty()) {
                 chatTree = ChatSessionManager.loadSessionData(this, chatId)
                 buildDisplayList()
+                restoreSavedChatViewport(chatId)
             }
         }
         ChatGenerationManager.registerListener(this)
@@ -2168,6 +2221,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     override fun onPause() {
         super.onPause()
         persistCurrentChatLink()
+        saveChatViewport()
         currentChatId?.let { ChatSessionManager.saveSessionData(this, it, chatTree) }
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         settingsPrefs.edit().putBoolean("is_chat_active", false).apply()
@@ -2185,6 +2239,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         } catch (e: Exception) {
         }
         persistCurrentChatLink()
+        saveChatViewport()
         currentChatId?.let { ChatSessionManager.saveSessionData(this, it, chatTree) }
     }
 
@@ -2329,7 +2384,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private var lastLoadedImageUri: String? = null
 
     private fun loadCurrentSession() {
+        lastLoadScheduledViewportRestore = false
         persistCurrentChatLink()
+        saveChatViewport()
         currentChatId?.let { ChatSessionManager.saveSessionData(this, it, chatTree) }
 
         val intentUri = intent.getStringExtra("IMAGE_URI")
@@ -2407,6 +2464,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                         chatTree = ChatSessionManager.loadSessionData(this, sessionId)
                         checkAndInitializeGreeting()
                         buildDisplayList()
+                        restoreSavedChatViewport(sessionId)
                     }
                 }
                 ChatRestorePolicy.Action.RELINK_MEMORY -> {
@@ -2707,6 +2765,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun processStartNewChat(deleteOld: Boolean, applyToOthers: Boolean) {
         val oldChatId = currentChatId ?: return
+        saveChatViewport()
         
         var newChatId: String? = null
         
