@@ -796,7 +796,7 @@ internal object JevConciergeDialog {
                             detail = detail,
                             status = HistoryStatus.APPLIED,
                             reversible = false,
-                            rows = listOf(HistoryRow("サムネイル生成", "―", "$count件を開始")),
+                            rows = listOf(HistoryRow("サムネイル生成", "―", "${count}件を開始")),
                             payload = HistoryPayload.empty()
                         )
                     )
