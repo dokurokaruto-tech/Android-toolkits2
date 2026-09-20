@@ -17,6 +17,10 @@ internal object OpenRouterBalancePolicy {
         if (modelId.endsWith(FREE_SUFFIX) || modelId == FREE_ROUTER) {
             return true
         }
+        // Jev系は出力無料・latestエイリアスは入出力無料のため、無料枠の利用数として数える。
+        if (modelId.removePrefix("~").startsWith("typesafe/jev", ignoreCase = true)) {
+            return true
+        }
         if (cachedModels.isNullOrBlank()) {
             return false
         }

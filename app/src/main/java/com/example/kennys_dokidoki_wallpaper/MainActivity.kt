@@ -255,7 +255,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "🖼️ ギャラリーから画像を選択 (通常)",
             "🎭 Chub / Tavern キャラカードをインポート (PNG)",
             "🌐 Chub.ai から直接インポート (アプリ内ブラウザ)",
-            "🧞 ジーニーに頼む（なんでも依頼）"
+            getString(R.string.concierge_menu_ask)
         )
         AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
             .setTitle("画像の追加方法を選択")
@@ -276,10 +276,72 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         val intent = Intent(this, ChubBrowserActivity::class.java)
                         startActivity(intent)
                     }
-                    3 -> JevGenieDialog.show(this)
+                    3 -> JevConciergeDialog.show(this, ConciergeEntry.ALL_IMAGES, conciergeHost())
                 }
             }
             .show()
+    }
+
+    /** 采配コンシェルジュの実行口。適用・選択・遷移はメインスレッドで受ける */
+    private fun conciergeHost(): ConciergeHost = object : ConciergeHost {
+        override fun refreshBuilder() {
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+            notifyLiveBatchBuilderChanged()
+        }
+
+        override fun refreshTags() {
+            tagPromptAdapter.refreshItemsFromManager()
+            applyQuickFilter()
+        }
+
+        override fun applyPreset(preset: Preset) {
+            this@MainActivity.applyPreset(preset)
+        }
+
+        override fun selectCards(ids: Collection<String>, mode: CardSelectionMode) {
+            val valid = ids.filter { id ->
+                PromptCardManager.promptCards.any { it.id == id }
+            }.toSet()
+            val replace = mode == CardSelectionMode.REPLACE
+            if (replace && valid.isEmpty()) {
+                return
+            }
+            val changed = mutableSetOf<String>()
+            if (replace) {
+                changed += PromptCardManager.selectionLevels.keys
+                PromptCardManager.selectionLevels.clear()
+            }
+            valid.forEach {
+                if (PromptCardManager.selectionLevels.put(it, 1) != 1) {
+                    changed += it
+                }
+            }
+            if (changed.isEmpty()) {
+                return
+            }
+            PromptCardManager.saveInteractiveState(this@MainActivity)
+            changed.forEach { promptCardAdapter.notifyCardChanged(it) }
+            val hasSelection = PromptCardManager.selectionLevels.isNotEmpty() ||
+                PromptCardManager.randomEnabledCategories.isNotEmpty()
+            btnGenerateConcatenatedTop.isEnabled = hasSelection
+            btnGenerateConcatenatedTop.alpha = if (hasSelection) 1.0f else 0.5f
+            scheduleBuilderSelectionUiRefresh()
+        }
+
+        override fun filterImages(tag: String) {
+            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId =
+                R.id.nav_all_images
+            currentFilterTarget = tag
+            currentFilterHas = true
+            applyQuickFilter()
+            Toast.makeText(this@MainActivity, "タグ『$tag』で絞り込みました。", Toast.LENGTH_SHORT).show()
+        }
+
+        override fun startGeneration() {
+            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId =
+                R.id.nav_builder
+            btnGenerateConcatenatedTop.performClick()
+        }
     }
 
     private val pickCardThumbnailLauncher = registerForActivityResult(
@@ -819,7 +881,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (recyclerViewAllImages.visibility == View.VISIBLE) {
                 showAddImageOptionsDialog()
             } else if (recyclerViewSets.visibility == View.VISIBLE) {
-                val options = arrayOf("新しいセットを作る", "🧞 ジーニーに頼む（なんでも依頼）")
+                val options = arrayOf("新しいセットを作る", getString(R.string.concierge_menu_ask))
                 AlertDialog.Builder(this)
                     .setTitle("追加する方法を選んでね")
                     .setItems(options) { _, which ->
@@ -829,12 +891,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                                 intent.putExtra("CREATE_NEW_SET", true)
                                 startActivity(intent)
                             }
-                            else -> JevGenieDialog.show(this)
+                            else -> JevConciergeDialog.show(this, ConciergeEntry.SETS, conciergeHost())
                         }
                     }
                     .show()
             } else if (recyclerViewTagPrompts.visibility == View.VISIBLE) {
-                val options = arrayOf("新しいジャンル（カテゴリー）", "新しいタグ", "Jevでカードとタグを一括生成", "🧞 ジーニーに頼む（なんでも依頼）")
+                val options = arrayOf("新しいジャンル（カテゴリー）", "新しいタグ", "Jevでカードとタグを一括生成", getString(R.string.concierge_menu_ask))
                 AlertDialog.Builder(this)
                     .setTitle("新しく作るものを選んでね")
                     .setItems(options) { _, which ->
@@ -842,7 +904,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                             0 -> showAddCategoryDialog()
                             1 -> showAddTagDialog()
                             2 -> launchJevElementDialog()
-                            3 -> JevGenieDialog.show(this)
+                            3 -> JevConciergeDialog.show(this, ConciergeEntry.TAGS, conciergeHost())
                         }
                     }
                     .show()
@@ -1258,14 +1320,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             showAddPromptCategoryDialog()
         }
         fabAddPromptCategory.setOnClickListener {
-            val options = arrayOf("Civitaiブラウザでモデルを探す", "Jevでカードとタグを一括生成")
+            val options = arrayOf("Civitaiブラウザでモデルを探す", "Jevでカードとタグを一括生成", getString(R.string.concierge_menu_ask))
             AlertDialog.Builder(this)
                 .setTitle("追加する方法を選んでね")
                 .setItems(options) { _, which ->
-                    if (which == 0) {
-                        civitaiBrowserLauncher.launch(Intent(this, CivitaiBrowserActivity::class.java))
-                    } else {
-                        launchJevElementDialog()
+                    when (which) {
+                        0 -> civitaiBrowserLauncher.launch(Intent(this, CivitaiBrowserActivity::class.java))
+                        1 -> launchJevElementDialog()
+                        else -> JevConciergeDialog.show(this, ConciergeEntry.BUILDER, conciergeHost())
                     }
                 }
                 .show()
@@ -3632,4 +3694,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 private abstract class SimpleTextWatcher : TextWatcher {
     override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) {}
     override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {}
+}
+t, count: Int) {}
+}
+xtChanged(text: CharSequence?, start: Int, before: Int, count: Int) {}
 }

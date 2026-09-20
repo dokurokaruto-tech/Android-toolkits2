@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="concierge_title">采配コンシェルジュ</string>
+    <string name="concierge_subtitle">Jevが依頼を判断し、アプリの機能を動かして叶えます</string>
+    <string name="concierge_input_hint">依頼を入力（例: 制服カードをお腹の素肌が見えるようにして）</string>
+    <string name="concierge_send">依頼を送る</string>
+    <string name="concierge_pick_jev">判断モデル（Jev）</string>
+    <string name="concierge_pick_writer">文章生成モデル</string>
+    <string name="concierge_greeting">%1$sの画面からこんにちは。カード・タグの編集、新規作成、プリセット適用、生成の準備までおまかせください。</string>
+    <string name="concierge_confirm_view">変更内容を確認</string>
+    <string name="concierge_applied">✓ 適用済み</string>
+    <string name="concierge_diff_title">変更内容の確認</string>
+    <string name="concierge_diff_before">変更前</string>
+    <string name="concierge_diff_after">変更後</string>
+    <string name="concierge_apply">保存</string>
+    <string name="concierge_cancel">キャンセル</string>
+    <string name="concierge_saved">保存しました</string>
+    <string name="concierge_cancelled">変更を破棄しました</string>
+    <string name="concierge_apply_failed">保存に失敗しました。対象が既に存在しない可能性があります。</string>
+    <string name="concierge_failed">依頼を叶えられませんでした: %1$s</string>
+    <string name="concierge_menu_ask">🧭 采配コンシェルジュに頼む（なんでも依頼）</string>
+</resources>
