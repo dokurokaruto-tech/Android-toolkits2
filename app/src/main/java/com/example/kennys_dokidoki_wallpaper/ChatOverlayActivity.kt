@@ -719,6 +719,18 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private fun executeActionString(action: String) {
         if (action == "TOGGLE_AI_CHAT") {
             finish()
+        } else if (action == "EDIT_TAGS") {
+            // チャット表示中の画像を直接開く。壁紙サービス経由だと
+            // 登録壁紙の画像になり、生成画像の閲覧から来た場合に
+            // 別画像のタグ編集が開いてしまう。
+            val entry = currentImageEntry
+            if (entry == null) {
+                Toast.makeText(this, "表示中の画像がありません。", Toast.LENGTH_SHORT).show()
+                return
+            }
+            startActivity(Intent(this, ImageTagEditorActivity::class.java).apply {
+                putExtra("IMAGE_URI", entry.uri.toString())
+            })
         } else if (action != "NONE") {
             val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_EXECUTE_ACTION")
             intent.setPackage(packageName)

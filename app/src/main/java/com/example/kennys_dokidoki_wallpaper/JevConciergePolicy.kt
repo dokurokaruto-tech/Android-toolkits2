@@ -66,11 +66,11 @@ internal object JevConciergePolicy {
     /** 「このカードを含めるか」の採用ライン */
     const val SELECT_MIN_PROB = 0.60
 
-    /** Choiceの選択肢上限。Jevの上限255より十分小さく抑える */
-    const val MAX_OPTIONS = 60
+    /** Choiceの選択肢上限。全件を送るためJevの上限255に合わせる */
+    const val MAX_OPTIONS = 240
 
-    /** 一括選択の候補上限。1リクエスト内の質問数を抑える */
-    const val SELECT_MAX_OPTIONS = 30
+    /** 一括選択の候補上限。全件を送るため余裕を持たせる */
+    const val SELECT_MAX_OPTIONS = 120
 
     /** 判断材料に入れる直近の往復数 */
     const val HISTORY_TURNS = 2
@@ -277,7 +277,7 @@ internal object JevConciergePolicy {
 
     /**
      * 依頼文と名前の重なりで候補を並べ替える。
-     * 完全一致に近いほど先頭へ。Choiceの選択肢数に収めるための足切り。
+     * 完全一致に近いほど先頭へ。全件をJevに渡し、足切りはJevの上限分のみ。
      */
     fun rankCandidates(
         wish: String,
