@@ -25,7 +25,8 @@ data class PromptCardLlmChoice(
     val displayName: String,
     val contextLength: Int = 0,
     val isFree: Boolean = false,
-    val pricePerMillion: Double = 0.0
+    val pricePerMillion: Double = 0.0,
+    val outputPricePerMillion: Double = 0.0
 )
 
 /** Natural-language -> Stable Diffusion prompt conversion shared by prompt-card editing UI. */
