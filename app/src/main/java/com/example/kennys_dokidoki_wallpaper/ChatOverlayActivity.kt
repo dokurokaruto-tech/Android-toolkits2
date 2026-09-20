@@ -900,7 +900,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
      * 吹き出しの「高さの増加分(growth)」は、ユーザーの指スクロールの影響を一切受けない
      * 純粋な値なので、これを基準にする。stackFromEnd では最後尾アイテムが成長すると
      * 手前が上へずれるため、成長分だけ scrollBy(0, -growth) で戻せば見ている位置が安定する。
-     * 慣性スクロール(SETTLING)中だけは慣性と競合するので打ち消さない。
+     * 慣性スクロール中も打ち消す：指を離したあとのフリングで残り速度がある状態で改行が
+     * 来ても、RecyclerView 側でフリングが継続するので、見ている文は動かない。
      */
     private fun compensateStreamingGrowth(holder: RecyclerView.ViewHolder, preHeight: Int) {
         if (!::recyclerView.isInitialized) return
@@ -916,9 +917,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     return
                 }
                 view.removeOnLayoutChangeListener(this)
-                if (recyclerView.scrollState != RecyclerView.SCROLL_STATE_SETTLING) {
-                    val growth = view.height - preHeight
-                    if (growth != 0) recyclerView.scrollBy(0, -growth)
+                val growth = view.height - preHeight
+                if (ChatAutoScrollPolicy.shouldCompensateStreamingGrowth(growth)) {
+                    recyclerView.scrollBy(0, -growth)
                 }
             }
         }
@@ -1301,8 +1302,40 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
 
         btnSend.setOnClickListener {
+            val action = ChatInterruptPolicy.actionFor(
+                ChatGenerationManager.isGenerating,
+                ChatGenerationManager.activeSessionId,
+                currentChatId
+            )
+            if (action == ChatInterruptPolicy.SendAction.STOP) {
+                ChatGenerationManager.cancelActiveGeneration(this)
+                updateSendButtonForGeneration()
+                return@setOnClickListener
+            }
             val typed = chatInput.text.toString().trim()
             submitOutgoingUserMessage(typed)
+        }
+        updateSendButtonForGeneration()
+    }
+
+    private var sendButtonInStopMode = false
+
+    /** 生成中は送信ボタンを停止ボタンに切り替える。場面ごとに必ずここから直す。 */
+    private fun updateSendButtonForGeneration() {
+        if (!::btnSend.isInitialized) return
+        val stop = ChatInterruptPolicy.actionFor(
+            ChatGenerationManager.isGenerating,
+            ChatGenerationManager.activeSessionId,
+            currentChatId
+        ) == ChatInterruptPolicy.SendAction.STOP
+        if (stop == sendButtonInStopMode) return
+        sendButtonInStopMode = stop
+        if (stop) {
+            btnSend.setImageResource(R.drawable.ic_md3_gen_stop)
+            btnSend.contentDescription = getString(R.string.chat_stop_generation)
+        } else {
+            btnSend.setImageResource(R.drawable.ic_md3_send)
+            btnSend.contentDescription = getString(R.string.chat_send_message)
         }
     }
 
@@ -1953,6 +1986,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val sessionId = currentChatId ?: ""
         
         ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, newAiNode)
+        updateSendButtonForGeneration()
     }
 
     private fun showEditUserMessageDialog(userNode: ChatNode, recyclerView: RecyclerView) {
@@ -2024,6 +2058,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     override fun onResume() {
         super.onResume()
+
+        updateSendButtonForGeneration()
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         settingsPrefs.edit().putBoolean("is_chat_active", true).apply()
         currentChatId?.let { chatId ->
@@ -2066,6 +2102,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     override fun onProgress(text: String, isComplete: Boolean, modelName: String?, error: String?) {
         runOnUiThread {
+            updateSendButtonForGeneration()
             val aiNodeId = ChatGenerationManager.activeAiNodeId ?: return@runOnUiThread
             val aiNode = chatTree.nodes[aiNodeId] ?: return@runOnUiThread
 
@@ -3053,6 +3090,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         val sessionId = currentChatId ?: ""
         ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, aiNode)
+        updateSendButtonForGeneration()
     }
 
     private fun showOpenRouterKeySelector() {

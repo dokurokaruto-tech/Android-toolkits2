@@ -222,6 +222,14 @@ class ChatAutoScrollPolicyTest {
     }
 
     @Test
+    fun `growth compensation also applies during fling settling`() {
+        // フリング中（SETTLING）でも、生成による改行の伸びは打ち消して視点を保つ。
+        assertTrue(ChatAutoScrollPolicy.shouldCompensateStreamingGrowth(12))
+        assertTrue(ChatAutoScrollPolicy.shouldCompensateStreamingGrowth(-4))
+        assertFalse(ChatAutoScrollPolicy.shouldCompensateStreamingGrowth(0))
+    }
+
+    @Test
     fun `viewport restore undoes stackFromEnd shift after a new line`() {
         assertEquals(0, ChatAutoScrollPolicy.scrollByToRestoreChild(
             currentTop = 100,

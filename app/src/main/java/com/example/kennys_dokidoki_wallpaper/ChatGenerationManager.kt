@@ -17,6 +17,11 @@ import java.net.URL
 object ChatGenerationManager {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var activeJob: Job? = null
+    private var activeConnection: HttpURLConnection? = null
+
+    // 直前のジョブの遅延完了で、新しい生成の表示を壊さないための世代管理
+    private var generationEpoch: Long = 0L
+    private val interruptedEpochs = mutableSetOf<Long>()
 
     var isGenerating = false
         private set
@@ -41,14 +46,23 @@ object ChatGenerationManager {
         listeners.remove(listener)
     }
 
+    /**
+     * 実行中の生成に中断を要求する。
+     * 表示の最終確定は実行側の中断処理に任せ、ここでは確実に通信を切る。
+     */
     fun cancelActiveGeneration(context: Context) {
-        activeJob?.cancel()
-        activeJob = null
+        activeConnection?.disconnectQuietly()
+        val job = activeJob
+        if (job != null) {
+            interruptedEpochs.add(generationEpoch)
+            job.cancel()
+            return
+        }
+        // 実行中ジョブが無いのに途中状態だけ残ったときの保険
         isGenerating = false
         activeSessionId = null
         activeAiNodeId = null
         LlmForegroundService.stop(context)
-        notifyError("返信の生成がキャンセルされました。")
     }
 
     // 生成を開始する
@@ -71,17 +85,19 @@ object ChatGenerationManager {
         // サービスを開始して、OSによるプロセスkillを防ぐのよ！
         LlmForegroundService.start(context)
 
+        val epoch = ++generationEpoch
         activeJob = scope.launch {
             if (engine == "LOCAL") {
-                runLocalResponse(context, sessionId, systemPrompt, chatTree, userNode, aiNode)
+                runLocalResponse(context, epoch, sessionId, systemPrompt, chatTree, userNode, aiNode)
             } else {
-                runCloudResponse(context, sessionId, systemPrompt, chatTree, userNode, aiNode)
+                runCloudResponse(context, epoch, sessionId, systemPrompt, chatTree, userNode, aiNode)
             }
         }
     }
 
     private suspend fun runLocalResponse(
         context: Context,
+        epoch: Long,
         sessionId: String,
         systemPrompt: String,
         chatTree: ChatTree,
@@ -91,7 +107,7 @@ object ChatGenerationManager {
         val models = LocalModelManager.getAllModels(context)
         if (models.isEmpty()) {
             aiNode.text = "【エラー】モデルがダウンロードされていません。設定からダウンロードを実行してください。"
-            saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true, error = "No local models")
+            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = "No local models")
             return
         }
 
@@ -102,7 +118,7 @@ object ChatGenerationManager {
                 delay(400)
                 dots = (dots + 1) % 4
                 aiNode.text = "🧠 推論中 (Local)" + ".".repeat(dots)
-                notifyProgress(aiNode.text, false)
+                notifyProgress(epoch, aiNode.text, false)
             }
         }
 
@@ -110,7 +126,7 @@ object ChatGenerationManager {
             // モデルが未ロードなら自動ロード
             if (!LlmInferenceEngine.isModelLoaded()) {
                 aiNode.text = "📥 モデルをロードしています..."
-                notifyProgress(aiNode.text, false)
+                notifyProgress(epoch, aiNode.text, false)
                 LlmForegroundService.updateNotification(context, "モデルをロード中... 🔄")
 
                 val errorMsg = withContext(Dispatchers.IO) {
@@ -119,7 +135,7 @@ object ChatGenerationManager {
                 if (errorMsg != null) {
                     thinkingJob.cancel()
                     aiNode.text = "【エラー】モデルのロードに失敗しました。\n$errorMsg"
-                    saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true, error = errorMsg)
+                    saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = errorMsg)
                     return
                 }
             }
@@ -152,7 +168,7 @@ object ChatGenerationManager {
 
             thinkingJob.cancel()
             aiNode.text = ""
-            notifyProgress("", false)
+            notifyProgress(epoch, "", false)
             var tokenCount = 0
 
             withContext(Dispatchers.IO) {
@@ -160,9 +176,10 @@ object ChatGenerationManager {
                     prompt = prompt,
                     onToken = { token ->
                         scope.launch(Dispatchers.Main) {
+                            if (epoch != generationEpoch) return@launch
                             aiNode.text += token
                             tokenCount++
-                            notifyProgress(aiNode.text, false)
+                            notifyProgress(epoch, aiNode.text, false)
 
                             if (tokenCount % 10 == 0) {
                                 LlmForegroundService.updateNotification(
@@ -174,8 +191,9 @@ object ChatGenerationManager {
                     },
                     onComplete = {
                         scope.launch(Dispatchers.Main) {
+                            if (epoch != generationEpoch) return@launch
                             aiNode.modelName = LlmInferenceEngine.loadedModelName
-                            saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true)
+                            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true)
                             LlmForegroundService.updateNotification(context, "推論完了 ✅ (${tokenCount}トークン)")
                             
                             Handler(Looper.getMainLooper()).postDelayed({
@@ -185,23 +203,29 @@ object ChatGenerationManager {
                     },
                     onError = { errorMsg ->
                         scope.launch(Dispatchers.Main) {
+                            if (epoch != generationEpoch) return@launch
                             if (aiNode.text.isEmpty()) {
                                 aiNode.text = "【エラー】推論プロセスで不具合が発生しました: $errorMsg"
                             }
-                            saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true, error = errorMsg)
+                            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = errorMsg)
                         }
                     }
                 )
             }
+        } catch (cancel: CancellationException) {
+            thinkingJob.cancel()
+            finishInterrupted(context, sessionId, chatTree, aiNode, epoch)
+            throw cancel
         } catch (e: Exception) {
             thinkingJob.cancel()
             aiNode.text = "【エラー】推論実行中に例外が発生しました: ${e.message}"
-            saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true, error = e.message)
+            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = e.message)
         }
     }
 
     private suspend fun runCloudResponse(
         context: Context,
+        epoch: Long,
         sessionId: String,
         systemPrompt: String,
         chatTree: ChatTree,
@@ -214,7 +238,7 @@ object ChatGenerationManager {
                 delay(400)
                 dots = (dots + 1) % 4
                 aiNode.text = "推論中" + ".".repeat(dots)
-                notifyProgress(aiNode.text, false)
+                notifyProgress(epoch, aiNode.text, false)
             }
         }
 
@@ -240,7 +264,7 @@ object ChatGenerationManager {
             if (apiKey.isEmpty()) {
                 thinkingJob.cancel()
                 aiNode.text = "【エラー】${provider}のAPIキーが未設定です。"
-                saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true, error = "API key missing")
+                saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = "API key missing")
                 return
             }
 
@@ -277,6 +301,8 @@ object ChatGenerationManager {
                 try {
                     val url = URL(apiUrl)
                     val conn = url.openConnection() as HttpURLConnection
+                    // 中断要求から強制切断できるよう捕まえておく
+                    activeConnection = conn
                     conn.apply {
                         requestMethod = "POST"
                         setRequestProperty("Authorization", "Bearer $apiKey")
@@ -294,7 +320,7 @@ object ChatGenerationManager {
                         withContext(Dispatchers.Main) {
                             thinkingJob.cancel()
                             aiNode.text = ""
-                            notifyProgress("", false)
+                            notifyProgress(epoch, "", false)
                         }
 
                         val reader = conn.inputStream.bufferedReader()
@@ -317,7 +343,7 @@ object ChatGenerationManager {
                                             
                                             withContext(Dispatchers.Main) {
                                                 aiNode.text = reply
-                                                notifyProgress(reply, false)
+                                                notifyProgress(epoch, reply, false)
                                             }
                                         }
                                     } catch (e: Exception) {
@@ -326,7 +352,7 @@ object ChatGenerationManager {
                                 }
                             }
                         }
-                        if (provider == "OPENROUTER" && reply.isNotEmpty()) {
+                        if (provider == "OPENROUTER" && reply.isNotEmpty() && epoch !in interruptedEpochs) {
                             // カウントは無料モデルのみ対象。課金済み×有料モデルは増やさない
                             OpenRouterManager.countFreeUsage(context, apiKey, modelName)
                         }
@@ -341,7 +367,7 @@ object ChatGenerationManager {
                                 else -> "【エラー】通信エラーが発生しました (Code: ${conn.responseCode}): $errorMsg"
                             }
                             aiNode.text = friendlyMsg
-                            saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true, error = errorMsg)
+                            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = errorMsg)
                         }
                         return@withContext null
                     }
@@ -350,7 +376,7 @@ object ChatGenerationManager {
                     withContext(Dispatchers.Main) {
                         thinkingJob.cancel()
                         aiNode.text = "【エラー】通信エラー: ${e.message}"
-                        saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true, error = e.message)
+                        saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = e.message)
                     }
                     return@withContext null
                 }
@@ -362,14 +388,52 @@ object ChatGenerationManager {
                 if (fullReply.isEmpty()) {
                     aiNode.text = "【エラー】AIからの応答が空でした。別のモデルを試すか、もう一度実行してみてね。"
                 }
-                saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true)
+                saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true)
             }
 
+        } catch (cancel: CancellationException) {
+            thinkingJob.cancel()
+            finishInterrupted(context, sessionId, chatTree, aiNode, epoch)
+            throw cancel
         } catch (e: Exception) {
             thinkingJob.cancel()
             aiNode.text = "【エラー】システムエラーが発生しました: ${e.message}"
-            saveAndNotify(context, sessionId, chatTree, aiNode, isComplete = true, error = e.message)
+            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = e.message)
+        } finally {
+            if (activeConnection !== null) {
+                activeConnection?.disconnectQuietly()
+                activeConnection = null
+            }
         }
+    }
+
+    /** ユーザーによる中断で確定する。部分出力は保持し、出力前なら中断マーカーにする。 */
+    private fun finishInterrupted(
+        context: Context,
+        sessionId: String,
+        chatTree: ChatTree,
+        aiNode: ChatNode,
+        epoch: Long
+    ) {
+        aiNode.text = ChatInterruptPolicy.interruptedBubbleText(aiNode.text)
+        ChatSessionManager.saveSessionData(context, sessionId, chatTree)
+        scope.launch(Dispatchers.Main) {
+            if (epoch != generationEpoch) return@launch
+            listeners.forEach {
+                it.onProgress(aiNode.text, isComplete = true, modelName = aiNode.modelName, error = null)
+            }
+            isGenerating = false
+            activeSessionId = null
+            activeAiNodeId = null
+            LlmForegroundService.stop(context)
+        }
+
+        // ローカル推論はネイティブ側を止められないため、遅れてきた完了通知で
+        // 中断表示を上書きされないよう、この世代の印は残したままにする。
+    }
+
+    private fun HttpURLConnection.disconnectQuietly() {
+        runCatching { disconnect() }
     }
 
     private fun getRecentHistory(chatTree: ChatTree, startNodeId: String?): List<ChatNode> {
@@ -386,6 +450,7 @@ object ChatGenerationManager {
     }
 
     private fun saveAndNotify(
+        epoch: Long,
         context: Context,
         sessionId: String,
         chatTree: ChatTree,
@@ -402,7 +467,8 @@ object ChatGenerationManager {
         
         // メインスレッドでリスナー通知＆クリーンアップ
         scope.launch(Dispatchers.Main) {
-            listeners.forEach { 
+            if (epoch != generationEpoch || epoch in interruptedEpochs) return@launch
+            listeners.forEach {
                 it.onProgress(aiNode.text, isComplete, modelName = aiNode.modelName, error = error)
             }
 
@@ -415,19 +481,13 @@ object ChatGenerationManager {
         }
     }
 
-    private fun notifyProgress(text: String, isComplete: Boolean) {
+    private fun notifyProgress(epoch: Long, text: String, isComplete: Boolean) {
         scope.launch(Dispatchers.Main) {
-            listeners.forEach { 
+            if (epoch != generationEpoch) return@launch
+            listeners.forEach {
                 it.onProgress(text, isComplete)
             }
         }
     }
 
-    private fun notifyError(errorMsg: String) {
-        scope.launch(Dispatchers.Main) {
-            listeners.forEach { 
-                it.onProgress("", false, error = errorMsg)
-            }
-        }
-    }
 }

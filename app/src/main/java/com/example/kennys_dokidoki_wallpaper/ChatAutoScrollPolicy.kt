@@ -7,6 +7,8 @@ package com.example.kennys_dokidoki_wallpaper
  * 画面の一番下から少しでも離したら追従を切り、ユーザー自身が底へ戻したときだけ再開する。
  * 生成によるレイアウト変化では stick 状態を更新しない。
  * ドラッグ中に生成が底へ引き戻しても、再着地（rejoin）はさせない。
+ * 追従していない位置で改行が入ると、伸びた分だけ打ち消して読む位置を保つ。
+ * この打ち消しは指を離したあとの慣性フリング中も行う（改行で見ている文が動くのを防ぐ）。
  */
 object ChatAutoScrollPolicy {
     /** これ以上離れたら「底から離れた」。指で少し動かしただけで切れるよう短め（px）。 */
@@ -104,6 +106,15 @@ object ChatAutoScrollPolicy {
     ): Boolean {
         if (itemIsAttached) return true
         return !shouldSkipOffscreenUpdate(lastVisiblePosition, changedIndex)
+    }
+
+    /**
+     * ストリーミングで伸びた分だけビューポートを打ち消すか。
+     * 慣性スクロール（SETTLING）中も打ち消す。伸び量は指の操作と無関係な純粋な値なので、
+     * scrollBy で戻しても RecyclerView のフリングは残りを継続する。
+     */
+    fun shouldCompensateStreamingGrowth(growthPx: Int): Boolean {
+        return growthPx != 0
     }
 
     /**

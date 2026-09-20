@@ -30,4 +30,6 @@
     <string name="tag_ai_pick_image">画像を添える</string>
     <string name="tag_ai_cancel">閉じる</string>
     <string name="tag_ai_generate">置き換える</string>
+    <string name="chat_send_message">メッセージを送信</string>
+    <string name="chat_stop_generation">返信を停止</string>
 </resources>
