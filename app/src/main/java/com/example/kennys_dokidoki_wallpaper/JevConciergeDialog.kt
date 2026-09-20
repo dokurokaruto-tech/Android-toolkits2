@@ -181,7 +181,7 @@ internal object JevConciergeDialog {
             progress.show()
             send.isEnabled = false
             msgs += Msg.User(displayWish)
-            adapter.notifyDataSetChanged()
+            list.adapter?.notifyDataSetChanged()
 
             val screen = entry.label
             val history = turns.toList()
@@ -208,7 +208,7 @@ internal object JevConciergeDialog {
                             assistantMsg.applied = it.status == HistoryStatus.APPLIED
                         }
                         msgs += assistantMsg
-                        adapter.notifyDataSetChanged()
+                        list.adapter?.notifyDataSetChanged()
                         if (result.plan != null) {
                             val pending = pendingRecord(activity, result.plan, result.detail)
                             HistoryStore.add(activity, pending)
@@ -222,7 +222,7 @@ internal object JevConciergeDialog {
                         msgs += Msg.Assistant(
                             activity.getString(R.string.concierge_failed, error.message ?: ""), null
                         )
-                        adapter.notifyDataSetChanged()
+                        list.adapter?.notifyDataSetChanged()
                     }
                 }
             }
