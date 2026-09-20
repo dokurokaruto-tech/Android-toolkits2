@@ -23,6 +23,7 @@ internal enum class ConciergeTool(val id: String, val label: String) {
     SELECT_CARDS("select_cards", "生成カードの選択"),
     FILTER_IMAGES("filter_images", "画像の絞り込み"),
     START_GENERATION("start_generation", "生成開始"),
+    THUMBNAILS("thumbnails", "サムネイル生成"),
     TALK("talk", "会話");
 }
 
@@ -39,6 +40,12 @@ internal data class ConciergeCandidate(val key: String, val name: String, val hi
 internal enum class CardSelectionMode {
     ADD,
     REPLACE;
+}
+
+/** サムネイル生成の対象種別 */
+internal enum class ThumbKind(val label: String) {
+    CARD("カード"),
+    PRESET("プリセット");
 }
 
 internal object JevConciergePolicy {
@@ -105,6 +112,7 @@ internal object JevConciergePolicy {
             .put(ConciergeTool.SELECT_CARDS.id, "生成に使うカードを選ぶ・外す。複数可")
             .put(ConciergeTool.FILTER_IMAGES.id, "タグで画像一覧を絞り込む・探す")
             .put(ConciergeTool.START_GENERATION.id, "いま選んでいる内容で画像生成を始める")
+            .put(ConciergeTool.THUMBNAILS.id, "カードやプリセットのサムネイル画像を作り直す・補う")
             .put(ConciergeTool.TALK.id, "上記のどれでもない。使い方の質問・雑談・判断できない依頼")
         val question = JSONObject()
             .put("type", "choice")
@@ -125,6 +133,29 @@ internal object JevConciergePolicy {
             return ConciergeRoute(ConciergeTool.TALK, 0.0)
         }
         return ConciergeRoute(tool, confidence)
+    }
+
+    fun thumbKindBody(wish: String, model: String): JSONObject {
+        val state = JSONObject().put("wish", wish)
+        val criteria = JSONObject()
+            .put("cards", "プロンプトカードのサムネイル")
+            .put("presets", "プリセットのサムネイル")
+        val question = JSONObject()
+            .put("type", "choice")
+            .put("instructions", "state.wishの指すサムネイルの種類を1つ選ぶ。")
+            .put("criteria", criteria)
+        return JSONObject().put("model", model).put("state", state)
+            .put("questions", JSONObject().put("kind", question))
+    }
+
+    fun parseKind(answers: JSONObject): ThumbKind {
+        val answer = answers.getJSONObject("kind")
+        require(answer.getString("type") == "choice") { "判断APIの応答形式が不正です。" }
+        return when (answer.getString("choice")) {
+            "presets" -> ThumbKind.PRESET
+            "cards" -> ThumbKind.CARD
+            else -> throw IllegalArgumentException("Jevが候補外を返しました。")
+        }
     }
 
     // ---------- 対象の特定 ----------
@@ -378,6 +409,7 @@ internal object JevConciergePolicy {
         "このアプリでできること: 全画像の管理とタグ付け、画像セットの管理、タグ別のキャラチャット用指示文の管理、" +
         "プロンプトカードを組み合わせる画像生成（PC連携）、カード選択の保存プリセット、キャラチャット、壁紙設定。" +
         "コンシェルジュへの依頼例: 「○○カードのプロンプトを〜に変えて」「○○タグの文章を直して」" +
-        "「○○という要素を作って」「プリセット○○を適用して」「○○と○○を選んで生成して」「○○の画像を探して」。" +
+        "「○○という要素を作って」「プリセット○○を適用して」「○○と○○を選んで生成して」「○○の画像を探して」" +
+        "「○○のサムネイルを作って」。" +
         "実行が必要な依頼には、対応可否と頼み方の例を短く返す。設定変更や保存の断定はしない。"
 }

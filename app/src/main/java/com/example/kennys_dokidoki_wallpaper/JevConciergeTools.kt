@@ -22,6 +22,20 @@ internal enum class ConciergeEntry(val label: String) {
 }
 
 
+/** 生成ビルダーの状態。プリセット適用の取り消し用 */
+internal data class ConciergeBuilderState(
+    val selection: Map<String, Int>,
+    val random: Set<String>,
+    val width: Int,
+    val height: Int,
+    val steps: Int,
+    val batch: Int,
+    val sampler: String
+)
+
+/** 画像一覧の絞り込み状態。絞り込みの取り消し用 */
+internal data class ConciergeFilterState(val target: String?, val has: Boolean)
+
 /**
  * 画面側への実行口。適用・選択・画面遷移はホストが担う。
  * すべてメインスレッドで呼ぶこと。
@@ -33,6 +47,13 @@ internal interface ConciergeHost {
     fun selectCards(ids: Collection<String>, mode: CardSelectionMode)
     fun filterImages(tag: String)
     fun startGeneration()
+    fun selectionSnapshot(): Map<String, Int>
+    fun restoreSelection(levels: Map<String, Int>)
+    fun builderSnapshot(): ConciergeBuilderState
+    fun restoreBuilder(state: ConciergeBuilderState)
+    fun filterSnapshot(): ConciergeFilterState
+    fun setFilter(target: String?, has: Boolean)
+    fun openBulkThumbnails(kind: ThumbKind, category: String, onDone: (Int) -> Unit)
 }
 
 internal object JevConciergeTools {

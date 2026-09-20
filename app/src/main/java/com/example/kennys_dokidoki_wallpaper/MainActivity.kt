@@ -342,6 +342,111 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 R.id.nav_builder
             btnGenerateConcatenatedTop.performClick()
         }
+
+        override fun selectionSnapshot(): Map<String, Int> =
+            PromptCardManager.selectionLevels.toMap()
+
+        override fun restoreSelection(levels: Map<String, Int>) {
+            PromptCardManager.selectionLevels.clear()
+            PromptCardManager.selectionLevels.putAll(levels)
+            PromptCardManager.saveInteractiveState(this@MainActivity)
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+            updateSelectedCardStrip()
+            commitBuilderState()
+        }
+
+        override fun builderSnapshot(): ConciergeBuilderState = ConciergeBuilderState(
+            selection = PromptCardManager.selectionLevels.toMap(),
+            random = PromptCardManager.randomEnabledCategories.toSet(),
+            width = genWidth,
+            height = genHeight,
+            steps = genSteps,
+            batch = genBatchCount,
+            sampler = genSampler
+        )
+
+        override fun restoreBuilder(state: ConciergeBuilderState) {
+            PromptCardManager.selectionLevels.clear()
+            PromptCardManager.selectionLevels.putAll(state.selection)
+            PromptCardManager.randomEnabledCategories.clear()
+            PromptCardManager.randomEnabledCategories.addAll(state.random)
+            genWidth = state.width
+            genHeight = state.height
+            genSteps = state.steps
+            genBatchCount = state.batch
+            genSampler = state.sampler
+            getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
+                .putInt("gen_width", genWidth)
+                .putInt("gen_height", genHeight)
+                .putInt("gen_steps", genSteps)
+                .putInt("gen_batch_count", genBatchCount)
+                .putString("gen_sampler", genSampler)
+                .apply()
+            updateGenSettingsUI()
+            PromptCardManager.saveCards(this@MainActivity)
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+            updateSelectedCardStrip()
+            commitBuilderState()
+        }
+
+        override fun filterSnapshot(): ConciergeFilterState =
+            ConciergeFilterState(currentFilterTarget, currentFilterHas)
+
+        override fun setFilter(target: String?, has: Boolean) {
+            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId =
+                R.id.nav_all_images
+            currentFilterTarget = target
+            currentFilterHas = has
+            applyQuickFilter()
+        }
+
+        override fun openBulkThumbnails(kind: ThumbKind, category: String, onDone: (Int) -> Unit) {
+            if (kind == ThumbKind.CARD) {
+                val cards = PromptCardManager.promptCards.filter { it.category == category }
+                if (cards.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "このカテゴリーには対象がありません。", Toast.LENGTH_SHORT).show()
+                    onDone(0)
+                    return
+                }
+                BulkThumbnailDialog.show(
+                    this@MainActivity,
+                    "カードの一括サムネイル",
+                    cards.map { BulkThumbnailPickerPolicy.entry(it.id, it.label, it.thumbnailUri?.toString()) }
+                ) { ids ->
+                    val items = cards.filter { it.id in ids.toSet() }.map { card ->
+                        val (prompt, negative) = getConcatenatedPromptForCard(card.mainPrompt, card.negativePrompt)
+                        ThumbnailBindPolicy.Item(
+                            ThumbnailBindPolicy.Target.card(card.id),
+                            thumbnailRequest(prompt, negative)
+                        )
+                    }
+                    onDone(if (ThumbnailGenerationCoordinator.start(this@MainActivity, items)) ids.size else 0)
+                }
+            } else {
+                val presets = PresetManager.presets.filter { it.category == category }
+                if (presets.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "このカテゴリーには対象がありません。", Toast.LENGTH_SHORT).show()
+                    onDone(0)
+                    return
+                }
+                BulkThumbnailDialog.show(
+                    this@MainActivity,
+                    "プリセットの一括サムネイル",
+                    presets.map { BulkThumbnailPickerPolicy.entry(it.id, it.name, it.thumbnailUri?.toString()) }
+                ) { ids ->
+                    val items = presets.filter { it.id in ids.toSet() }.mapNotNull { preset ->
+                        val request = thumbnailRequestForPreset(preset) ?: return@mapNotNull null
+                        ThumbnailBindPolicy.Item(ThumbnailBindPolicy.Target.preset(preset.id), request)
+                    }
+                    if (items.isEmpty()) {
+                        Toast.makeText(this@MainActivity, "カードもランダム対象も無い。", Toast.LENGTH_SHORT).show()
+                        onDone(0)
+                        return@show
+                    }
+                    onDone(if (ThumbnailGenerationCoordinator.start(this@MainActivity, items)) ids.size else 0)
+                }
+            }
+        }
     }
 
     private val pickCardThumbnailLauncher = registerForActivityResult(
