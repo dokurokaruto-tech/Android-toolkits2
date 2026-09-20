@@ -222,8 +222,10 @@ object OpenRouterManager {
         val manualKey = getManualSelectedKey(context)
         val manualEntry = entries.find { it.key == manualKey }
         if (manualEntry != null) {
-            val usage = getUsageCount(context, manualKey)
-            if (usage < manualEntry.dailyMax) return manualKey
+            val usage = getUsageCount(context, manualEntry.key)
+            if (usage < manualEntry.dailyMax) {
+                return manualKey
+            }
             // 使い切ってたら手動選択を解除しちゃうわね
             setManualSelectedKey(context, null)
         }

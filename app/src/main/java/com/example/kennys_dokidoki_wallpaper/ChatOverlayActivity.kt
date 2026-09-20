@@ -3460,7 +3460,53 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             addView(container)
         }
 
-        val dialog = MaterialAlertDialogBuilder(md3Context)
+        var balanceJob: Job? = null
+        val balanceDebounce = Handler(Looper.getMainLooper())
+        var balancePending: Runnable? = null
+        var dialog: androidx.appcompat.app.AlertDialog? = null
+
+        fun hideBalance() {
+            balanceJob?.cancel()
+            balancePending?.let { balanceDebounce.removeCallbacks(it) }
+            balancePending = null
+            tvBalance.visibility = View.GONE
+        }
+
+        fun fetchBalance() {
+            tvBalance.visibility = View.VISIBLE
+            val key = inputApiKey.text.toString().trim()
+            if (key.isEmpty()) {
+                tvBalance.text = "APIキーを入力してください"
+                return
+            }
+            tvBalance.text = "残高確認中..."
+            balanceJob?.cancel()
+            balanceJob = coroutineScope.launch {
+                val info = withContext(Dispatchers.IO) { OpenRouterManager.fetchCreditInfo(key) }
+                if (dialog?.isShowing != true) {
+                    return@launch
+                }
+                tvBalance.text = if (info == null) {
+                    "残高の確認に失敗しました"
+                } else {
+                    String.format(
+                        "クレジット残高: $%.2f (購入 $%.2f / 使用 $%.2f)",
+                        info.remaining, info.totalCredits, info.totalUsage
+                    )
+                }
+            }
+        }
+
+        fun scheduleBalance() {
+            if (!swCharged.isChecked) {
+                return
+            }
+            balancePending?.let { balanceDebounce.removeCallbacks(it) }
+            balancePending = Runnable { fetchBalance() }
+                .also { balanceDebounce.postDelayed(it, 700L) }
+        }
+
+        dialog = MaterialAlertDialogBuilder(md3Context)
             .setTitle("ACCOUNT CONFIG")
             .setView(scrollView)
             .setPositiveButton("SAVE") { _, _ ->
@@ -3485,48 +3531,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
             .setNegativeButton("CANCEL", null)
             .create()
-
-        // 残高取得の制御 (課金済みトグルONのときだけ)
-        var balanceJob: Job? = null
-        val balanceDebounce = Handler(Looper.getMainLooper())
-        var balancePending: Runnable? = null
-
-        fun fetchBalance() {
-            tvBalance.visibility = View.VISIBLE
-            val key = inputApiKey.text.toString().trim()
-            if (key.isEmpty()) {
-                tvBalance.text = "APIキーを入力してください"
-                return
-            }
-            tvBalance.text = "残高確認中..."
-            balanceJob?.cancel()
-            balanceJob = coroutineScope.launch {
-                val info = withContext(Dispatchers.IO) { OpenRouterManager.fetchCreditInfo(key) }
-                if (!dialog.isShowing) return@launch
-                tvBalance.text = if (info == null) {
-                    "残高の確認に失敗しました"
-                } else {
-                    String.format(
-                        "クレジット残高: $%.2f (購入 $%.2f / 使用 $%.2f)",
-                        info.remaining, info.totalCredits, info.totalUsage
-                    )
-                }
-            }
-        }
-
-        fun hideBalance() {
-            balanceJob?.cancel()
-            balancePending?.let { balanceDebounce.removeCallbacks(it) }
-            balancePending = null
-            tvBalance.visibility = View.GONE
-        }
-
-        fun scheduleBalance() {
-            if (!swCharged.isChecked) return
-            balancePending?.let { balanceDebounce.removeCallbacks(it) }
-            balancePending = Runnable { fetchBalance() }
-                .also { balanceDebounce.postDelayed(it, 700L) }
-        }
 
         swCharged.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
