@@ -1444,6 +1444,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         rv.layoutManager = LinearLayoutManager(md3)
 
         val dialog = createChatPopup(view)
+        var providerPicker: androidx.appcompat.app.AppCompatDialog? = null
+        dialog.setOnDismissListener { providerPicker?.dismiss() }
 
         var freeOnly = false
         var isLoading = false
@@ -1477,17 +1479,24 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 val items = sorted.map {
                     ModelMd3Item(it.id, it.name, it.contextLength, it.isFree, it.pricePerMillion)
                 }
-                rv.adapter = ModelMd3Adapter(items, currentModel) { item ->
-                    prefs.edit()
-                        .putString("chat_llm_engine", "CLOUD")
-                        .putString("chat_cloud_provider", "OPENROUTER")
-                        .putString("chat_openrouter_model", item.id)
-                        .apply()
-                    updateCounter()
-                    Toast.makeText(this, "${item.name} を選択しました。", Toast.LENGTH_SHORT).show()
-                    dialog.dismiss()
-                    if (findViewById<View>(R.id.extra_menu_scroll).visibility == View.VISIBLE) {
-                        toggleExtraMenu()
+                rv.adapter = ModelMd3Adapter(items, currentModel) onSelect@ { item ->
+                    if (providerPicker?.isShowing == true) {
+                        return@onSelect
+                    }
+                    (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                        .hideSoftInputFromWindow(search.windowToken, 0)
+                    providerPicker = OpenRouterProviderPicker.show(this, coroutineScope, item) { endpoint ->
+                        OpenRouterRouting.save(prefs, item.id, endpoint?.tag)
+                        updateCounter()
+                        val providerName = endpoint?.name ?: getString(R.string.or_provider_auto_short)
+                        Toast.makeText(
+                            this, getString(R.string.or_provider_selected, item.name, providerName),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        dialog.dismiss()
+                        if (findViewById<View>(R.id.extra_menu_scroll).visibility == View.VISIBLE) {
+                            toggleExtraMenu()
+                        }
                     }
                 }
             }

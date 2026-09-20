@@ -267,6 +267,9 @@ object ChatGenerationManager {
                 put("messages", jsonArray)
                 put("model", modelName)
                 put("stream", true)
+                if (provider == "OPENROUTER") {
+                    OpenRouterRouting.apply(prefs, modelName, this)
+                }
             }
 
             val fullReply = withContext(Dispatchers.IO) {

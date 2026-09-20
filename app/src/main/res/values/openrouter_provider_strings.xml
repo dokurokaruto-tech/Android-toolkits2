@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="or_provider_title">プロバイダーを選択</string>
+    <string name="or_provider_note">料金はUSD／100万トークン（通常のテキスト入出力）。長文・画像などの追加料金は含みません。稼働率は過去の実績で、今後の接続を保証するものではありません。</string>
+    <string name="or_provider_fixed_note">個別指定時は他のプロバイダーへ自動切替しません。</string>
+    <string name="or_provider_auto">自動選択（OpenRouterに任せる）</string>
+    <string name="or_provider_auto_active">自動選択（現在の設定）</string>
+    <string name="or_provider_loading">プロバイダー情報を取得中…</string>
+    <string name="or_provider_loaded">%1$d 件 · 取得時刻 %2$s</string>
+    <string name="or_provider_empty">個別指定できるプロバイダー情報がありません。自動選択で利用できます。</string>
+    <string name="or_provider_error">プロバイダー情報を取得できませんでした。再取得するか、自動選択で利用してください。</string>
+    <string name="or_provider_retry">再取得</string>
+    <string name="or_provider_back">戻る</string>
+    <string name="or_provider_unknown">未提供</string>
+    <string name="or_provider_no_tag">個別指定不可（識別子未提供）</string>
+    <string name="or_provider_active">使用中</string>
+    <string name="or_provider_selected">%1$s · %2$s を選択しました</string>
+    <string name="or_provider_auto_short">自動選択</string>
+    <string name="or_provider_prices">入力 %1$s　／　出力 %2$s</string>
+    <string name="or_provider_cache_read">キャッシュ読込 %1$s／100万トークン</string>
+    <string name="or_provider_cache_write">キャッシュ書込 %1$s／100万トークン</string>
+    <string name="or_provider_request">リクエスト料金 $%1$s／回</string>
+    <string name="or_provider_uptime">稼働率　5分 %1$s　／　30分 %2$s\n24時間 %3$s</string>
+    <string name="or_provider_speed">直近30分の中央値：応答待ち %1$s · 生成 %2$s</string>
+    <string name="or_provider_latency">%1$s 秒</string>
+    <string name="or_provider_throughput">%1$s トークン/秒</string>
+</resources>
