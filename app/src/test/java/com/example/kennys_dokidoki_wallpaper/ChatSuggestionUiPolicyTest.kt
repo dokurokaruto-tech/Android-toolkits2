@@ -117,4 +117,25 @@ class ChatSuggestionUiPolicyTest {
             )
         )
     }
+
+    @Test
+    fun failedOnlyAfterFinishedReplyWithoutChoices() {
+        fun phase(generating: Boolean, retrying: Boolean, text: String) = ChatSuggestionUiPolicy.phase(
+            enabled = true,
+            isLastMessage = true,
+            isUser = false,
+            generatingThis = generating,
+            retryingThis = retrying,
+            rawText = text,
+            suggestionA = null,
+            suggestionB = null,
+            suggestionC = null
+        )
+        assertEquals(ChatSuggestionUiPolicy.Phase.FAILED, phase(false, false, "本文だけ"))
+        assertEquals(ChatSuggestionUiPolicy.Phase.HIDDEN, phase(true, false, "本文だけ"))
+        assertEquals(ChatSuggestionUiPolicy.Phase.HIDDEN, phase(false, false, ChatInterruptPolicy.INTERRUPTED_TEXT))
+        assertEquals(ChatSuggestionUiPolicy.Phase.HIDDEN, phase(false, false, "【エラー】x"))
+        assertEquals(ChatSuggestionUiPolicy.Phase.HIDDEN, phase(false, false, ChatPendingBubble.text(0)))
+        assertEquals(ChatSuggestionUiPolicy.Phase.GENERATING, phase(false, true, "本文だけ"))
+    }
 }

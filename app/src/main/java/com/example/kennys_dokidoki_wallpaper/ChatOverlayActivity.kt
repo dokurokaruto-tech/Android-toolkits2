@@ -145,8 +145,12 @@ class ChatAdapter(
     private val onRegenerate: (ChatNode) -> Unit,
     private val onEditUser: (ChatNode) -> Unit,
     private val onNavigateBranch: (ChatNode, Int) -> Unit,
-    private val onSelectSuggestion: (String) -> Unit
+    private val onSelectSuggestion: (String) -> Unit,
+    private val onRetrySuggestions: (ChatNode) -> Unit
 ) : RecyclerView.Adapter<ChatAdapter.ViewHolder>() {
+
+    /** 再生成を押されてから結果が返るまでのノードID。この間はローディング表示にする。 */
+    var retryingSuggestionNodeId: String? = null
     companion object {
         const val PAYLOAD_STREAM = "stream"
     }
@@ -206,6 +210,7 @@ class ChatAdapter(
             isLastMessage = isLastMessage,
             isUser = node.isUser,
             generatingThis = generatingThis,
+            retryingThis = retryingSuggestionNodeId == node.id,
             rawText = node.text,
             suggestionA = node.suggestionA,
             suggestionB = node.suggestionB,
@@ -220,13 +225,25 @@ class ChatAdapter(
                 holder.layoutSuggestions.visibility = View.VISIBLE
                 holder.layoutSuggestLoading.visibility = View.VISIBLE
                 holder.layoutSuggestChoices.visibility = View.GONE
+                holder.btnSuggestRetry.visibility = View.GONE
                 holder.tvSuggestLoading.text = ChatSuggestionUiPolicy.LOADING_LABEL
                 startSuggestPulse(holder)
+            }
+            ChatSuggestionUiPolicy.Phase.FAILED -> {
+                // 返信は終わったのに候補が取れなかった。履歴から作り直すボタンだけ出す
+                stopSuggestPulse(holder)
+                holder.layoutSuggestions.visibility = View.VISIBLE
+                holder.layoutSuggestLoading.visibility = View.GONE
+                holder.layoutSuggestChoices.visibility = View.GONE
+                holder.btnSuggestRetry.visibility = View.VISIBLE
+                holder.btnSuggestRetry.text = ChatSuggestionUiPolicy.RETRY_LABEL
+                holder.btnSuggestRetry.setOnClickListener { onRetrySuggestions(node) }
             }
             ChatSuggestionUiPolicy.Phase.READY -> {
                 stopSuggestPulse(holder)
                 holder.layoutSuggestions.visibility = View.VISIBLE
                 holder.layoutSuggestLoading.visibility = View.GONE
+                holder.btnSuggestRetry.visibility = View.GONE
                 holder.layoutSuggestChoices.visibility = View.VISIBLE
                 holder.btnSuggestA.text = node.suggestionA?.let { "A: $it" }.orEmpty()
                 holder.btnSuggestB.text = node.suggestionB?.let { "B: $it" }.orEmpty()
@@ -307,6 +324,7 @@ class ChatAdapter(
         val btnSuggestA: TextView = view.findViewById(R.id.btn_suggest_a)
         val btnSuggestB: TextView = view.findViewById(R.id.btn_suggest_b)
         val btnSuggestC: TextView = view.findViewById(R.id.btn_suggest_c)
+        val btnSuggestRetry: TextView = view.findViewById(R.id.btn_suggest_retry)
         var suggestPulse: AnimatorSet? = null
 
         val containerUser: LinearLayout = view.findViewById(R.id.container_user)
@@ -1095,6 +1113,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             },
             onSelectSuggestion = { text ->
                 sendSuggestedMessage(text)
+            },
+            onRetrySuggestions = { node ->
+                retrySuggestions(node)
             }
         )
         recyclerView.adapter = adapter
@@ -2453,10 +2474,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         currentChatId?.let { ChatSessionManager.saveSessionData(this, it, chatTree) }
     }
 
-    override fun onProgress(text: String, isComplete: Boolean, modelName: String?, error: String?) {
+    override fun onProgress(text: String, isComplete: Boolean, modelName: String?, error: String?, nodeId: String?) {
         runOnUiThread {
             updateSendButtonForGeneration()
-            val aiNodeId = ChatGenerationManager.activeAiNodeId ?: return@runOnUiThread
+            val aiNodeId = nodeId ?: ChatGenerationManager.activeAiNodeId ?: return@runOnUiThread
             val aiNode = chatTree.nodes[aiNodeId] ?: return@runOnUiThread
 
             if (error != null) {
@@ -3408,6 +3429,46 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun sendSuggestedMessage(text: String) {
         submitOutgoingUserMessage(text)
+    }
+
+    /** サジェストだけを作り直す。会話履歴を渡し、返信本文は触らない。 */
+    private fun retrySuggestions(node: ChatNode) {
+        if (adapter.retryingSuggestionNodeId != null) {
+            return
+        }
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val history = ChatGenerationManager.recentHistory(chatTree, node.id)
+        val rules = ChatInstructionPolicy.generationSuggestRules(
+            prefs.getString(ChatInstructionPolicy.SUGGEST_KEY, null),
+            prefs.getString("chat_suggest_custom_instructions", "") ?: ""
+        )
+        val systemPrompt = ChatInstructionPolicy.roleText(prefs.getString(ChatInstructionPolicy.ROLE_KEY, null)) +
+            "\n" + getUserPersonaPrompt()
+
+        adapter.retryingSuggestionNodeId = node.id
+        refreshSuggestionRow(node.id)
+
+        coroutineScope.launch {
+            val raw = ChatSuggestionRetry.generate(this@ChatOverlayActivity, systemPrompt, history, rules)
+            val parsed = ChatSuggestionRetry.parse(raw)
+            if (parsed != null) {
+                node.suggestionA = parsed.suggestionA
+                node.suggestionB = parsed.suggestionB
+                node.suggestionC = parsed.suggestionC
+                currentChatId?.let { ChatSessionManager.saveSessionData(this@ChatOverlayActivity, it, chatTree) }
+            } else {
+                Toast.makeText(this@ChatOverlayActivity, ChatSuggestionUiPolicy.FAILED_TOAST, Toast.LENGTH_SHORT).show()
+            }
+            adapter.retryingSuggestionNodeId = null
+            refreshSuggestionRow(node.id)
+        }
+    }
+
+    private fun refreshSuggestionRow(nodeId: String) {
+        val index = displayMessages.indexOfLast { it.node.id == nodeId }
+        if (index >= 0) {
+            adapter.notifyItemChanged(index)
+        }
     }
 
     private fun submitOutgoingUserMessage(text: String) {

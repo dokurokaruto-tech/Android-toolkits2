@@ -32,7 +32,13 @@ object ChatGenerationManager {
 
     // 受信を監視するためのリスナー
     interface Listener {
-        fun onProgress(text: String, isComplete: Boolean, modelName: String? = null, error: String? = null)
+        fun onProgress(
+            text: String,
+            isComplete: Boolean,
+            modelName: String? = null,
+            error: String? = null,
+            nodeId: String? = null
+        )
     }
     private val listeners = mutableListOf<Listener>()
 
@@ -112,12 +118,12 @@ object ChatGenerationManager {
         }
 
         // 思考中アニメーション
-        var dots = 0
+        var tick = 0
         val thinkingJob = scope.launch {
             while (isActive) {
-                delay(400)
-                dots = (dots + 1) % 4
-                aiNode.text = "🧠 推論中 (Local)" + ".".repeat(dots)
+                delay(ChatPendingBubble.DOT_INTERVAL_MS)
+                tick++
+                aiNode.text = ChatPendingBubble.text(tick)
                 notifyProgress(epoch, aiNode.text, false)
             }
         }
@@ -166,9 +172,7 @@ object ChatGenerationManager {
             }
             val prompt = LlmInferenceEngine.buildChatPrompt(systemPrompt, mappedHistory)
 
-            thinkingJob.cancel()
-            aiNode.text = ""
-            notifyProgress(epoch, "", false)
+            // 「返信中」表示は最初のトークンが届くまで残す
             var tokenCount = 0
 
             withContext(Dispatchers.IO) {
@@ -177,6 +181,10 @@ object ChatGenerationManager {
                     onToken = { token ->
                         scope.launch(Dispatchers.Main) {
                             if (epoch != generationEpoch) return@launch
+                            if (tokenCount == 0) {
+                                thinkingJob.cancel()
+                                aiNode.text = ""
+                            }
                             aiNode.text += token
                             tokenCount++
                             notifyProgress(epoch, aiNode.text, false)
@@ -192,6 +200,7 @@ object ChatGenerationManager {
                     onComplete = {
                         scope.launch(Dispatchers.Main) {
                             if (epoch != generationEpoch) return@launch
+                            thinkingJob.cancel()
                             aiNode.modelName = LlmInferenceEngine.loadedModelName
                             saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true)
                             LlmForegroundService.updateNotification(context, "推論完了 ✅ (${tokenCount}トークン)")
@@ -204,7 +213,8 @@ object ChatGenerationManager {
                     onError = { errorMsg ->
                         scope.launch(Dispatchers.Main) {
                             if (epoch != generationEpoch) return@launch
-                            if (aiNode.text.isEmpty()) {
+                            thinkingJob.cancel()
+                            if (ChatInterruptPolicy.isPendingPlaceholder(aiNode.text)) {
                                 aiNode.text = "【エラー】推論プロセスで不具合が発生しました: $errorMsg"
                             }
                             saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = errorMsg)
@@ -319,13 +329,7 @@ object ChatGenerationManager {
                     OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(requestBody.toString()) }
 
                     if (conn.responseCode == 200) {
-                        withContext(Dispatchers.Main) {
-                            thinkingJob.cancel()
-                            aiNode.text = ""
-                            notifyProgress(epoch, "", false)
-                        }
-
-                        // 1文字でも受け取れば無料枠を消費したとみなす。停止しても減らす
+                        // 「返信中」表示は最初の1文字が届くまで残す
                         var usageCounted = false
                         val reader = conn.inputStream.bufferedReader()
                         reader.useLines { lines ->
@@ -343,10 +347,15 @@ object ChatGenerationManager {
                                         
                                         if (delta.has("content")) {
                                             val content = delta.getString("content")
+                                            if (content.isEmpty()) return@forEach
                                             reply += content
-                                            if (!usageCounted && provider == "OPENROUTER" && content.isNotEmpty()) {
+                                            if (!usageCounted) {
+                                                // 1文字でも受け取れば無料枠を消費したとみなす。停止しても減らす
                                                 usageCounted = true
-                                                OpenRouterManager.countFreeUsage(context, apiKey, modelName)
+                                                thinkingJob.cancel()
+                                                if (provider == "OPENROUTER") {
+                                                    OpenRouterManager.countFreeUsage(context, apiKey, modelName)
+                                                }
                                             }
                                             
                                             withContext(Dispatchers.Main) {
@@ -387,6 +396,7 @@ object ChatGenerationManager {
                 reply
             }
 
+            thinkingJob.cancel()
             if (fullReply != null) {
                 aiNode.modelName = modelName
                 if (fullReply.isEmpty()) {
@@ -423,13 +433,14 @@ object ChatGenerationManager {
         ChatSessionManager.saveSessionData(context, sessionId, chatTree)
         scope.launch(Dispatchers.Main) {
             if (epoch != generationEpoch) return@launch
-            listeners.forEach {
-                it.onProgress(aiNode.text, isComplete = true, modelName = aiNode.modelName, error = null)
-            }
+            val finishedNodeId = activeAiNodeId
             isGenerating = false
             activeSessionId = null
             activeAiNodeId = null
             LlmForegroundService.stop(context)
+            listeners.forEach {
+                it.onProgress(aiNode.text, isComplete = true, modelName = aiNode.modelName, error = null, nodeId = finishedNodeId)
+            }
         }
 
         // ローカル推論はネイティブ側を止められないため、遅れてきた完了通知で
@@ -439,6 +450,10 @@ object ChatGenerationManager {
     private fun HttpURLConnection.disconnectQuietly() {
         runCatching { disconnect() }
     }
+
+    /** サジェスト再生成などで、対象ノードまでの直近履歴が必要なときに使う。 */
+    fun recentHistory(chatTree: ChatTree, startNodeId: String?): List<ChatNode> =
+        getRecentHistory(chatTree, startNodeId)
 
     private fun getRecentHistory(chatTree: ChatTree, startNodeId: String?): List<ChatNode> {
         val history = mutableListOf<ChatNode>()
@@ -472,15 +487,17 @@ object ChatGenerationManager {
         // メインスレッドでリスナー通知＆クリーンアップ
         scope.launch(Dispatchers.Main) {
             if (epoch != generationEpoch || epoch in interruptedEpochs) return@launch
-            listeners.forEach {
-                it.onProgress(aiNode.text, isComplete, modelName = aiNode.modelName, error = error)
-            }
 
+            // リスナーが停止アイコンや発光を戻せるよう、通知前に生成中フラグを落とす
+            val finishedNodeId = activeAiNodeId
             if (isComplete) {
                 isGenerating = false
                 activeSessionId = null
                 activeAiNodeId = null
                 LlmForegroundService.stop(context)
+            }
+            listeners.forEach {
+                it.onProgress(aiNode.text, isComplete, modelName = aiNode.modelName, error = error, nodeId = finishedNodeId)
             }
         }
     }
@@ -489,7 +506,7 @@ object ChatGenerationManager {
         scope.launch(Dispatchers.Main) {
             if (epoch != generationEpoch) return@launch
             listeners.forEach {
-                it.onProgress(text, isComplete)
+                it.onProgress(text, isComplete, nodeId = activeAiNodeId)
             }
         }
     }

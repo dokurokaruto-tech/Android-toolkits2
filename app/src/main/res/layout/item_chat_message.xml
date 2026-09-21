@@ -188,6 +188,20 @@
                     android:background="@drawable/bg_glass_panel" />
             </LinearLayout>
 
+            <!-- サジェスト失敗時の作り直しボタン -->
+            <TextView
+                android:id="@+id/btn_suggest_retry"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_glass_panel"
+                android:paddingVertical="8dp"
+                android:paddingHorizontal="12dp"
+                android:textColor="#D0BCFF"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:visibility="gone" />
+
             <!-- 3つの選択肢ボタン -->
             <LinearLayout
                 android:id="@+id/layout_suggest_choices"
