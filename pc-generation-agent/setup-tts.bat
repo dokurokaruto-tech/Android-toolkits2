@@ -63,6 +63,17 @@ if errorlevel 1 goto failed
 if errorlevel 1 goto failed
 
 :prepare
+"%PYTHON%" tools\tts_setup.py --sox-check
+if not errorlevel 1 goto save_config
+echo [INFO] SoX is an external command; installing the Python sox package alone is not enough.
+call :confirm "Download and install portable SoX for this project?"
+if errorlevel 1 goto canceled
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\install-sox.ps1 -Approved
+if errorlevel 1 goto failed
+"%PYTHON%" tools\tts_setup.py --sox-check
+if errorlevel 1 goto failed
+
+:save_config
 if "%~1"=="" goto prepare_default
 "%PYTHON%" tools\tts_setup.py --prepare --model-dir "%~1"
 goto prepared

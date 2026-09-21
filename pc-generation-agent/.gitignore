@@ -12,3 +12,4 @@ models/
 *.pt
 *.pth
 *.local.tmp
+.tools/

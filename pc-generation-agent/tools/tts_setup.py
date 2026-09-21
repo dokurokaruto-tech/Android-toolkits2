@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from generation_agent.config import AgentConfig, load_config_values
+from generation_agent.sox_runtime import configure_sox, find_sox
 
 DEFAULT_MODEL_DIR = "models/Qwen3-TTS-12Hz-1.7B-Base"
 DEFAULT_TTS_PYTHON = ".venv-tts/Scripts/python.exe"
@@ -110,6 +111,7 @@ def model_issues(model: Path | None) -> list[str]:
 
 
 def runtime_check() -> int:
+    print(f"[OK] SoX: {configure_sox()}")
     import torch
     import torchaudio
     import soundfile
@@ -164,9 +166,17 @@ def main() -> int:
     modes.add_argument("--check", action="store_true")
     modes.add_argument("--runtime-check", action="store_true")
     modes.add_argument("--packages-check", action="store_true")
+    modes.add_argument("--sox-check", action="store_true")
     parser.add_argument("--model-dir", help="Existing model directory; only used with --prepare")
     args = parser.parse_args()
     try:
+        if args.sox_check:
+            executable = find_sox()
+            if executable is None:
+                print("[INFO] SoX is missing or could not run. Run setup-tts.bat to install it.")
+                return 1
+            print(f"[OK] SoX: {executable}")
+            return 0
         if args.packages_check:
             issues = package_issues()
             for issue in issues:

@@ -71,6 +71,7 @@ setup-tts.bat "C:\AI\models\Qwen3-TTS-12Hz-1.7B-Base"
 1. **Python 3.12がない**：公式 `python.org` から64bit版3.12.10のインストーラーを取得し、Python Software Foundationの署名を検証して、現在のWindowsユーザー用に導入。
 2. **専用環境がない**：`.venv-tts` の作成を確認。
 3. **ライブラリが不足／指定バージョンと不一致**：CUDA版PyTorch・torchaudio・Qwen TTS・Pillow等の導入を確認。数GBのダウンロードが発生する場合があります。
+4. **SoXコマンドがない**：Yで公式SourceForge配布のSoXを取得し、SHA256確認後に `.tools/sox` へ展開。Windows全体のPATHは変更しません。
 
 既存の64bit Python 3.12は再インストールせず使用します。ライブラリと依存関係が揃っていればpipによるダウンロードも省略します。
 CPU版PyTorchや異なるバージョンは、Yで指定のCUDA版に揃えます。設定済みの独自TTS Pythonではなく、プロジェクトの `.venv-tts` だけにライブラリを導入します。
@@ -91,6 +92,23 @@ Windowsの制限で自動導入できない場合は、表示されたエラー�
 
 `check-tts.bat` は依存パッケージ、CUDAでのFP16演算、モデル構成ファイル／重みの存在を確認します。
 モデル本体をロードして音声生成するテストではありません。最後に短い返信を実際に読み上げて確認してください。
+
+### 「SoX could not be found」と表示された場合
+
+更新後に `setup-tts.bat` を再実行し、次の確認で **Y** を押してください。
+
+```text
+Download and install portable SoX for this project? [Y/N]:
+```
+
+`pip install sox` で入るPythonパッケージとは別に、`sox.exe` が必要です。
+既にPATH上のSoXを実行できる場合は再インストールしません。
+ダウンロードは公式SourceForge配布の14.4.2ポータブル版で、Microsoft WinGetのマニフェストに掲載されたSHA256と照合します。
+Nの場合や検証・展開の失敗時は、その段階で停止します。
+
+チェックと音声生成の両方で、Qwenを読み込む前にSoXの場所をプロセス内PATHへ追加します。
+手動のPATH設定・Windows再起動は不要です。実行中のエージェントは再起動してください。
+`.tools/` の実行ファイル・DLLはGitへ含めません。モデルパスはこの対応では変更しません。
 
 ### PC・端末で必要な操作
 

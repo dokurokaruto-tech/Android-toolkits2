@@ -6,6 +6,11 @@ import re
 import sys
 from pathlib import Path
 
+# This file is also launched directly with the separate TTS interpreter.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from generation_agent.sox_runtime import configure_sox
+
 CHUNK_CHARACTERS = 200
 MAX_NEW_TOKENS = 2048
 MAX_REFERENCE_SECONDS = 30
@@ -31,6 +36,7 @@ def split_text(text: str) -> list[str]:
 
 
 def generate(request: Path) -> None:
+    configure_sox()
     import numpy as np
     import soundfile as sf
     import torch
