@@ -13,5 +13,9 @@
   "legacy_api_url": "",
   "checkpoint_dir": "C:\\AI\\StabilityMatrix\\Data\\Packages\\stable-diffusion-webui-forge\\models\\Stable-diffusion\\sd",
   "lora_dir": "C:\\AI\\StabilityMatrix\\Data\\Packages\\stable-diffusion-webui-forge\\models\\Lora",
-  "civitai_api_key": ""
+  "civitai_api_key": "",
+  "tts_model_dir": "",
+  "tts_python": "",
+  "tts_timeout_seconds": 1200,
+  "tts_unload_sd": true
 }

@@ -146,13 +146,43 @@ class ChatAdapter(
     private val onEditUser: (ChatNode) -> Unit,
     private val onNavigateBranch: (ChatNode, Int) -> Unit,
     private val onSelectSuggestion: (String) -> Unit,
-    private val onRetrySuggestions: (ChatNode) -> Unit
+    private val onRetrySuggestions: (ChatNode) -> Unit,
+    private val onSpeak: (ChatNode) -> Unit
 ) : RecyclerView.Adapter<ChatAdapter.ViewHolder>() {
 
     /** 再生成を押されてから結果が返るまでのノードID。この間はローディング表示にする。 */
     var retryingSuggestionNodeId: String? = null
     companion object {
         const val PAYLOAD_STREAM = "stream"
+        private const val PAYLOAD_TTS = "tts"
+    }
+
+    private var ttsNodeId: String? = null
+    private var ttsState = ChatTtsState.IDLE
+
+    fun updateTts(nodeId: String?, state: ChatTtsState) {
+        ttsNodeId = nodeId
+        ttsState = state
+        notifyItemRangeChanged(0, messages.size, PAYLOAD_TTS)
+    }
+
+    private fun bindVoice(holder: ViewHolder, node: ChatNode) {
+        val legacy = node.ttsVoices == null && !ChatInterruptPolicy.isPendingPlaceholder(node.text)
+        holder.btnAiVoice.visibility = if (!node.isUser && (node.ttsReady || legacy)) { View.VISIBLE } else { View.GONE }
+        val state = if (ttsNodeId == node.id) { ttsState } else { ChatTtsState.IDLE }
+        holder.btnAiVoice.isEnabled = ttsNodeId == null || ttsNodeId == node.id
+        holder.btnAiVoice.alpha = if (holder.btnAiVoice.isEnabled) { 1f } else { 0.4f }
+        holder.btnAiVoice.setImageResource(when (state) {
+            ChatTtsState.IDLE -> R.drawable.ic_chat_voice
+            ChatTtsState.GENERATING -> android.R.drawable.ic_popup_sync
+            ChatTtsState.PLAYING -> android.R.drawable.ic_media_pause
+        })
+        holder.btnAiVoice.contentDescription = when (state) {
+            ChatTtsState.IDLE -> "音声を生成して再生"
+            ChatTtsState.GENERATING -> "音声生成中。押すと通信を中止（PC側は処理を継続する場合があります）"
+            ChatTtsState.PLAYING -> "音声の再生を停止"
+        }
+        holder.btnAiVoice.setOnClickListener { onSpeak(node) }
     }
 
     private var bubbleOpacity: Int = 60
@@ -163,6 +193,10 @@ class ChatAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isNotEmpty() && payloads.all { it == PAYLOAD_TTS }) {
+            bindVoice(holder, messages[position].node)
+            return
+        }
         if (payloads.any { it == PAYLOAD_STREAM }) {
             bindStreamingPayload(holder, messages[position].node)
             return
@@ -171,6 +205,7 @@ class ChatAdapter(
     }
 
     fun bindStreamingPayload(holder: ViewHolder, node: ChatNode) {
+        bindVoice(holder, node)
         if (node.isUser) {
             holder.textUser.text = node.text
             holder.itemView.requestLayout()
@@ -314,6 +349,7 @@ class ChatAdapter(
         val tvAiBranch: TextView = view.findViewById(R.id.tv_ai_branch)
         val btnAiRegen: TextView = view.findViewById(R.id.btn_ai_regenerate)
         val btnAiCopy: TextView = view.findViewById(R.id.btn_ai_copy)
+        val btnAiVoice: android.widget.ImageButton = view.findViewById(R.id.btn_ai_voice)
         val layoutSuggestions: LinearLayout = view.findViewById(R.id.layout_suggestions)
         val layoutSuggestLoading: LinearLayout = view.findViewById(R.id.layout_suggest_loading)
         val layoutSuggestChoices: LinearLayout = view.findViewById(R.id.layout_suggest_choices)
@@ -484,6 +520,7 @@ class ChatAdapter(
                 width = maxWidthPx
             }
 
+            bindVoice(holder, node)
             holder.btnAiRegen.setOnClickListener { onRegenerate(node) }
             holder.btnAiCopy.setOnClickListener { copyToClipboard(holder.itemView.context, node.text) }
             
@@ -557,6 +594,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private var chatTree = ChatTree(mutableMapOf(), null)
     private val displayMessages = mutableListOf<ChatDisplayItem>()
     private lateinit var adapter: ChatAdapter
+    private var ttsController: ChatTtsController? = null
     
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
     private var currentChatId: String? = null
@@ -1116,7 +1154,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             },
             onRetrySuggestions = { node ->
                 retrySuggestions(node)
-            }
+            },
+            onSpeak = { node -> speakReply(node) }
         )
         recyclerView.adapter = adapter
 
@@ -2344,7 +2383,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun regenerateResponse(aiNode: ChatNode, recyclerView: RecyclerView) {
         val parentId = aiNode.parentId 
-        val newAiNode = ChatNode(text = ChatPendingBubble.text(0), isUser = false, parentId = parentId)
+        val newAiNode = ChatNode(text = ChatPendingBubble.text(0), isUser = false, parentId = parentId,
+            ttsVoices = captureVoices())
         addNodeToTree(newAiNode)
         chatStick.stickForNewContent()
         scrollChatToBottom(force = true)
@@ -2459,7 +2499,34 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         ChatGenerationManager.unregisterListener(this)
     }
 
+    private fun captureVoices(): List<ChatVoice> {
+        TagManager.loadTags(this)
+        return TagManager.voiceSnapshot(currentImageEntry?.tags ?: emptySet())
+    }
+
+    private fun speakReply(node: ChatNode) {
+        if (ttsController == null) {
+            ttsController = ChatTtsController(this,
+                onState = { id, state ->
+                    if (::adapter.isInitialized) { adapter.updateTts(id, state) }
+                },
+                onError = { message ->
+                    if (!isFinishing && !isDestroyed) {
+                        AlertDialog.Builder(this).setTitle("TTSエラー").setMessage(message)
+                            .setPositiveButton("OK", null).show()
+                    }
+                })
+        }
+        ttsController?.speak(node)
+    }
+
+    override fun onStop() {
+        ttsController?.stop()
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        ttsController?.close()
         super.onDestroy()
         ChatGenerationManager.unregisterListener(this)
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -2479,6 +2546,13 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             updateSendButtonForGeneration()
             val aiNodeId = nodeId ?: ChatGenerationManager.activeAiNodeId ?: return@runOnUiThread
             val aiNode = chatTree.nodes[aiNodeId] ?: return@runOnUiThread
+
+            // A recreated activity may own a different tree from the background generator.
+            if (isComplete && !aiNode.ttsReady) {
+                val savedNode = currentChatId?.let { ChatSessionManager.loadSessionData(this, it).nodes[aiNodeId] }
+                aiNode.ttsReady = savedNode?.ttsReady ?: false
+                aiNode.ttsVoices = savedNode?.ttsVoices ?: aiNode.ttsVoices
+            }
 
             if (error != null) {
                 if (ChatInterruptPolicy.isPendingPlaceholder(aiNode.text)) {
@@ -2871,7 +2945,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     id = java.util.UUID.randomUUID().toString(),
                     text = greeting,
                     isUser = false,
-                    parentId = null
+                    parentId = null,
+                    ttsVoices = captureVoices(),
+                    ttsReady = true
                 )
                 chatTree.nodes[firstNode.id] = firstNode
                 chatTree.currentNodeId = firstNode.id
@@ -3488,7 +3564,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun sendToLlm(userNode: ChatNode, recyclerView: RecyclerView) {
-        val aiNode = ChatNode(text = ChatPendingBubble.text(0), isUser = false, parentId = userNode.id)
+        val aiNode = ChatNode(text = ChatPendingBubble.text(0), isUser = false, parentId = userNode.id,
+            ttsVoices = captureVoices())
         addNodeToTree(aiNode)
         chatStick.stickForNewContent()
         scrollChatToBottom(force = true)

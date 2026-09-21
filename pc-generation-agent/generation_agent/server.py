@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from .config import AgentConfig
 from .service import GenerationService
+from .tts import TtsBusyError, TtsUnavailableError
 
 _JOB = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})$")
 _CANCEL = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/cancel$")
@@ -66,6 +67,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 "lora_dir": str(self.server.config.lora_dir),
                 "mobile_thumbnails": True,
                 "progressive_tiles": True,
+                "tts_configured": self.server.config.tts_model_dir is not None,
             })
             return
         if not self._authorized(query):
@@ -188,6 +190,19 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             return
         if path.startswith("/sdapi/v1/"):
             self._proxy_sd("POST", path + (("?" + parsed.query) if parsed.query else ""))
+            return
+        if path == "/api/v1/tts":
+            try:
+                audio = self.server.service.synthesize(self._read_json())
+                self._bytes(HTTPStatus.OK, audio, "audio/wav", cache="no-store")
+            except ValueError as error:
+                self._error(HTTPStatus.BAD_REQUEST, str(error))
+            except TtsBusyError as error:
+                self._error(HTTPStatus.CONFLICT, str(error))
+            except TtsUnavailableError as error:
+                self._error(HTTPStatus.SERVICE_UNAVAILABLE, str(error))
+            except Exception as error:
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
             return
         if path == "/api/v1/jobs":
             try:

@@ -1,0 +1,3 @@
+# Install CUDA PyTorch separately; see README. No FlashAttention required.
+qwen-tts==0.1.1
+soundfile>=0.13,<0.14

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+DEFAULT_TTS_TIMEOUT_SECONDS = 1200
+
 DEFAULT_CHECKPOINT_DIR = (
     r"C:\AI\StabilityMatrix\Data\Packages\stable-diffusion-webui-forge"
     r"\models\Stable-diffusion\sd"
@@ -33,6 +35,10 @@ class AgentConfig:
     checkpoint_dir: Path = field(default_factory=lambda: Path(DEFAULT_CHECKPOINT_DIR))
     lora_dir: Path = field(default_factory=lambda: Path(DEFAULT_LORA_DIR))
     civitai_api_key: str = ""
+    tts_model_dir: Path | None = None
+    tts_python: str = ""
+    tts_timeout_seconds: int = DEFAULT_TTS_TIMEOUT_SECONDS
+    tts_unload_sd: bool = True
 
     @classmethod
     def load(cls, path: Path) -> "AgentConfig":
@@ -68,4 +74,8 @@ class AgentConfig:
             checkpoint_dir=resolve(str(raw.get("checkpoint_dir", DEFAULT_CHECKPOINT_DIR))),
             lora_dir=resolve(str(raw.get("lora_dir", DEFAULT_LORA_DIR))),
             civitai_api_key=str(raw.get("civitai_api_key", "")).strip(),
+            tts_model_dir=resolve(raw["tts_model_dir"]) if raw.get("tts_model_dir") else None,
+            tts_python=str(resolve(raw["tts_python"])) if raw.get("tts_python") else "",
+            tts_timeout_seconds=max(30, min(int(raw.get("tts_timeout_seconds", DEFAULT_TTS_TIMEOUT_SECONDS)), DEFAULT_TTS_TIMEOUT_SECONDS)),
+            tts_unload_sd=raw.get("tts_unload_sd", True) is True,
         )

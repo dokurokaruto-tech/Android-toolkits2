@@ -99,6 +99,15 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1" />
 
+            <ImageButton
+                android:id="@+id/btn_ai_voice"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_chat_voice"
+                android:contentDescription="音声を生成して再生"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/btn_ai_copy"
                 android:layout_width="wrap_content"

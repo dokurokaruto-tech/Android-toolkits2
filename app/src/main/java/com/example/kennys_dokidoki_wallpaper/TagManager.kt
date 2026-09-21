@@ -13,6 +13,9 @@ object TagManager {
     private const val KEY_PROMPT_VARIANTS = "tag_prompt_variants" // 新形式：タグ→複数の文章
     private const val KEY_IMPLIED_TAGS = "tag_implied_mappings"
     
+    private const val KEY_VOICES = "tag_voices"
+    private val tagVoices = mutableMapOf<String, TagVoice>()
+
     val categories = mutableListOf<TagCategory>()
 
     /**
@@ -119,6 +122,10 @@ object TagManager {
                 // 移行済みの旧形式キーは消しておく（消したタグが復活するのを防ぐ）
                 prefs.edit().remove(KEY_PROMPTS).apply()
             }
+
+            tagVoices.clear()
+            val voices = JSONObject(prefs.getString(KEY_VOICES, "{}") ?: "{}")
+            voices.keys().forEach { tag -> tagVoices[tag] = TagVoice.fromJson(voices.getJSONObject(tag)) }
 
             val remoteIdsJson = prefs.getString("tag_remote_ids", null)
             tagRemoteCardIds.clear()
@@ -241,6 +248,7 @@ object TagManager {
         
         prefs.edit()
             .putString(KEY_CATEGORIES, array.toString())
+            .putString(KEY_VOICES, exportVoices().toString())
             .putString(KEY_PROMPT_VARIANTS, variantsObj.toString())
             .putString("tag_remote_ids", remoteIdsObj.toString())
             .putString(KEY_IMPLIED_TAGS, impliedObj.toString())
@@ -334,6 +342,8 @@ object TagManager {
             }
         }
 
+        tagVoices.remove(oldTag)?.let { tagVoices[newTag] = it }
+
         // プロンプト（バリエーションごと）を移行
         val variants = tagPromptVariants.remove(oldTag)
         if (variants != null) {
@@ -424,6 +434,35 @@ object TagManager {
     @Synchronized
     fun getTagPrompt(tag: String, variantName: String?): String {
         return TagVariantPolicy.resolveText(getTagPromptVariants(tag), variantName)
+    }
+
+    @Synchronized
+    fun getTagVoice(tag: String): TagVoice? = tagVoices[tag]
+
+    @Synchronized
+    fun setTagVoice(context: Context, tag: String, voice: TagVoice?) {
+        if (voice == null) {
+            tagVoices.remove(tag)
+        } else {
+            tagVoices[tag] = voice
+        }
+        saveTags(context)
+    }
+
+    @Synchronized
+    fun voiceSnapshot(tags: Set<String>): List<ChatVoice> = getEffectiveTags(tags).mapNotNull { tag ->
+        tagVoices[tag]?.let { ChatVoice(tag, it.copy()) }
+    }
+
+    @Synchronized
+    fun exportVoices(): JSONObject = JSONObject().apply {
+        tagVoices.forEach { (tag, voice) -> put(tag, voice.toJson()) }
+    }
+
+    @Synchronized
+    fun restoreVoices(value: JSONObject) {
+        tagVoices.clear()
+        value.keys().forEach { tag -> tagVoices[tag] = TagVoice.fromJson(value.getJSONObject(tag)) }
     }
 
     fun estimateTokenCount(text: String): Int {
@@ -547,6 +586,7 @@ object TagManager {
 
     @Synchronized
     fun deleteTag(context: Context, tag: String) {
+        tagVoices.remove(tag)
         // カテゴリから削除
         categories.forEach { it.tags.remove(tag) }
         

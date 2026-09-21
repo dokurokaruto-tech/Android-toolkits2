@@ -479,6 +479,7 @@ object ChatGenerationManager {
     ) {
         if (isComplete && error == null) {
             ChatSuggestionParser.applyTo(aiNode)
+            aiNode.ttsReady = true
         }
 
         // ディスクに即時保存

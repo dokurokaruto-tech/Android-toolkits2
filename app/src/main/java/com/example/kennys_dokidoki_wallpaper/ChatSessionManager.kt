@@ -17,7 +17,9 @@ data class ChatNode(
     var modelName: String? = null,
     var suggestionA: String? = null,
     var suggestionB: String? = null,
-    var suggestionC: String? = null
+    var suggestionC: String? = null,
+    var ttsVoices: List<ChatVoice>? = null,
+    var ttsReady: Boolean = false
 )
 
 data class ChatTree(
@@ -212,6 +214,8 @@ object ChatSessionManager {
             nObj.put("suggestionA", node.suggestionA)
             nObj.put("suggestionB", node.suggestionB)
             nObj.put("suggestionC", node.suggestionC)
+            node.ttsVoices?.let { nObj.put("ttsVoices", ChatVoicePolicy.encode(it)) }
+            nObj.put("ttsReady", node.ttsReady)
             val childrenArray = JSONArray()
             node.childrenIds.forEach { childrenArray.put(it) }
             nObj.put("childrenIds", childrenArray)
@@ -243,7 +247,11 @@ object ChatSessionManager {
                         modelName = if (nObj.isNull("modelName")) null else nObj.optString("modelName", null),
                         suggestionA = if (nObj.isNull("suggestionA")) null else nObj.optString("suggestionA", null),
                         suggestionB = if (nObj.isNull("suggestionB")) null else nObj.optString("suggestionB", null),
-                        suggestionC = if (nObj.isNull("suggestionC")) null else nObj.optString("suggestionC", null)
+                        suggestionC = if (nObj.isNull("suggestionC")) null else nObj.optString("suggestionC", null),
+                        ttsVoices = nObj.optJSONArray("ttsVoices")?.let {
+                            runCatching { ChatVoicePolicy.decode(it) }.getOrNull()
+                        },
+                        ttsReady = nObj.optBoolean("ttsReady", false)
                     )
                 }
                 val currentNodeId = if (obj.isNull("currentNodeId")) null else obj.optString("currentNodeId", null)

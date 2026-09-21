@@ -53,6 +53,7 @@ object BackupManager {
                 promptsObj.put(tag, array)
             }
             tagData.put("prompts", promptsObj)
+            tagData.put("voices", TagManager.exportVoices())
             tagData.put("remote_ids", JSONObject(TagManager.tagRemoteCardIds.toMap()))
             val impliedObj = JSONObject()
             TagManager.impliedTagsMap.forEach { (tag, set) ->
@@ -204,6 +205,7 @@ object BackupManager {
                     for (i in 0 until arr.length()) set.add(arr.getString(i))
                     TagManager.impliedTagsMap[key] = set
                 }
+                tagData.optJSONObject("voices")?.let { TagManager.restoreVoices(it) }
                 TagManager.saveTags(context)
             }
 

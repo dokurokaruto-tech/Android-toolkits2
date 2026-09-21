@@ -15,6 +15,7 @@ from .config import AgentConfig
 from .database import JobDatabase
 from .model_import import ModelImportService
 from .sd_client import StableDiffusionClient
+from .tts import TtsService
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -30,6 +31,8 @@ class GenerationService:
         self.database = JobDatabase(config.database_path)
         self.sd = StableDiffusionClient(config.sd_base_url, config.request_timeout_seconds)
         self.model_imports = ModelImportService(config, self.sd)
+        self._gpu_lock = threading.Lock()
+        self._tts = TtsService(config, self._gpu_lock, self.sd)
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._worker = threading.Thread(target=self._worker_loop, name="generation-worker", daemon=True)
@@ -37,6 +40,9 @@ class GenerationService:
         self._active_lock = threading.Lock()
         self._mobile_thumbnail_lock = threading.Lock()
         self._progressive_tile_lock = threading.Lock()
+
+    def synthesize(self, body: dict[str, Any]) -> bytes:
+        return self._tts.synthesize(body)
 
     def start(self) -> None:
         self._worker.start()
@@ -477,7 +483,8 @@ class GenerationService:
                     self.database.finish_task(job_id, index, existing)
                     continue
                 sd_payload = {key: value for key, value in task["payload"].items() if not key.startswith("_agent_")}
-                image, suffix, seed = self.sd.generate(sd_payload)
+                with self._gpu_lock:
+                    image, suffix, seed = self.sd.generate(sd_payload)
                 if seed is not None and sd_payload.get("seed") in (None, -1, "-1"):
                     sd_payload["seed"] = seed
                 elif seed is not None and "seed" not in sd_payload:

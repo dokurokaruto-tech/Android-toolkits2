@@ -95,6 +95,12 @@ class StableDiffusionClient:
         result = self._request("/sdapi/v1/progress" + suffix, timeout=5)
         return result if isinstance(result, dict) else {}
 
+    def unload_checkpoint(self) -> None:
+        self._request("/sdapi/v1/unload-checkpoint", "POST", {}, timeout=150)
+
+    def reload_checkpoint(self) -> None:
+        self._request("/sdapi/v1/reload-checkpoint", "POST", {}, timeout=150)
+
     def interrupt(self) -> None:
         self._request("/sdapi/v1/interrupt", "POST", {}, timeout=5)
 

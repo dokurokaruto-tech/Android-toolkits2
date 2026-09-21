@@ -56,6 +56,48 @@ class TagPromptEditorActivity : AppCompatActivity() {
     private lateinit var llVariantContainer: LinearLayout
     private lateinit var btnAddVariant: Button
     private lateinit var originalTag: String
+    private var currentVoice: TagVoice? = null
+    private var importingVoice = false
+    private var voiceImportJob: Job? = null
+    private lateinit var voiceTranscript: EditText
+    private val pickVoiceLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            importingVoice = true
+            updateVoiceStatus()
+            voiceImportJob = coroutineScope.launch {
+                try {
+                    currentVoice = withContext(Dispatchers.IO) { TagVoiceStore.importSample(this@TagPromptEditorActivity, uri) }
+                    voiceTranscript.setText("")
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    if (!isDestroyed) {
+                        Toast.makeText(this@TagPromptEditorActivity, error.message ?: "音声を読み込めません。", Toast.LENGTH_LONG).show()
+                    }
+                } finally {
+                    importingVoice = false
+                    if (!isDestroyed) { updateVoiceStatus() }
+                }
+            }
+        }
+    }
+
+    private fun updateVoiceStatus() {
+        findViewById<TextView>(R.id.tv_tag_voice).text = if (importingVoice) {
+            "音声を取り込み中…"
+        } else {
+            currentVoice?.name ?: "音声なし"
+        }
+        findViewById<View>(R.id.btn_save).isEnabled = !importingVoice
+        findViewById<View>(R.id.btn_pick_tag_voice).isEnabled = !importingVoice
+        findViewById<View>(R.id.btn_clear_tag_voice).isEnabled = !importingVoice && currentVoice != null
+        voiceTranscript.isEnabled = !importingVoice && currentVoice != null
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("editingVoice", currentVoice?.toJson()?.toString() ?: "")
+        super.onSaveInstanceState(outState)
+    }
 
     /** このタグが持つ文章バリエーション（画面内の作業用コピー。保存時にまとめて書き込む） */
     private var currentVariants = mutableListOf<TagPromptVariant>()
@@ -186,6 +228,21 @@ class TagPromptEditorActivity : AppCompatActivity() {
         setContentView(R.layout.activity_tag_prompt_editor)
 
         originalTag = intent.getStringExtra("TAG_NAME") ?: ""
+        TagManager.loadTags(this)
+        currentVoice = if (savedInstanceState?.containsKey("editingVoice") == true) {
+            savedInstanceState.getString("editingVoice")?.takeIf { it.isNotEmpty() }?.let { TagVoice.fromJson(JSONObject(it)) }
+        } else {
+            TagManager.getTagVoice(originalTag)
+        }
+        voiceTranscript = findViewById(R.id.et_voice_transcript)
+        voiceTranscript.setText(currentVoice?.refText.orEmpty())
+        findViewById<View>(R.id.btn_pick_tag_voice).setOnClickListener { pickVoiceLauncher.launch(arrayOf("audio/*")) }
+        findViewById<View>(R.id.btn_clear_tag_voice).setOnClickListener {
+            currentVoice = null
+            voiceTranscript.setText("")
+            updateVoiceStatus()
+        }
+        updateVoiceStatus()
         
         tvTitle = findViewById(R.id.tv_editor_title)
         etTagName = findViewById(R.id.et_tag_name)
@@ -274,6 +331,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
                 TagManager.renameTag(this, originalTag, newTagName)
             }
             
+            TagManager.setTagVoice(this, newTagName, currentVoice?.copy(refText = voiceTranscript.text.toString().trim()))
             TagManager.setTagPromptVariants(this, newTagName, currentVariants)
             TagManager.setImpliedTags(this, newTagName, currentImpliedTags)
             DataManager.saveData(this)
@@ -631,6 +689,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        voiceImportJob?.cancel()
         stopGenerateMotion()
         generateJob?.cancel()
         super.onDestroy()

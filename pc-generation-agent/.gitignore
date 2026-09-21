@@ -5,3 +5,8 @@ generated/
 thumbnails/
 __pycache__/
 *.py[cod]
+models/
+.venv-tts/
+*.safetensors
+*.pt
+*.pth
