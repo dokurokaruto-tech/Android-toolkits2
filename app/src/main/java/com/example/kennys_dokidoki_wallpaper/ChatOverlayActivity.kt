@@ -175,6 +175,7 @@ class ChatAdapter(
         holder.textAi.text = ChatSuggestionParser.visibleText(node.text)
         val streaming = node.text.startsWith("思考中") ||
             node.text.startsWith("推論中") ||
+            ChatPendingBubble.isPending(node.text) ||
             node.text.startsWith("🧠") ||
             node.text.startsWith("📥")
         holder.btnAiRegen.visibility = if (streaming) View.GONE else View.VISIBLE
@@ -443,7 +444,7 @@ class ChatAdapter(
             val displayText = ChatSuggestionParser.visibleText(cleanText)
             
             // モデル名がある場合は小さく表示するわよ！
-            if (node.modelName != null && !displayText.startsWith("推論中") && !displayText.startsWith("🧠 推論中") && !displayText.startsWith("📥 モデルをロード")) {
+            if (node.modelName != null && !displayText.startsWith("推論中") && !ChatPendingBubble.isPending(displayText) && !displayText.startsWith("🧠 推論中") && !displayText.startsWith("📥 モデルをロード")) {
                 val ssb = SpannableStringBuilder(displayText)
                 ssb.append("\n\n")
                 val start = ssb.length
@@ -470,6 +471,7 @@ class ChatAdapter(
             
             if (node.text.startsWith("思考中") ||
                 node.text.startsWith("推論中") ||
+                ChatPendingBubble.isPending(node.text) ||
                 node.text.startsWith("🧠") ||
                 node.text.startsWith("📥")
             ) {
@@ -1420,6 +1422,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private var sendButtonInStopMode = false
+    private val inputGlow by lazy { ChatInputGlow(findViewById(R.id.input_container)) }
 
     /** 生成中は送信ボタンを停止ボタンに切り替える。場面ごとに必ずここから直す。 */
     private fun updateSendButtonForGeneration() {
@@ -1431,6 +1434,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         ) == ChatInterruptPolicy.SendAction.STOP
         if (stop == sendButtonInStopMode) return
         sendButtonInStopMode = stop
+        inputGlow.setActive(stop)
         if (stop) {
             btnSend.setImageResource(R.drawable.ic_md3_gen_stop)
             btnSend.contentDescription = getString(R.string.chat_stop_generation)
@@ -2319,7 +2323,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun regenerateResponse(aiNode: ChatNode, recyclerView: RecyclerView) {
         val parentId = aiNode.parentId 
-        val newAiNode = ChatNode(text = "思考中...", isUser = false, parentId = parentId)
+        val newAiNode = ChatNode(text = ChatPendingBubble.text(0), isUser = false, parentId = parentId)
         addNodeToTree(newAiNode)
         chatStick.stickForNewContent()
         scrollChatToBottom(force = true)
@@ -2456,7 +2460,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             val aiNode = chatTree.nodes[aiNodeId] ?: return@runOnUiThread
 
             if (error != null) {
-                if (aiNode.text.startsWith("思考中") || aiNode.text.startsWith("推論中") || aiNode.text.isEmpty()) {
+                if (ChatInterruptPolicy.isPendingPlaceholder(aiNode.text)) {
                     aiNode.text = "【エラー】${error}"
                 }
             } else {
@@ -3423,7 +3427,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun sendToLlm(userNode: ChatNode, recyclerView: RecyclerView) {
-        val aiNode = ChatNode(text = "思考中...", isUser = false, parentId = userNode.id)
+        val aiNode = ChatNode(text = ChatPendingBubble.text(0), isUser = false, parentId = userNode.id)
         addNodeToTree(aiNode)
         chatStick.stickForNewContent()
         scrollChatToBottom(force = true)

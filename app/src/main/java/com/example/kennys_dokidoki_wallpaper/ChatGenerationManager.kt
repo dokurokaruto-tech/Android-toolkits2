@@ -232,12 +232,14 @@ object ChatGenerationManager {
         userNode: ChatNode,
         aiNode: ChatNode
     ) {
-        var dots = 0
+        var tick = 0
+        aiNode.text = ChatPendingBubble.text(tick)
+        notifyProgress(epoch, aiNode.text, false)
         val thinkingJob = scope.launch {
             while (isActive) {
-                delay(400)
-                dots = (dots + 1) % 4
-                aiNode.text = "推論中" + ".".repeat(dots)
+                delay(ChatPendingBubble.DOT_INTERVAL_MS)
+                tick++
+                aiNode.text = ChatPendingBubble.text(tick)
                 notifyProgress(epoch, aiNode.text, false)
             }
         }
@@ -323,6 +325,8 @@ object ChatGenerationManager {
                             notifyProgress(epoch, "", false)
                         }
 
+                        // 1文字でも受け取れば無料枠を消費したとみなす。停止しても減らす
+                        var usageCounted = false
                         val reader = conn.inputStream.bufferedReader()
                         reader.useLines { lines ->
                             lines.forEach { line ->
@@ -340,6 +344,10 @@ object ChatGenerationManager {
                                         if (delta.has("content")) {
                                             val content = delta.getString("content")
                                             reply += content
+                                            if (!usageCounted && provider == "OPENROUTER" && content.isNotEmpty()) {
+                                                usageCounted = true
+                                                OpenRouterManager.countFreeUsage(context, apiKey, modelName)
+                                            }
                                             
                                             withContext(Dispatchers.Main) {
                                                 aiNode.text = reply
@@ -351,10 +359,6 @@ object ChatGenerationManager {
                                     }
                                 }
                             }
-                        }
-                        if (provider == "OPENROUTER" && reply.isNotEmpty() && epoch !in interruptedEpochs) {
-                            // カウントは無料モデルのみ対象。課金済み×有料モデルは増やさない
-                            OpenRouterManager.countFreeUsage(context, apiKey, modelName)
                         }
                     } else {
                         val errorMsg = conn.errorStream?.bufferedReader()?.readText() ?: "Unknown error"

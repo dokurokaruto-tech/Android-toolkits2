@@ -16,7 +16,7 @@ object ChatInterruptPolicy {
 
     /** 進行中の仮アニメーション文なら true。部分出力の本文は false にして保持する。 */
     fun isPendingPlaceholder(text: String): Boolean =
-        text.isBlank() || pendingPrefixes.any { text.startsWith(it) }
+        text.isBlank() || pendingPrefixes.any { text.startsWith(it) } || ChatPendingBubble.isPending(text)
 
     /** 中断で確定するバブル本文。部分出力があれば保持し、なければ中断マーカーにする。 */
     fun interruptedBubbleText(text: String): String =
