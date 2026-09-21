@@ -5,7 +5,12 @@ cd /d "%~dp0"
 if not exist config.json (
   copy /Y config.example.json config.json >nul
   echo [INFO] config.json was created. Default SD API: http://127.0.0.1:7860
-  echo [INFO] Edit config.json if the SD API or output folder is different.
+  echo [INFO] Use config.local.json for machine-specific settings and API keys.
+)
+
+if exist ".venv-tts\Scripts\python.exe" (
+  set "PYTHON_CMD=.venv-tts\Scripts\python.exe"
+  goto ensure_packages
 )
 
 where py >nul 2>nul

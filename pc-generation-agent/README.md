@@ -31,12 +31,76 @@ Android Toolkits から生成依頼を受け取り、Stable Diffusion WebUI / Fo
 
 A1111なら通常は `webui-user.bat` の `COMMANDLINE_ARGS` に `--api` を追加します。ForgeでもAPIが利用可能な状態にしてください。
 
+## 同梱済みのTTS設定（最初に読む）
+
+`config.json` はGit管理の共有初期値です。次を設定済みです。
+
+| 項目 | 初期値 |
+|---|---|
+| モデル | `models/Qwen3-TTS-12Hz-1.7B-Base`（エージェントのフォルダー基準・仮パス） |
+| TTS Python | `.venv-tts/Scripts/python.exe` |
+| エージェント | `0.0.0.0:3001` |
+| Forge API | `http://127.0.0.1:7860` |
+| 推論 | FP16 / SDPA、最大1200秒、Forgeの一時アンロード有効 |
+
+**既存PCは更新前に、手元の `config.json` を `config.local.json` にコピーしてください。**
+旧ファイルはGit対象外でしたが、今回から共有ファイルになるためです。ローカル変更が更新と衝突する場合は、必ず退避してから更新してください。
+
+```bat
+copy config.json config.local.json
+```
+
+すでに `config.local.json` がある場合は上書きせず、必要な項目だけ移してください。
+エージェントは `config.json` → `config.local.json` の順に読み込みます。同じ項目はローカル側が優先されます。
+**実際のパス・APIキーは `config.local.json` だけに保存してください。Git対象外です。**
+共有ファイルに本物のAPIキーを記入・プッシュしないでください。
+
+### Windowsでの一括準備
+
+1. 64bit版Python 3.12（Python Launcher付き）とNVIDIAドライバーを用意します。
+2. `setup-tts.bat` を実行します。仮パスと異なる場合は、既存モデルのパスを引数にできます。
+
+```bat
+setup-tts.bat "C:\AI\models\Qwen3-TTS-12Hz-1.7B-Base"
+```
+
+このパスは例です。配置済みのフォルダーを指定してください。モデルを移動・ダウンロードする処理はありません。
+
+セットアップは専用仮想環境を作り、CUDA版PyTorch・Qwen TTS・画像用Pillowをインストールします。
+既存設定を `config.local.json` に保存し、APIキーが未設定ならPC上でランダム生成します。
+既存のキー、モデルパス、接続先は維持します（パス引数を指定した場合のみモデルパスを変更）。
+再実行しても既存のAPIキーは変えません。ForgeのPython環境には触れません。
+
+3. チェックで指摘されたパス等を `config.local.json` で修正し、`check-tts.bat` を実行します。
+4. `start-agent.bat` で起動します。セットアップ済みなら専用仮想環境を優先使用します。
+5. Androidには、起動画面のPC URLと、`config.local.json` の `api_key` を設定します。新規キーを作成した場合、既存の画像生成接続にも同じキーが必要です。
+
+`check-tts.bat` は依存パッケージ、CUDAでのFP16演算、モデル構成ファイル／重みの存在を確認します。
+モデル本体をロードして音声生成するテストではありません。最後に短い返信を実際に読み上げて確認してください。
+
+### PC・端末で必要な操作
+
+- **Tailscale**：PCとAndroidに導入し、同じtailnetへログイン。AndroidにPCのTailscale IPv4 URLを入力します。アカウント操作は自動化しません。
+- **Windows Firewall**：接続が遮断される場合のみ、管理者PowerShellで以下を実行します。自動セットアップでは変更しません。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\allow-agent-firewall.ps1
+```
+
+設定済みポートについて、プライベートLANのLocalSubnetとTailscale IPv4帯（`100.64.0.0/10`）だけを許可します。
+ルーターのポート開放は不要です。tailnetのACL設定も接続を許可しているか確認してください。
+
+- **Forge**：画像生成も使う場合は `--api` で起動。APIのURLが異なるならローカル設定を変更。
+- **Android**：更新済みアプリを入れ、タグに利用許可のあるサンプル音声を選び、返信を再生成。
+
+モデル本体、NVIDIAドライバー、Tailscaleの認証、Android内の音声選択はリポジトリから配布・代行できません。
+
 ## 最短の起動手順
 
 1. Stable Diffusionを起動する。
 2. `start-agent.bat` をダブルクリックする。
-3. 初回に `config.json` が自動作成される。
-4. SD APIが標準の `http://127.0.0.1:7860` でない場合だけ、`config.json` の `sd_base_url` を直して再起動する。
+3. 同梱の `config.json` を読み込む（欠けている場合だけサンプルから作成）。
+4. SD APIが標準と異なる場合は、`config.local.json` の `sd_base_url` を直して再起動する。
 5. Windows Defender Firewallの確認が出たら、使用するネットワーク（通常はプライベート、またはTailscale）だけ許可する。
 6. 黒い画面に次のような行が表示されるので、その**実際に表示された数値をそのまま**Androidアプリへ入力する。
 
@@ -58,7 +122,7 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
 
 ## 設定
 
-`config.example.json` から初回に作られる `config.json` を編集します。
+共有初期値は `config.json`（`config.example.json` と同じ）です。PC固有の変更は `config.local.json` へ記入します。
 
 ```json
 {
@@ -164,7 +228,7 @@ pc-generation-agent/
 
 ### PCの準備（RTX 2070）
 
-TTSは未設定なら無効です。画像生成だけの環境にPyTorchは不要です。
+通常は上の `setup-tts.bat` を使用してください。以下は手動導入用です。画像生成だけの環境にPyTorchは不要です。TTSを無効にする場合はローカル設定の `tts_model_dir` を空にしてください。
 
 1. Python 3.12とCUDA対応NVIDIAドライバーを用意します。
 2. `pc-generation-agent` で次を実行します。ForgeのPython環境には入れません。
@@ -177,7 +241,7 @@ py -3.12 -m venv .venv-tts
 .venv-tts\Scripts\python.exe -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
 ```
 
-3. 既存の `config.json` に以下を追加します。モデルのパスは**配置済みの実際のフォルダー**へ置き換えてください。
+3. `config.local.json` に以下を設定します。モデルのパスは**配置済みの実際のフォルダー**へ置き換えてください。
 
 ```json
 {
@@ -188,7 +252,7 @@ py -3.12 -m venv .venv-tts
 }
 ```
 
-これは追加項目の例です。既存のURL・APIキー等を消さないでください。
+これは追加項目の例です。既存のURL・APIキー等を消さないでください。手動導入でも `tools\tts_setup.py --prepare` をTTS用Pythonで実行すると、未設定のAPIキーを生成できます。
 相対パスは `config.json` のあるフォルダー基準です。`tts_python` を空にするとエージェントと同じPythonを使います。
 
 モデルは重みだけでなく、`config.json`、`generation_config.json`、テキスト用トークナイザー、`speech_tokenizer/` 一式も必要です。公式リポジトリの完全なローカル配置を指定します。モデルをGitへ追加しないでください。

@@ -17,6 +17,20 @@ DEFAULT_LORA_DIR = (
 )
 
 
+def load_config_values(path: Path) -> dict[str, Any]:
+    """Keep machine paths and secrets outside the tracked defaults."""
+    raw: dict[str, Any] = {}
+    for source in (path, path.with_suffix(".local.json")):
+        if not source.exists():
+            continue
+        with source.open("r", encoding="utf-8-sig") as stream:
+            value = json.load(stream)
+        if not isinstance(value, dict):
+            raise ValueError(f"{source.name} must contain a JSON object")
+        raw.update(value)
+    return raw
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     root: Path
@@ -43,10 +57,7 @@ class AgentConfig:
     @classmethod
     def load(cls, path: Path) -> "AgentConfig":
         root = path.resolve().parent
-        raw: dict[str, Any] = {}
-        if path.exists():
-            with path.open("r", encoding="utf-8") as stream:
-                raw = json.load(stream)
+        raw = load_config_values(path)
 
         def resolve(value: str) -> Path:
             candidate = Path(value)
