@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import json
+import re
 import secrets
 import subprocess
 import sys
@@ -17,6 +18,37 @@ from generation_agent.config import AgentConfig, load_config_values
 DEFAULT_MODEL_DIR = "models/Qwen3-TTS-12Hz-1.7B-Base"
 DEFAULT_TTS_PYTHON = ".venv-tts/Scripts/python.exe"
 RUNTIME_TIMEOUT_SECONDS = 120
+_REQUIRED_EXACT = {
+    "torch": "2.7.1+cu126",
+    "torchaudio": "2.7.1+cu126",
+    "qwen-tts": "0.1.1",
+}
+_REQUIRED_RANGES = {
+    "Pillow": ((10, 0, 0), (12, 0, 0)),
+    "soundfile": ((0, 13, 0), (0, 14, 0)),
+}
+
+
+def package_issues() -> list[str]:
+    """No GPU imports or downloads: this runs before the install consent prompt."""
+    issues = []
+    for name in (*_REQUIRED_EXACT, *_REQUIRED_RANGES):
+        try:
+            version = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            issues.append(f"Missing package: {name}")
+            continue
+        expected = _REQUIRED_EXACT.get(name)
+        if expected is not None:
+            if version != expected:
+                issues.append(f"{name}: installed {version}; required {expected}")
+            continue
+        match = re.fullmatch(r"(\d+)\.(\d+)(?:\.(\d+))?(?:\.post\d+)?", version)
+        release = tuple(int(part or 0) for part in match.groups()) if match else None
+        minimum, maximum = _REQUIRED_RANGES[name]
+        if release is None or not minimum <= release < maximum:
+            issues.append(f"Unsupported {name} version: {version}")
+    return issues
 
 
 def prepare_config(path: Path, model_dir: str | None = None) -> Path:
@@ -131,9 +163,15 @@ def main() -> int:
     modes.add_argument("--prepare", action="store_true")
     modes.add_argument("--check", action="store_true")
     modes.add_argument("--runtime-check", action="store_true")
+    modes.add_argument("--packages-check", action="store_true")
     parser.add_argument("--model-dir", help="Existing model directory; only used with --prepare")
     args = parser.parse_args()
     try:
+        if args.packages_check:
+            issues = package_issues()
+            for issue in issues:
+                print(f"[INFO] {issue}")
+            return 1 if issues else 0
         if args.runtime_check:
             return runtime_check()
         if args.prepare:

@@ -1,5 +1,8 @@
 @echo off
 setlocal
+rem Interpreter detection must never let Python Install Manager download silently.
+set "PYTHON_MANAGER_AUTOMATIC_INSTALL=false"
+set "PYLAUNCHER_ALLOW_INSTALL="
 cd /d "%~dp0"
 
 if not exist config.json (
@@ -13,13 +16,15 @@ if exist ".venv-tts\Scripts\python.exe" (
   goto ensure_packages
 )
 
-where py >nul 2>nul
-if %ERRORLEVEL% EQU 0 goto use_py
-where python >nul 2>nul
-if %ERRORLEVEL% EQU 0 goto use_python
-echo [ERROR] Python 3 was not found. Install Python 3.10 or later.
-pause
-exit /b 1
+py -3 -c "import sys; assert sys.version_info[:2] >= (3,10)" >nul 2>nul
+if not errorlevel 1 goto use_py
+python -c "import sys; assert sys.version_info[:2] >= (3,10)" >nul 2>nul
+if not errorlevel 1 goto use_python
+echo [INFO] Python was not found. Opening interactive setup.
+call setup-tts.bat
+if errorlevel 1 exit /b %ERRORLEVEL%
+set "PYTHON_CMD=.venv-tts\Scripts\python.exe"
+goto ensure_packages
 
 :use_py
 set "PYTHON_CMD=py -3"
@@ -31,6 +36,9 @@ set "PYTHON_CMD=python"
 :ensure_packages
 %PYTHON_CMD% -c "import PIL" >nul 2>nul
 if %ERRORLEVEL% EQU 0 goto run_agent
+choice /C YN /N /M "Pillow is missing. Install the mobile-thumbnail library? [Y/N]: "
+if errorlevel 2 goto canceled
+if not errorlevel 1 goto canceled
 echo [INFO] Installing the mobile-thumbnail component...
 %PYTHON_CMD% -m pip install -r requirements.txt
 if not %ERRORLEVEL% EQU 0 (
@@ -41,5 +49,11 @@ if not %ERRORLEVEL% EQU 0 (
 
 :run_agent
 %PYTHON_CMD% agent.py --config config.json
-if not %ERRORLEVEL% EQU 0 pause
-endlocal
+set "RESULT=%ERRORLEVEL%"
+if not "%RESULT%"=="0" pause
+exit /b %RESULT%
+
+:canceled
+echo [INFO] Installation canceled. The agent was not started.
+pause
+exit /b 2

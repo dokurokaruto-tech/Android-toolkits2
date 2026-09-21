@@ -26,7 +26,7 @@ Android Toolkits から生成依頼を受け取り、Stable Diffusion WebUI / Fo
 ## 必要なもの
 
 1. Windows 10 / 11
-2. Python 3.10以降（画像圧縮用Pillowは `start-agent.bat` が初回に自動導入）
+2. Python 3.10以降（未導入なら対話式セットアップへ案内。PillowもY/N確認後に導入）
 3. APIを有効にした Stable Diffusion WebUI / Forge
 
 A1111なら通常は `webui-user.bat` の `COMMANDLINE_ARGS` に `--api` を追加します。ForgeでもAPIが利用可能な状態にしてください。
@@ -57,7 +57,7 @@ copy config.json config.local.json
 
 ### Windowsでの一括準備
 
-1. 64bit版Python 3.12（Python Launcher付き）とNVIDIAドライバーを用意します。
+1. NVIDIAドライバーを用意します。Python 3.12は未導入でも構いません。
 2. `setup-tts.bat` を実行します。仮パスと異なる場合は、既存モデルのパスを引数にできます。
 
 ```bat
@@ -66,7 +66,21 @@ setup-tts.bat "C:\AI\models\Qwen3-TTS-12Hz-1.7B-Base"
 
 このパスは例です。配置済みのフォルダーを指定してください。モデルを移動・ダウンロードする処理はありません。
 
-セットアップは専用仮想環境を作り、CUDA版PyTorch・Qwen TTS・画像用Pillowをインストールします。
+不足がある場合だけ、次のY/N確認を表示します（Yで実行、Nでその時点で終了）。
+
+1. **Python 3.12がない**：公式 `python.org` から64bit版3.12.10のインストーラーを取得し、Python Software Foundationの署名を検証して、現在のWindowsユーザー用に導入。
+2. **専用環境がない**：`.venv-tts` の作成を確認。
+3. **ライブラリが不足／指定バージョンと不一致**：CUDA版PyTorch・torchaudio・Qwen TTS・Pillow等の導入を確認。数GBのダウンロードが発生する場合があります。
+
+既存の64bit Python 3.12は再インストールせず使用します。ライブラリと依存関係が揃っていればpipによるダウンロードも省略します。
+CPU版PyTorchや異なるバージョンは、Yで指定のCUDA版に揃えます。設定済みの独自TTS Pythonではなく、プロジェクトの `.venv-tts` だけにライブラリを導入します。
+Nでは以降のインストールと設定保存を中止します。それ以前にYで導入したものは残します。
+通信・署名検証・インストールに失敗した場合も停止します。自動再起動や既存環境の削除はしません。
+Pythonのインストーラーログは画面に表示する `%TEMP%` 内のファイルへ保存します。
+Windowsの制限で自動導入できない場合は、表示されたエラーを確認し、Python 3.12を手動で導入してください。
+
+`start-agent.bat` から起動した場合も、Python自体がなければこの対話式セットアップに進みます。
+画像用Pillowだけが足りない場合も、Y/Nを確認してから導入します。
 既存設定を `config.local.json` に保存し、APIキーが未設定ならPC上でランダム生成します。
 既存のキー、モデルパス、接続先は維持します（パス引数を指定した場合のみモデルパスを変更）。
 再実行しても既存のAPIキーは変えません。ForgeのPython環境には触れません。
