@@ -104,11 +104,27 @@ Download and install portable SoX for this project? [Y/N]:
 `pip install sox` で入るPythonパッケージとは別に、`sox.exe` が必要です。
 既にPATH上のSoXを実行できる場合は再インストールしません。
 ダウンロードは公式SourceForge配布の14.4.2ポータブル版で、Microsoft WinGetのマニフェストに掲載されたSHA256と照合します。
+案内ページではなくZIPの直接配信URLを使い、HTML応答・通信失敗・ハッシュ不一致なら別のSourceForgeミラーを試します。
+全て失敗した場合は実行せず停止し、受信サイズ・Content-Type・実際と期待するSHA256を `.tools/sox-download.log` に記録します。
 Nの場合や検証・展開の失敗時は、その段階で停止します。
 
 チェックと音声生成の両方で、Qwenを読み込む前にSoXの場所をプロセス内PATHへ追加します。
 手動のPATH設定・Windows再起動は不要です。実行中のエージェントは再起動してください。
 `.tools/` の実行ファイル・DLLはGitへ含めません。モデルパスはこの対応では変更しません。
+
+#### 自動ダウンロードが全て失敗する場合
+
+ブラウザーで [SourceForgeのZIP](https://sourceforge.net/projects/sox/files/sox/14.4.2/sox-14.4.2-win32.zip/download) を保存し、
+`pc-generation-agent` で次を実行できます。パスは保存したZIPに合わせてください。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-sox.ps1 -Approved -ArchivePath "C:\Users\ユーザー名\Downloads\sox-14.4.2-win32.zip"
+```
+
+ブラウザーで保存したファイルも**同じSHA256検証に合格した場合だけ**展開・実行します。
+この方法でも不一致なら、検証を無効化したり、表示された実際のハッシュで期待値を書き換えたりしないでください。
+ログを確認し、配布元・ネットワークの問題を調べてください。導入できたら `check-tts.bat` を再実行します。
+
 
 ### PC・端末で必要な操作
 

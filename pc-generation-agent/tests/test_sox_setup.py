@@ -82,7 +82,8 @@ class SoxInstallContractTest(unittest.TestCase):
 
     def test_archive_verified_before_execution(self):
         script = (ROOT / "tools/install-sox.ps1").read_text()
-        self.assertLess(script.index("if (-not $Approved)"), script.index("Invoke-WebRequest"))
+        self.assertLess(script.index("if (-not $Approved)"), script.index("& $python @arguments"))
+        self.assertLess(script.index("& $python @arguments"), script.index("Get-FileHash"))
         self.assertLess(script.index("Get-FileHash"), script.index("Expand-Archive"))
         self.assertLess(script.index("Expand-Archive"), script.index("& $executable --version"))
         self.assertIn("8072CC147CF1A3B3713B8B97D6844BB9389E211AB9E1101E432193FAD6AE6662", script)

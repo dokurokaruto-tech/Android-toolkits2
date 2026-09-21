@@ -1,5 +1,8 @@
 # Called only after setup-tts.bat receives Y. Installs into the project, not Windows.
-param([switch]$Approved)
+param(
+    [switch]$Approved,
+    [string]$ArchivePath
+)
 $ErrorActionPreference = 'Stop'
 
 if (-not $Approved) {
@@ -8,7 +11,6 @@ if (-not $Approved) {
 }
 
 $version = '14.4.2'
-$url = "https://sourceforge.net/projects/sox/files/sox/$version/sox-$version-win32.zip/download"
 # SHA256 published in Microsoft's ChrisBagwell.SoX 14.4.2 WinGet manifest:
 # https://github.com/microsoft/winget-pkgs/blob/master/manifests/c/ChrisBagwell/SoX/14.4.2/ChrisBagwell.SoX.installer.yaml
 $sha256 = '8072CC147CF1A3B3713B8B97D6844BB9389E211AB9E1101E432193FAD6AE6662'
@@ -17,15 +19,26 @@ $temporary = Join-Path $tools ('sox-download-' + [Guid]::NewGuid().ToString('N')
 $destination = Join-Path $tools 'sox'
 $backup = Join-Path $tools ('sox-backup-' + [Guid]::NewGuid().ToString('N'))
 $result = 1
+$python = Join-Path (Split-Path -Parent $PSScriptRoot) '.venv-tts\Scripts\python.exe'
+$downloadLog = Join-Path $tools 'sox-download.log'
 
 try {
     New-Item -ItemType Directory -Path $temporary -Force | Out-Null
     $archive = Join-Path $temporary 'sox.zip'
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Write-Host "[INFO] Downloading SoX $version from SourceForge."
-    Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing -TimeoutSec 300
-    if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $sha256) {
-        throw 'SoX archive SHA256 verification failed. Nothing was executed.'
+    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+        throw 'TTS Python was not found. Run setup-tts.bat first.'
+    }
+    $helper = Join-Path $PSScriptRoot 'sox_download.py'
+    $arguments = @($helper, '--output', $archive, '--log', $downloadLog)
+    if ($ArchivePath) { $arguments += @('--archive', $ArchivePath) }
+    & $python @arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "SoX download/verification failed. Diagnostics: $downloadLog"
+    }
+    # Verify again at the execution boundary; no mirror can override the pinned hash.
+    $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+    if ($actualHash -ne $sha256) {
+        throw "SoX SHA256 mismatch: expected $sha256, received $actualHash. Nothing was executed."
     }
     $extracted = Join-Path $temporary 'extracted'
     Expand-Archive -LiteralPath $archive -DestinationPath $extracted
@@ -57,7 +70,9 @@ try {
     $result = 0
 } catch {
     Write-Host "[ERROR] $($_.Exception.Message)"
-    Write-Host '[INFO] Close active TTS processes and check network/security settings, then rerun setup-tts.bat.'
+    Write-Host "[INFO] Download details, when available: $downloadLog"
+    Write-Host '[INFO] Browser-downloaded ZIPs can be supplied using -ArchivePath; SHA256 verification remains mandatory.'
+    Write-Host '[INFO] For file-in-use errors, close active TTS processes and rerun setup-tts.bat.'
 } finally {
     if (Test-Path -LiteralPath $temporary) {
         Remove-Item -LiteralPath $temporary -Recurse -Force -ErrorAction SilentlyContinue
