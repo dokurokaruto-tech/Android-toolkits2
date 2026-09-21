@@ -299,6 +299,9 @@ object PromptCardAiGenerator {
             buildList {
                 for (index in 0 until data.length()) {
                     val model = data.getJSONObject(index)
+                    if (!OpenRouterModelVisibility.isSelectable(model.getString("id"))) {
+                        continue
+                    }
                     val pricing = model.optJSONObject("pricing")
                     val promptPrice = pricing?.optDouble("prompt", 0.0) ?: 0.0
                     val completionPrice = pricing?.optDouble("completion", 0.0) ?: 0.0

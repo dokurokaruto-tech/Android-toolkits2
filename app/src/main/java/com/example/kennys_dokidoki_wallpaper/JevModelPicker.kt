@@ -185,6 +185,9 @@ internal object JevModelPicker {
         val result = mutableListOf<Entry>()
         for (i in 0 until data.length()) {
             val obj = data.getJSONObject(i)
+            if (!OpenRouterModelVisibility.isSelectable(obj.getString("id"))) {
+                continue
+            }
             val pricing = obj.optJSONObject("pricing")
             val isFree = (pricing?.optString("prompt") == "0" ||
                 pricing?.optDouble("prompt", 1.0) == 0.0) &&

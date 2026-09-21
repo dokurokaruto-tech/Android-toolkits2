@@ -1493,6 +1493,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             val newList = mutableListOf<RemoteModel>()
             for (i in 0 until dataArray.length()) {
                 val obj = dataArray.getJSONObject(i)
+                if (!OpenRouterModelVisibility.isSelectable(obj.getString("id"))) {
+                    continue
+                }
                 val pricing = obj.optJSONObject("pricing")
                 val isFree = pricing?.optString("prompt") == "0" && pricing?.optString("completion") == "0"
                 val price = pricing?.optDouble("prompt", 0.0) ?: 0.0
@@ -1527,6 +1530,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     val newList = mutableListOf<RemoteModel>()
                     for (i in 0 until dataArray.length()) {
                         val obj = dataArray.getJSONObject(i)
+                        if (!OpenRouterModelVisibility.isSelectable(obj.getString("id"))) {
+                            continue
+                        }
                         val pricing = obj.optJSONObject("pricing")
                         val isFree = (pricing?.optString("prompt") == "0" || pricing?.optDouble("prompt", 1.0) == 0.0) &&
                                      (pricing?.optString("completion") == "0" || pricing?.optDouble("completion", 1.0) == 0.0)
@@ -2123,7 +2129,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val provider = prefs.getString("chat_cloud_provider", "GROK") ?: "GROK"
 
         addMenuIcon(grid, "Back", R.drawable.ic_md3_close) {
-            showModelMenu()
+            showMainMenu()
         }
 
         val grokLabel = if (engine == "CLOUD" && provider == "GROK") "● Grok" else "Grok"

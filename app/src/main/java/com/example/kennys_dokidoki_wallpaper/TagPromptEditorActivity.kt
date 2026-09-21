@@ -111,6 +111,9 @@ class TagPromptEditorActivity : AppCompatActivity() {
             val newList = mutableListOf<RemoteModel>()
             for (i in 0 until dataArray.length()) {
                 val obj = dataArray.getJSONObject(i)
+                if (!OpenRouterModelVisibility.isSelectable(obj.getString("id"))) {
+                    continue
+                }
                 val pricing = obj.optJSONObject("pricing")
                 val isFree = (pricing?.optString("prompt") == "0" || pricing?.optDouble("prompt", 1.0) == 0.0) &&
                              (pricing?.optString("completion") == "0" || pricing?.optDouble("completion", 1.0) == 0.0)
@@ -143,6 +146,9 @@ class TagPromptEditorActivity : AppCompatActivity() {
                     val newList = mutableListOf<RemoteModel>()
                     for (i in 0 until dataArray.length()) {
                         val obj = dataArray.getJSONObject(i)
+                        if (!OpenRouterModelVisibility.isSelectable(obj.getString("id"))) {
+                            continue
+                        }
                         val pricing = obj.optJSONObject("pricing")
                         val isFree = (pricing?.optString("prompt") == "0" || pricing?.optDouble("prompt", 1.0) == 0.0) &&
                                      (pricing?.optString("completion") == "0" || pricing?.optDouble("completion", 1.0) == 0.0)
