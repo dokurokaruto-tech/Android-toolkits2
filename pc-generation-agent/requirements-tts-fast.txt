@@ -1,0 +1,6 @@
+# Compatible with qwen-tts 0.1.1 and the existing CUDA PyTorch environment.
+# 0.4.x replaces qwen-tts with qwen-tts-hf / Transformers 5; do not upgrade implicitly.
+faster-qwen3-tts==0.3.2
+qwen-tts==0.1.1
+transformers==4.57.3
+huggingface-hub>=0.36,<1

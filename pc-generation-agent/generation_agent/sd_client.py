@@ -2,16 +2,25 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+from http import HTTPStatus
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 
 
+class SdHttpError(RuntimeError):
+    def __init__(self, status: int, detail: str):
+        super().__init__(f"SD HTTP {status}: {detail}")
+        self.status = status
+
+
 class StableDiffusionClient:
     def __init__(self, base_url: str, timeout: int):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._reload_supported = True
 
     def _request(self, path: str, method: str = "GET", body: dict[str, Any] | None = None, timeout: int | None = None) -> Any:
         data = json.dumps(body).encode("utf-8") if body is not None else None
@@ -27,7 +36,7 @@ class StableDiffusionClient:
                 return json.loads(content.decode("utf-8")) if content else {}
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")[:2000]
-            raise RuntimeError(f"SD HTTP {error.code}: {detail}") from error
+            raise SdHttpError(error.code, detail) from error
         except (urllib.error.URLError, TimeoutError) as error:
             raise RuntimeError(f"SD connection failed: {error}") from error
 
@@ -99,7 +108,16 @@ class StableDiffusionClient:
         self._request("/sdapi/v1/unload-checkpoint", "POST", {}, timeout=150)
 
     def reload_checkpoint(self) -> None:
-        self._request("/sdapi/v1/reload-checkpoint", "POST", {}, timeout=150)
+        if not self._reload_supported:
+            return
+        try:
+            self._request("/sdapi/v1/reload-checkpoint", "POST", {}, timeout=150)
+        except SdHttpError as error:
+            if error.status != HTTPStatus.NOT_FOUND:
+                raise
+            self._reload_supported = False
+            logging.warning("SD reload API is unavailable (404); next image request must load the model. "
+                            "Further reload calls are skipped until agent restart.")
 
     def interrupt(self) -> None:
         self._request("/sdapi/v1/interrupt", "POST", {}, timeout=5)

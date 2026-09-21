@@ -90,12 +90,14 @@ class SoxInstallContractTest(unittest.TestCase):
         self.assertNotIn("SetEnvironmentVariable", script)
         self.assertIn("finally {", script)
 
-    def test_both_qwen_entrypoints_configure_path_first(self):
-        for name, function in (("tools/tts_setup.py", "def runtime_check()"),
-                               ("generation_agent/tts_worker.py", "def generate(")):
-            text = (ROOT / name).read_text()
-            section = text[text.index(function):]
-            self.assertLess(section.index("configure_sox()"), section.index("from qwen_tts import"))
+    def test_qwen_path_order(self):
+        setup = (ROOT / "tools/tts_setup.py").read_text()
+        section = setup[setup.index("def runtime_check("):]
+        self.assertLess(section.index("configure_sox()"), section.index("from qwen_tts import"))
+        worker = (ROOT / "generation_agent/tts_worker.py").read_text()
+        for function in ("def generate(", "def serve("):
+            section = worker[worker.index(function):]
+            self.assertLess(section.index("configure_sox()"), section.index("TtsEngine()"))
 
     def test_cli_probe_does_not_change_config(self):
         setup = importlib.import_module("tools.tts_setup")

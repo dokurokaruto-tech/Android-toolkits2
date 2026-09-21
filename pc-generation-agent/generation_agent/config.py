@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .tts_options import TtsBackend, MAX_KEEP_ALIVE_SECONDS
+
 DEFAULT_TTS_TIMEOUT_SECONDS = 1200
 
 DEFAULT_CHECKPOINT_DIR = (
@@ -53,6 +55,8 @@ class AgentConfig:
     tts_python: str = ""
     tts_timeout_seconds: int = DEFAULT_TTS_TIMEOUT_SECONDS
     tts_unload_sd: bool = True
+    tts_backend: TtsBackend = TtsBackend.STANDARD
+    tts_keep_alive_seconds: int = 0
 
     @classmethod
     def load(cls, path: Path) -> "AgentConfig":
@@ -68,6 +72,10 @@ class AgentConfig:
             raise ValueError("listen_port must be between 1 and 65535")
         timeout = int(raw.get("request_timeout_seconds", 600))
         retry_count = int(raw.get("retry_count", 1))
+        backend = TtsBackend(raw.get("tts_backend", TtsBackend.STANDARD.value))
+        keep_alive = int(raw.get("tts_keep_alive_seconds", 0))
+        if not 0 <= keep_alive <= MAX_KEEP_ALIVE_SECONDS:
+            raise ValueError(f"tts_keep_alive_seconds must be 0..{MAX_KEEP_ALIVE_SECONDS}")
         return cls(
             root=root,
             listen_host=str(raw.get("listen_host", "0.0.0.0")),
@@ -89,4 +97,6 @@ class AgentConfig:
             tts_python=str(resolve(raw["tts_python"])) if raw.get("tts_python") else "",
             tts_timeout_seconds=max(30, min(int(raw.get("tts_timeout_seconds", DEFAULT_TTS_TIMEOUT_SECONDS)), DEFAULT_TTS_TIMEOUT_SECONDS)),
             tts_unload_sd=raw.get("tts_unload_sd", True) is True,
+            tts_backend=backend,
+            tts_keep_alive_seconds=keep_alive,
         )

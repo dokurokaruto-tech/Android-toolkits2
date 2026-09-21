@@ -16,6 +16,8 @@ sys.path.insert(0, str(ROOT))
 from generation_agent.config import AgentConfig, load_config_values
 from generation_agent.sox_runtime import configure_sox, find_sox
 from generation_agent.reference_audio import ffmpeg_executable
+from generation_agent.tts_options import TtsBackend
+from tools.tts_fast_setup import package_issues as fast_issues
 
 DEFAULT_MODEL_DIR = "models/Qwen3-TTS-12Hz-1.7B-Base"
 DEFAULT_TTS_PYTHON = ".venv-tts/Scripts/python.exe"
@@ -112,7 +114,7 @@ def model_issues(model: Path | None) -> list[str]:
     return issues
 
 
-def runtime_check() -> int:
+def runtime_check(backend: TtsBackend = TtsBackend.STANDARD) -> int:
     print(f"[OK] SoX: {configure_sox()}")
     subprocess.run([ffmpeg_executable(), "-version"], capture_output=True, timeout=10, check=True)
     print("[OK] FFmpeg audio decoder")
@@ -131,6 +133,28 @@ def runtime_check() -> int:
         raise RuntimeError("CUDA FP16 check failed")
     torch.cuda.synchronize()
     print(f"[OK] GPU: {properties.name}, VRAM: {properties.total_memory / 1024**3:.1f} GiB")
+    if properties.major < 8:
+        print("[INFO] GPU compute capability < 8: using FP16 + SDPA; standard FlashAttention 2 is not supported.")
+    if backend == TtsBackend.CUDA_GRAPH:
+        issues = fast_issues()
+        if issues:
+            raise RuntimeError("; ".join(issues))
+        from faster_qwen3_tts import FasterQwen3TTS
+        # Exercise CUDA graph support without claiming that the full model fits.
+        stream = torch.cuda.Stream()
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream):
+            for _ in range(3):
+                result = value @ value
+        torch.cuda.current_stream().wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            result = value @ value
+        graph.replay()
+        torch.cuda.synchronize()
+        if not torch.isfinite(result).all().item():
+            raise RuntimeError("CUDA Graph check failed")
+        print("[OK] Optional CUDA Graph backend imported; small FP16 graph replay passed.")
     print("[INFO] Model inference / VRAM fit is NOT tested by this check.")
     return 0
 
@@ -148,7 +172,8 @@ def check_setup(path: Path) -> int:
     if not executable.is_file():
         issues.append("TTS Python not found. Run setup-tts.bat or set tts_python in config.local.json.")
     else:
-        result = subprocess.run([str(executable), str(Path(__file__).resolve()), "--runtime-check"],
+        result = subprocess.run([str(executable), str(Path(__file__).resolve()), "--runtime-check",
+                                 "--backend", config.tts_backend.value],
                                 timeout=RUNTIME_TIMEOUT_SECONDS, check=False)
         if result.returncode:
             issues.append("TTS runtime check failed. See the output above.")
@@ -172,6 +197,7 @@ def main() -> int:
     modes.add_argument("--packages-check", action="store_true")
     modes.add_argument("--sox-check", action="store_true")
     parser.add_argument("--model-dir", help="Existing model directory; only used with --prepare")
+    parser.add_argument("--backend", choices=[item.value for item in TtsBackend], default=TtsBackend.STANDARD.value)
     args = parser.parse_args()
     try:
         if args.sox_check:
@@ -187,7 +213,7 @@ def main() -> int:
                 print(f"[INFO] {issue}")
             return 1 if issues else 0
         if args.runtime_check:
-            return runtime_check()
+            return runtime_check(TtsBackend(args.backend))
         if args.prepare:
             local = prepare_config(args.config, args.model_dir)
             print(f"[OK] Private settings saved to {local.name}; tracked config unchanged.")

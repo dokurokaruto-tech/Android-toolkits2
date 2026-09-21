@@ -17,5 +17,7 @@
   "tts_model_dir": "models/Qwen3-TTS-12Hz-1.7B-Base",
   "tts_python": ".venv-tts/Scripts/python.exe",
   "tts_timeout_seconds": 1200,
-  "tts_unload_sd": true
+  "tts_unload_sd": true,
+  "tts_backend": "standard",
+  "tts_keep_alive_seconds": 0
 }

@@ -7,6 +7,7 @@ import re
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,7 @@ from .config import AgentConfig
 from .database import JobDatabase
 from .model_import import ModelImportService
 from .sd_client import StableDiffusionClient
-from .tts import TtsService
+from .tts import TtsService, TtsBusyError
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -53,12 +54,31 @@ class GenerationService:
     def delete_voices(self, tag_id: str, epoch: str, sample_id: str | None) -> dict[str, Any]:
         return self._tts.delete_voices(tag_id, epoch, sample_id)
 
+    @contextmanager
+    def sd_operation(self, method: str, path: str):
+        # Status and cancellation must remain available during image generation.
+        if method == "GET" or path.split("?", 1)[0] in {"/sdapi/v1/interrupt", "/sdapi/v1/skip"}:
+            yield
+            return
+        if not self._gpu_lock.acquire(blocking=False):
+            raise TtsBusyError("PCで画像または音声を生成中です。完了後に再試行してください。")
+        try:
+            self._tts.release_gpu()
+            yield
+        finally:
+            self._gpu_lock.release()
+
+    def set_checkpoint(self, name: str) -> str:
+        with self.sd_operation("POST", "/sdapi/v1/options"):
+            return self.model_imports.set_active_checkpoint(name)
+
     def start(self) -> None:
         self._worker.start()
 
     def close(self) -> None:
         self._stop.set()
         self._wake.set()
+        self._tts.close()
         self._worker.join(timeout=5)
         self.database.close()
 
@@ -493,6 +513,7 @@ class GenerationService:
                     continue
                 sd_payload = {key: value for key, value in task["payload"].items() if not key.startswith("_agent_")}
                 with self._gpu_lock:
+                    self._tts.release_gpu()
                     image, suffix, seed = self.sd.generate(sd_payload)
                 if seed is not None and sd_payload.get("seed") in (None, -1, "-1"):
                     sd_payload["seed"] = seed

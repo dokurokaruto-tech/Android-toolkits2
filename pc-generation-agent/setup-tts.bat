@@ -89,6 +89,7 @@ if errorlevel 1 (
   goto failed
 )
 echo [OK] Ready for a real voice test. Run start-agent.bat.
+echo [INFO] Optional speed mode: stop the agent, then run setup-tts-fast.bat (Y/N).
 pause
 exit /b 0
 

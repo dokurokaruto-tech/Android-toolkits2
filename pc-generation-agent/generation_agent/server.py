@@ -268,8 +268,10 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/v1/models/checkpoints/active":
             try:
-                active = self.server.service.model_imports.set_active_checkpoint(self._read_json().get("name", ""))
+                active = self.server.service.set_checkpoint(self._read_json().get("name", ""))
                 self._json(HTTPStatus.OK, {"active": active})
+            except TtsBusyError as error:
+                self._error(HTTPStatus.CONFLICT, str(error))
             except ValueError as error:
                 self._error(HTTPStatus.BAD_REQUEST, str(error))
             except Exception as error:
@@ -402,11 +404,13 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                     "Accept": self.headers.get("Accept", "application/json"),
                 },
             )
-            with urllib.request.urlopen(request, timeout=self.server.config.request_timeout_seconds) as response:
-                self._bytes(
-                    response.status, response.read(),
-                    response.headers.get("Content-Type", "application/json"), cache="no-store"
-                )
+            with self.server.service.sd_operation(method, path):
+                with urllib.request.urlopen(request, timeout=self.server.config.request_timeout_seconds) as response:
+                    status, content = response.status, response.read()
+                    content_type = response.headers.get("Content-Type", "application/json")
+            self._bytes(status, content, content_type, cache="no-store")
+        except TtsBusyError as error:
+            self._error(HTTPStatus.CONFLICT, str(error))
         except urllib.error.HTTPError as error:
             self._bytes(
                 error.code, error.read(), error.headers.get("Content-Type", "application/json"), cache="no-store"
