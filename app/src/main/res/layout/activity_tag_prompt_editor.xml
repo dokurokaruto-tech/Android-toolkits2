@@ -72,7 +72,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="使用許可のある音声を選んでください。WAV・FLAC・MP3、1〜30秒（3秒以上推奨）、6 MiB以下。音声はアプリ内にコピーし、TTS実行のたびにPCへ送信します。変更は次に生成する返信から適用されます。"
+                android:text="使用許可のある音声を選んでください。WAV・FLAC・MP3・M4A、1〜30秒（3秒以上推奨）、6 MiB以下。音声はアプリ内にコピーし、初回TTS時にタグと結び付けてPCへ保存します。同じ音声は再送しません。変更は次に生成する返信から適用されます。"
                 android:textAppearance="?attr/textAppearanceBodySmall" />
 
             <TextView
@@ -99,6 +99,20 @@
                     android:layout_height="wrap_content"
                     android:text="解除" />
             </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_pc_tag_voice"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="PC保存音声を管理" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="音声を設定してタグを保存すると管理できます。旧音声も個別／一括で削除できます。PCから削除した音声は、次回TTSで必要な場合に再送します。"
+                android:textAppearance="?attr/textAppearanceBodySmall" />
 
             <com.google.android.material.textfield.TextInputLayout
                 style="@style/Widget.Material3.TextInputLayout.OutlinedBox"

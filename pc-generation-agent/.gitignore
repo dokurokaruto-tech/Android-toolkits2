@@ -13,3 +13,4 @@ models/
 *.pth
 *.local.tmp
 .tools/
+tts-voices.sqlite3*

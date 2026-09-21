@@ -1,8 +1,6 @@
 """Bounded, opt-in TTS. Each request owns a short-lived GPU process."""
 from __future__ import annotations
 
-import base64
-import binascii
 import json
 import logging
 import subprocess
@@ -14,8 +12,8 @@ from typing import Any
 
 from .config import AgentConfig
 from .sd_client import StableDiffusionClient
+from .voice_store import VoiceStore, check_ids, decode_sample, MAX_SAMPLE_BYTES
 
-MAX_SAMPLE_BYTES = 6 * 1024 * 1024
 MAX_TEXT_LENGTH = 2000
 MAX_AUDIO_BYTES = 64 * 1024 * 1024
 
@@ -28,7 +26,7 @@ class TtsUnavailableError(RuntimeError):
     pass
 
 
-def validate_request(body: dict[str, Any]) -> tuple[str, str, bytes]:
+def validate_request(body: dict[str, Any]) -> tuple[str, str, bytes | tuple[str, str]]:
     voices = body.get("voices")
     if not isinstance(voices, list) or len(voices) != 1:
         raise ValueError("音声付きタグは1つだけ必要です。複数のタグの声は混合できません。")
@@ -41,16 +39,13 @@ def validate_request(body: dict[str, Any]) -> tuple[str, str, bytes]:
     transcript = voice.get("ref_text", "")
     if not isinstance(transcript, str) or len(transcript) > MAX_TEXT_LENGTH:
         raise ValueError("サンプルの文字起こしが長すぎます。")
-    encoded = voice.get("audio_base64")
-    if not isinstance(encoded, str) or len(encoded) > ((MAX_SAMPLE_BYTES + 2) // 3) * 4:
-        raise ValueError("サンプル音声は6 MiB以下にしてください。")
-    try:
-        audio = base64.b64decode(encoded, validate=True)
-    except (ValueError, binascii.Error) as error:
-        raise ValueError("サンプル音声のデータが不正です。") from error
-    if not audio or len(audio) > MAX_SAMPLE_BYTES:
-        raise ValueError("サンプル音声が空か、6 MiBを超えています。")
-    return text.strip(), transcript.strip(), audio
+    if "tag_id" in voice or "sample_id" in voice:
+        check_ids(voice.get("tag_id"), voice.get("sample_id") or "")
+        if "audio_base64" in voice:
+            raise ValueError("音声データと保存音声IDは同時に指定できません。")
+        return text.strip(), transcript.strip(), (voice["tag_id"], voice["sample_id"])
+    return text.strip(), transcript.strip(), decode_sample(voice.get("audio_base64"))
+
 
 
 class TtsService:
@@ -58,9 +53,21 @@ class TtsService:
         self._config = config
         self._gpu_lock = gpu_lock
         self._sd = sd
+        self._voices = VoiceStore(config.database_path.parent / "tts-voices.sqlite3")
+
+    def list_voices(self, tag_id: str) -> dict[str, Any]:
+        return self._voices.list_samples(tag_id)
+
+    def store_voice(self, tag_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        return self._voices.put_sample(tag_id, body)
+
+    def delete_voices(self, tag_id: str, epoch: str, sample_id: str | None) -> dict[str, Any]:
+        return self._voices.delete_samples(tag_id, epoch, sample_id)
 
     def synthesize(self, body: dict[str, Any]) -> bytes:
         text, transcript, audio = validate_request(body)
+        if isinstance(audio, tuple):
+            audio = self._voices.read_sample(*audio)
         model = self._config.tts_model_dir
         if model is None:
             raise TtsUnavailableError("PCのconfig.jsonにtts_model_dirを設定してください。")
@@ -84,7 +91,7 @@ class TtsService:
                 self._gpu_lock.release()
 
     def _run_worker(self, model: Path, text: str, transcript: str, audio: bytes) -> bytes:
-        # Neither reference audio nor generated speech is retained on the PC.
+        # Worker copies and generated speech are temporary; registered references live in VoiceStore.
         with tempfile.TemporaryDirectory(prefix="toolkits-tts-") as directory:
             root = Path(directory)
             (root / "reference.audio").write_bytes(audio)

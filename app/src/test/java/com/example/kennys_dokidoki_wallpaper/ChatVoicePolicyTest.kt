@@ -3,9 +3,67 @@ package com.example.kennys_dokidoki_wallpaper
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.After
 
 class ChatVoicePolicyTest {
     private val voice = TagVoice("a".repeat(64), "voice.wav", "こんにちは")
+
+    @After fun clearVoiceState() {
+        TagManager.restoreVoices(JSONObject())
+        TagManager.restoreVoiceIds(JSONObject())
+        TagManager.impliedTagsMap.clear()
+    }
+
+    @Test fun snapshotKeepsIds() {
+        TagManager.restoreVoices(JSONObject().put("Alice", voice.toJson()))
+        val before = TagManager.voiceSnapshot(setOf("Alice"))
+        val id = before.single().tagId
+        assertTrue(Regex("[0-9a-f]{32}").matches(id))
+        TagManager.restoreVoices(JSONObject().put("Alice", voice.copy(sampleId = "b".repeat(64)).toJson()))
+        val after = TagManager.voiceSnapshot(setOf("Alice")).single()
+        assertEquals(id, after.tagId)
+        assertEquals(voice.sampleId, before.single().voice.sampleId)
+        assertEquals("b".repeat(64), after.voice.sampleId)
+        assertEquals(before, ChatVoicePolicy.decode(ChatVoicePolicy.encode(before)))
+    }
+
+    @Test fun unlinkRetainsPcIdentity() {
+        TagManager.restoreVoices(JSONObject().put("Alice", voice.toJson()))
+        val id = TagManager.voiceTagId("Alice")
+        TagManager.restoreVoices(JSONObject())
+        assertEquals(id, TagManager.voiceTagId("Alice"))
+        assertTrue(TagManager.voiceSnapshot(setOf("Alice")).isEmpty())
+    }
+
+    @Test fun sameAudioHasDistinctTags() {
+        TagManager.restoreVoices(JSONObject().put("Alice", voice.toJson()).put("Bob", voice.toJson()))
+        assertNotEquals(TagManager.voiceTagId("Alice"), TagManager.voiceTagId("Bob"))
+    }
+
+    @Test fun backupKeepsPcIdentity() {
+        TagManager.restoreVoices(JSONObject().put("Alice", voice.toJson()))
+        val id = TagManager.voiceTagId("Alice")
+        val voices = TagManager.exportVoices()
+        val ids = TagManager.exportVoiceIds()
+        TagManager.restoreVoices(JSONObject())
+        TagManager.restoreVoiceIds(JSONObject())
+        TagManager.restoreVoiceIds(ids)
+        TagManager.restoreVoices(voices)
+        assertEquals(id, TagManager.voiceSnapshot(setOf("Alice")).single().tagId)
+    }
+
+    @Test fun invalidIdGetsMigrated() {
+        TagManager.restoreVoiceIds(JSONObject().put("Alice", "../invalid"))
+        TagManager.restoreVoices(JSONObject().put("Alice", voice.toJson()))
+        assertTrue(Regex("[0-9a-f]{32}").matches(TagManager.voiceTagId("Alice")!!))
+    }
+
+    @Test fun legacySnapshotKeepsSample() {
+        val old = org.json.JSONArray().put(JSONObject().put("tag", "Alice").put("voice", voice.toJson()))
+        val restored = ChatVoicePolicy.decode(old).single()
+        assertEquals("", restored.tagId)
+        assertEquals(voice, restored.voice)
+    }
 
     @Test fun oneVoiceIsSelected() {
         assertEquals(voice, ChatVoicePolicy.requireVoice(listOf(ChatVoice("Alice", voice))))
@@ -42,7 +100,7 @@ class ChatVoicePolicyTest {
 
     @Test fun historyRoundTripKeepsVoiceAndReadiness() {
         val node = ChatNode(text = "Hello", isUser = false,
-            ttsVoices = listOf(ChatVoice("Alice", voice)), ttsReady = true)
+            ttsVoices = listOf(ChatVoice("Alice", voice, "c".repeat(32))), ttsReady = true)
         val tree = ChatTree(mutableMapOf(node.id to node), node.id)
         val restored = ChatSessionManager.deserializeTree(ChatSessionManager.serializeTree(tree))
         assertEquals(node.ttsVoices, restored.nodes[node.id]!!.ttsVoices)

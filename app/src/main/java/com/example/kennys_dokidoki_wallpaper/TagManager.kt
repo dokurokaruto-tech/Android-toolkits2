@@ -14,6 +14,8 @@ object TagManager {
     private const val KEY_IMPLIED_TAGS = "tag_implied_mappings"
     
     private const val KEY_VOICES = "tag_voices"
+    private const val KEY_VOICE_IDS = "tag_voice_ids"
+    private val tagVoiceIds = mutableMapOf<String, String>()
     private val tagVoices = mutableMapOf<String, TagVoice>()
 
     val categories = mutableListOf<TagCategory>()
@@ -123,9 +125,9 @@ object TagManager {
                 prefs.edit().remove(KEY_PROMPTS).apply()
             }
 
-            tagVoices.clear()
-            val voices = JSONObject(prefs.getString(KEY_VOICES, "{}") ?: "{}")
-            voices.keys().forEach { tag -> tagVoices[tag] = TagVoice.fromJson(voices.getJSONObject(tag)) }
+            restoreVoiceIds(JSONObject(prefs.getString(KEY_VOICE_IDS, "{}") ?: "{}"))
+            restoreVoices(JSONObject(prefs.getString(KEY_VOICES, "{}") ?: "{}"))
+            prefs.edit().putString(KEY_VOICE_IDS, exportVoiceIds().toString()).apply()
 
             val remoteIdsJson = prefs.getString("tag_remote_ids", null)
             tagRemoteCardIds.clear()
@@ -249,6 +251,7 @@ object TagManager {
         prefs.edit()
             .putString(KEY_CATEGORIES, array.toString())
             .putString(KEY_VOICES, exportVoices().toString())
+            .putString(KEY_VOICE_IDS, exportVoiceIds().toString())
             .putString(KEY_PROMPT_VARIANTS, variantsObj.toString())
             .putString("tag_remote_ids", remoteIdsObj.toString())
             .putString(KEY_IMPLIED_TAGS, impliedObj.toString())
@@ -343,6 +346,7 @@ object TagManager {
         }
 
         tagVoices.remove(oldTag)?.let { tagVoices[newTag] = it }
+        tagVoiceIds.remove(oldTag)?.let { tagVoiceIds[newTag] = it }
 
         // プロンプト（バリエーションごと）を移行
         val variants = tagPromptVariants.remove(oldTag)
@@ -445,13 +449,14 @@ object TagManager {
             tagVoices.remove(tag)
         } else {
             tagVoices[tag] = voice
+            ensureVoiceId(tag)
         }
         saveTags(context)
     }
 
     @Synchronized
     fun voiceSnapshot(tags: Set<String>): List<ChatVoice> = getEffectiveTags(tags).mapNotNull { tag ->
-        tagVoices[tag]?.let { ChatVoice(tag, it.copy()) }
+        tagVoices[tag]?.let { ChatVoice(tag, it.copy(), ensureVoiceId(tag)) }
     }
 
     @Synchronized
@@ -462,7 +467,29 @@ object TagManager {
     @Synchronized
     fun restoreVoices(value: JSONObject) {
         tagVoices.clear()
-        value.keys().forEach { tag -> tagVoices[tag] = TagVoice.fromJson(value.getJSONObject(tag)) }
+        value.keys().forEach { tag ->
+            tagVoices[tag] = TagVoice.fromJson(value.getJSONObject(tag))
+            ensureVoiceId(tag)
+        }
+    }
+
+    private fun ensureVoiceId(tag: String): String = tagVoiceIds.getOrPut(tag) {
+        java.util.UUID.randomUUID().toString().replace("-", "")
+    }
+
+    @Synchronized
+    fun voiceTagId(tag: String): String? = tagVoiceIds[tag]
+
+    @Synchronized
+    fun exportVoiceIds(): JSONObject = JSONObject(tagVoiceIds.toMap())
+
+    @Synchronized
+    fun restoreVoiceIds(value: JSONObject) {
+        tagVoiceIds.clear()
+        value.keys().forEach { tag ->
+            val id = value.optString(tag)
+            if (Regex("[0-9a-f]{32}").matches(id)) { tagVoiceIds[tag] = id }
+        }
     }
 
     fun estimateTokenCount(text: String): Int {
@@ -587,6 +614,7 @@ object TagManager {
     @Synchronized
     fun deleteTag(context: Context, tag: String) {
         tagVoices.remove(tag)
+        tagVoiceIds.remove(tag)
         // カテゴリから削除
         categories.forEach { it.tags.remove(tag) }
         

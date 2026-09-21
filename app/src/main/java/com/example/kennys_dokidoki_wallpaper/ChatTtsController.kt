@@ -48,7 +48,13 @@ class ChatTtsController(
         }
         if (activeId != null) { return }
         try {
-            val voice = ChatVoicePolicy.requireVoice(node.ttsVoices)
+            ChatVoicePolicy.requireVoice(node.ttsVoices)
+            val savedBinding = node.ttsVoices!!.single()
+            TagManager.loadTags(context)
+            val binding = savedBinding.copy(tagId = savedBinding.tagId.ifBlank {
+                TagManager.voiceTagId(savedBinding.tag).orEmpty()
+            })
+            check(binding.tagId.isNotBlank()) { "この返信のタグIDがありません。返信を再生成してください。" }
             check(node.ttsReady && !node.isUser) { "返信の生成が完了してから実行してください。" }
             val text = ChatVoicePolicy.speechText(node.text)
             val file = File.createTempFile("chat-tts-", ".wav", context.cacheDir)
@@ -61,7 +67,7 @@ class ChatTtsController(
                 try {
                     withContext(Dispatchers.IO) {
                         try {
-                            request.generate(text, voice, file)
+                            request.generate(text, binding, file)
                         } catch (error: Exception) {
                             file.delete()
                             throw error

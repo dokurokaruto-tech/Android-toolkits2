@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 from generation_agent.config import AgentConfig, load_config_values
 from generation_agent.sox_runtime import configure_sox, find_sox
+from generation_agent.reference_audio import ffmpeg_executable
 
 DEFAULT_MODEL_DIR = "models/Qwen3-TTS-12Hz-1.7B-Base"
 DEFAULT_TTS_PYTHON = ".venv-tts/Scripts/python.exe"
@@ -23,6 +24,7 @@ _REQUIRED_EXACT = {
     "torch": "2.7.1+cu126",
     "torchaudio": "2.7.1+cu126",
     "qwen-tts": "0.1.1",
+    "imageio-ffmpeg": "0.6.0",
 }
 _REQUIRED_RANGES = {
     "Pillow": ((10, 0, 0), (12, 0, 0)),
@@ -112,6 +114,8 @@ def model_issues(model: Path | None) -> list[str]:
 
 def runtime_check() -> int:
     print(f"[OK] SoX: {configure_sox()}")
+    subprocess.run([ffmpeg_executable(), "-version"], capture_output=True, timeout=10, check=True)
+    print("[OK] FFmpeg audio decoder")
     import torch
     import torchaudio
     import soundfile

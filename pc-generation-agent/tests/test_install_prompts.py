@@ -15,6 +15,7 @@ from tools.tts_setup import main, package_issues
 
 READY = {
     "torch": "2.7.1+cu126", "torchaudio": "2.7.1+cu126", "qwen-tts": "0.1.1",
+    "imageio-ffmpeg": "0.6.0",
     "Pillow": "11.3.0", "soundfile": "0.13.1",
 }
 
@@ -37,6 +38,14 @@ class PackageDetectionTest(unittest.TestCase):
             with self.subTest(version=version), \
                  patch("importlib.metadata.version", side_effect=dict(READY, torch=version).__getitem__):
                 self.assertTrue(any("torch:" in issue for issue in package_issues()))
+
+    def test_ffmpeg_requires_setup(self):
+        def version(name):
+            if name == "imageio-ffmpeg":
+                raise importlib.metadata.PackageNotFoundError(name)
+            return READY[name]
+        with patch("importlib.metadata.version", side_effect=version):
+            self.assertEqual(package_issues(), ["Missing package: imageio-ffmpeg"])
 
     def test_qwen_pin_enforced(self):
         versions = dict(READY, **{"qwen-tts": "0.1.0"})

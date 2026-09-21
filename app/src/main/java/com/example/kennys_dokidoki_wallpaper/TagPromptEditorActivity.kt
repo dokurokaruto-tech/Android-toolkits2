@@ -59,6 +59,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
     private var currentVoice: TagVoice? = null
     private var importingVoice = false
     private var voiceImportJob: Job? = null
+    private var remoteVoiceUi: TagVoiceRemoteUi? = null
     private lateinit var voiceTranscript: EditText
     private val pickVoiceLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -234,9 +235,17 @@ class TagPromptEditorActivity : AppCompatActivity() {
         } else {
             TagManager.getTagVoice(originalTag)
         }
+        findViewById<View>(R.id.btn_pc_tag_voice).apply {
+            isEnabled = TagManager.voiceTagId(originalTag) != null
+            setOnClickListener {
+                val tagId = TagManager.voiceTagId(originalTag) ?: return@setOnClickListener
+                if (remoteVoiceUi == null) { remoteVoiceUi = TagVoiceRemoteUi(this@TagPromptEditorActivity) }
+                remoteVoiceUi?.show(tagId, originalTag)
+            }
+        }
         voiceTranscript = findViewById(R.id.et_voice_transcript)
         voiceTranscript.setText(currentVoice?.refText.orEmpty())
-        findViewById<View>(R.id.btn_pick_tag_voice).setOnClickListener { pickVoiceLauncher.launch(arrayOf("audio/*")) }
+        findViewById<View>(R.id.btn_pick_tag_voice).setOnClickListener { pickVoiceLauncher.launch(arrayOf("audio/*", "application/mp4")) }
         findViewById<View>(R.id.btn_clear_tag_voice).setOnClickListener {
             currentVoice = null
             voiceTranscript.setText("")
@@ -281,7 +290,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
             } else {
                 AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
                     .setTitle("タグの削除")
-                    .setMessage("「$originalTag」を削除してもいいの？")
+                    .setMessage("「$originalTag」を削除してもいいの？\nPCに保存した音声は自動削除されません。必要なら先に「PC保存音声を管理」から削除してください。")
                     .setPositiveButton("削除する") { _, _ ->
                         TagManager.deleteTag(this, originalTag)
                         Toast.makeText(this, "「$originalTag」を消し去ったわ！", Toast.LENGTH_SHORT).show()
@@ -689,6 +698,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        remoteVoiceUi?.close()
         voiceImportJob?.cancel()
         stopGenerateMotion()
         generateJob?.cancel()

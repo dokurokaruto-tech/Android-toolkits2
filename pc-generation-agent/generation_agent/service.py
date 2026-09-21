@@ -44,6 +44,15 @@ class GenerationService:
     def synthesize(self, body: dict[str, Any]) -> bytes:
         return self._tts.synthesize(body)
 
+    def list_voices(self, tag_id: str) -> dict[str, Any]:
+        return self._tts.list_voices(tag_id)
+
+    def store_voice(self, tag_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        return self._tts.store_voice(tag_id, body)
+
+    def delete_voices(self, tag_id: str, epoch: str, sample_id: str | None) -> dict[str, Any]:
+        return self._tts.delete_voices(tag_id, epoch, sample_id)
+
     def start(self) -> None:
         self._worker.start()
 

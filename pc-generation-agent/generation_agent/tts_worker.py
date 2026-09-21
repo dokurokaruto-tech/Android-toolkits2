@@ -10,6 +10,7 @@ from pathlib import Path
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from generation_agent.sox_runtime import configure_sox
+from generation_agent.reference_audio import decode_reference
 
 CHUNK_CHARACTERS = 200
 MAX_NEW_TOKENS = 2048
@@ -37,6 +38,7 @@ def split_text(text: str) -> list[str]:
 
 def generate(request: Path) -> None:
     configure_sox()
+    decode_reference(request.parent / "reference.audio", request.parent / "reference.wav")
     import numpy as np
     import soundfile as sf
     import torch
@@ -45,14 +47,14 @@ def generate(request: Path) -> None:
     body = json.loads(request.read_text(encoding="utf-8"))
     root = request.parent
     try:
-        with sf.SoundFile(root / "reference.audio") as source:
+        with sf.SoundFile(root / "reference.wav") as source:
             if (not 1 <= source.frames / source.samplerate <= MAX_REFERENCE_SECONDS
                     or source.channels > 2 or source.samplerate > MAX_SAMPLE_RATE):
                 raise ValueError("サンプルは1〜30秒、192kHz以下のモノラル／ステレオ音声にしてください。")
             sample_rate = source.samplerate
             reference = source.read(dtype="float32", always_2d=True).mean(axis=1)
     except sf.LibsndfileError as error:
-        raise ValueError("音声を読み込めません。WAV・FLAC・MP3を使用してください。") from error
+        raise ValueError("音声を読み込めません。WAV・FLAC・MP3・M4Aを使用してください。") from error
     if not np.isfinite(reference).all() or np.max(np.abs(reference)) < 1e-5:
         raise ValueError("サンプル音声が無音か不正です。")
     if not torch.cuda.is_available():

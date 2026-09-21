@@ -17,7 +17,7 @@ data class TagVoice(val sampleId: String, val name: String, val refText: String 
     }
 }
 
-data class ChatVoice(val tag: String, val voice: TagVoice)
+data class ChatVoice(val tag: String, val voice: TagVoice, val tagId: String = "")
 
 object ChatVoicePolicy {
     const val MAX_SAMPLE_BYTES = 6 * 1024 * 1024
@@ -48,6 +48,7 @@ object ChatVoicePolicy {
         voices.forEach { item ->
             put(JSONObject().apply {
                 put("tag", item.tag)
+                put("tagId", item.tagId)
                 put("voice", item.voice.toJson())
             })
         }
@@ -55,6 +56,6 @@ object ChatVoicePolicy {
 
     fun decode(array: JSONArray): List<ChatVoice> = (0 until array.length()).map { index ->
         val item = array.getJSONObject(index)
-        ChatVoice(item.getString("tag"), TagVoice.fromJson(item.getJSONObject("voice")))
+        ChatVoice(item.getString("tag"), TagVoice.fromJson(item.getJSONObject("voice")), item.optString("tagId", ""))
     }
 }

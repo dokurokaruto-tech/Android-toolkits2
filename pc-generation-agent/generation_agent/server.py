@@ -14,6 +14,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from .config import AgentConfig
 from .service import GenerationService
 from .tts import TtsBusyError, TtsUnavailableError
+from .voice_store import VoiceChangedError, VoiceMissingError
+
+_VOICE = re.compile(r"^/api/v1/tts/voices/([0-9a-f]{32})$")
 
 _JOB = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})$")
 _CANCEL = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/cancel$")
@@ -67,10 +70,15 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 "lora_dir": str(self.server.config.lora_dir),
                 "mobile_thumbnails": True,
                 "progressive_tiles": True,
+                "tts_voice_cache": True,
                 "tts_configured": self.server.config.tts_model_dir is not None,
             })
             return
         if not self._authorized(query):
+            return
+        match = _VOICE.fullmatch(path)
+        if match:
+            self._voice_request("GET", match.group(1), query)
             return
         if path.startswith("/sdapi/v1/"):
             self._proxy_sd("GET", path + (("?" + parsed.query) if parsed.query else ""))
@@ -188,6 +196,10 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         path, query = parsed.path, parse_qs(parsed.query)
         if not self._authorized(query):
             return
+        match = _VOICE.fullmatch(path)
+        if match:
+            self._voice_request("POST", match.group(1), query)
+            return
         if path.startswith("/sdapi/v1/"):
             self._proxy_sd("POST", path + (("?" + parsed.query) if parsed.query else ""))
             return
@@ -197,6 +209,8 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 self._bytes(HTTPStatus.OK, audio, "audio/wav", cache="no-store")
             except ValueError as error:
                 self._error(HTTPStatus.BAD_REQUEST, str(error))
+            except VoiceMissingError as error:
+                self._error(HTTPStatus.NOT_FOUND, str(error))
             except TtsBusyError as error:
                 self._error(HTTPStatus.CONFLICT, str(error))
             except TtsUnavailableError as error:
@@ -281,6 +295,10 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         path, query = parsed.path, parse_qs(parsed.query)
         if not self._authorized(query):
             return
+        match = _VOICE.fullmatch(path)
+        if match:
+            self._voice_request("DELETE", match.group(1), parse_qs(parsed.query, keep_blank_values=True))
+            return
         if path == "/api/v1/library/images":
             date = query.get("date", [""])[0]
             name = query.get("name", [""])[0]
@@ -297,6 +315,25 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 self._error(HTTPStatus.NOT_FOUND, "image not found")
             return
         self._error(HTTPStatus.NOT_FOUND, "route not found")
+
+    def _voice_request(self, method: str, tag_id: str, query: dict[str, list[str]]) -> None:
+        try:
+            if method == "POST":
+                value = self.server.service.store_voice(tag_id, self._read_json())
+            elif method == "DELETE":
+                self._drain_request_body()
+                value = self.server.service.delete_voices(
+                    tag_id, query.get("epoch", [""])[0], query.get("sample_id", [None])[0],
+                )
+            else:
+                value = self.server.service.list_voices(tag_id)
+            self._json(HTTPStatus.OK, value)
+        except ValueError as error:
+            self._error(HTTPStatus.BAD_REQUEST, str(error))
+        except VoiceChangedError as error:
+            self._error(HTTPStatus.CONFLICT, str(error))
+        except Exception as error:
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
 
     def _drain_request_body(self) -> None:
         # Routes that answer without reading the body must still consume it,
