@@ -23,9 +23,6 @@ object TagVariantPolicy {
     /** 旧形式から移行した文章に付ける名前。 */
     const val ORIGINAL_NAME = "オリジナル"
 
-    /** 新しい文章を作るときの名前の候補（プリセット）。自由入力もできる。 */
-    val PRESET_NAMES = listOf("ニュートラル", "優しめ", "厳しめ", "明るめ", "丁寧め", "短め")
-
     /** キャラチャット側で「どの性格を発動させるか」の選択結果を保存するprefs名。 */
     const val SELECTION_PREFS = "tag_variant_selection"
 

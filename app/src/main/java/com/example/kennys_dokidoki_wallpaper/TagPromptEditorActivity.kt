@@ -17,13 +17,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.LinearInterpolator
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,17 +53,12 @@ class TagPromptEditorActivity : AppCompatActivity() {
     private lateinit var tvImpliedTags: TextView
     private lateinit var tvLocalCardStatus: TextView
     private lateinit var btnLinkLocalCard: Button
-    private lateinit var spVariantSelector: Spinner
-    private lateinit var tvVariantPreview: TextView
-    private lateinit var btnEditVariant: Button
+    private lateinit var llVariantContainer: LinearLayout
     private lateinit var btnAddVariant: Button
     private lateinit var originalTag: String
 
     /** このタグが持つ文章バリエーション（画面内の作業用コピー。保存時にまとめて書き込む） */
     private var currentVariants = mutableListOf<TagPromptVariant>()
-
-    /** 選択中の文章の位置 */
-    private var selectedVariantIndex = 0
 
     /** バリエーション編集ダイアログでAI置き換えの出力先になるエディタ */
     private var variantEditText: EditText? = null
@@ -193,9 +186,7 @@ class TagPromptEditorActivity : AppCompatActivity() {
         tvImpliedTags = findViewById(R.id.tv_implied_tags_display)
         tvLocalCardStatus = findViewById(R.id.tv_local_card_status)
         btnLinkLocalCard = findViewById(R.id.btn_link_local_card)
-        spVariantSelector = findViewById(R.id.sp_variant_selector)
-        tvVariantPreview = findViewById(R.id.tv_variant_preview)
-        btnEditVariant = findViewById(R.id.btn_edit_variant)
+        llVariantContainer = findViewById(R.id.ll_variant_container)
         btnAddVariant = findViewById(R.id.btn_add_variant)
         val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar_tag_editor)
         val btnEditImplied = findViewById<Button>(R.id.btn_edit_implied_tags)
@@ -251,26 +242,6 @@ class TagPromptEditorActivity : AppCompatActivity() {
         btnEditImplied.setOnClickListener { showImpliedTagsPickerDialog() }
         btnLinkLocalCard.setOnClickListener { showLocalCardPickerDialog() }
         btnAddVariant.setOnClickListener { showVariantEditorDialog(currentVariants.size, isNew = true) }
-        btnEditVariant.setOnClickListener {
-            if (selectedVariantIndex in currentVariants.indices) {
-                showVariantEditorDialog(selectedVariantIndex, isNew = false)
-            }
-        }
-        spVariantSelector.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: android.widget.AdapterView<*>?,
-                view: View?,
-                position: Int,
-                id: Long
-            ) {
-                if (position in currentVariants.indices) {
-                    selectedVariantIndex = position
-                    updateVariantPreview()
-                }
-            }
-
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-        }
         btnSave.setOnClickListener {
             val newTagName = etTagName.text.toString().trim()
 
@@ -390,31 +361,18 @@ class TagPromptEditorActivity : AppCompatActivity() {
     }
 
     /**
-     * タグが持つ文章バリエーションを選択式で並べ直す。既存の文章は名前ごとに選択肢になる。
+     * タグが持つ文章バリエーションを、横長のボタンとして並べ直す。
      */
     private fun renderVariants() {
-        val names = if (currentVariants.isEmpty()) {
-            listOf("（まだ文章がありません）")
-        } else {
-            currentVariants.map { "${it.name}（${it.text.length}文字）" }
-        }
-        selectedVariantIndex = selectedVariantIndex.coerceIn(0, (currentVariants.size - 1).coerceAtLeast(0))
-        spVariantSelector.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        }
-        spVariantSelector.setSelection(if (currentVariants.isEmpty()) 0 else selectedVariantIndex)
-        updateVariantPreview()
-    }
-
-    /** 選択中の文章をプレビューする */
-    private fun updateVariantPreview() {
-        val variant = currentVariants.getOrNull(selectedVariantIndex)
-        if (variant == null) {
-            tvVariantPreview.text = "＋ボタンで最初の文章を追加してください。"
-            btnEditVariant.isEnabled = false
-        } else {
-            tvVariantPreview.text = variant.text.ifBlank { "（まだ文章が書かれていない）" }
-            btnEditVariant.isEnabled = true
+        llVariantContainer.removeAllViews()
+        currentVariants.forEachIndexed { index, variant ->
+            val item = LayoutInflater.from(this)
+                .inflate(R.layout.item_tag_prompt_variant, llVariantContainer, false)
+            val btn = item.findViewById<Button>(R.id.btn_variant)
+            val chars = variant.text.length
+            btn.text = "${variant.name}（${chars}文字）"
+            btn.setOnClickListener { showVariantEditorDialog(index, isNew = false) }
+            llVariantContainer.addView(item)
         }
     }
 
@@ -453,15 +411,6 @@ class TagPromptEditorActivity : AppCompatActivity() {
         }
         etName.setText(initial.name)
         etText.setText(initial.text)
-        view.findViewById<ChipGroup>(R.id.cg_variant_preset_names).apply {
-            removeAllViews()
-            TagVariantPolicy.PRESET_NAMES.forEach { preset ->
-                addView(Chip(view.context).apply {
-                    text = preset
-                    setOnClickListener { etName.setText(preset) }
-                })
-            }
-        }
 
         fun refreshCounter(text: CharSequence) {
             tvCounter.text = counterText(text.toString())
@@ -504,10 +453,8 @@ class TagPromptEditorActivity : AppCompatActivity() {
             val text = etText.text.toString()
             if (editing) {
                 currentVariants[index] = TagPromptVariant(name, text)
-                selectedVariantIndex = index
             } else {
                 currentVariants.add(TagPromptVariant(name, text))
-                selectedVariantIndex = currentVariants.size - 1
             }
             renderVariants()
             closeEditor()

@@ -27,9 +27,7 @@ internal object JevGenieTools {
         if (!TagManager.isLoaded) {
             return emptyList()
         }
-        return TagManager.allTags.map {
-            JevGenieTagRef(it, TagManager.getTagPrompt(it), TagManager.getTagPromptVariants(it))
-        }
+        return TagManager.allTags.map { JevGenieTagRef(it, TagManager.getTagPrompt(it)) }
     }
 
     /** OpenRouterのchat/completionsを叩く。利用数カウントは他画面と同じ規則で行う。 */
@@ -78,11 +76,7 @@ internal object JevGenieTools {
         if (!exists) {
             return false
         }
-        if (plan.variant == null) {
-            TagManager.setTagPrompt(context, plan.target.name, plan.newText)
-        } else {
-            TagManager.setTagPromptVariant(context, plan.target.name, plan.variant, plan.newText)
-        }
+        TagManager.setTagPrompt(context, plan.target.name, plan.newText)
         return true
     }
 }
