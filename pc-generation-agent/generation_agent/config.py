@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .tts_options import TtsBackend, MAX_KEEP_ALIVE_SECONDS
+from .tts_options import TtsBackend, TtsAttention, MAX_KEEP_ALIVE_SECONDS
 
 DEFAULT_TTS_TIMEOUT_SECONDS = 1200
 
@@ -57,6 +57,7 @@ class AgentConfig:
     tts_unload_sd: bool = True
     tts_backend: TtsBackend = TtsBackend.STANDARD
     tts_keep_alive_seconds: int = 0
+    tts_attention: TtsAttention = TtsAttention.AUTO
 
     @classmethod
     def load(cls, path: Path) -> "AgentConfig":
@@ -99,4 +100,5 @@ class AgentConfig:
             tts_unload_sd=raw.get("tts_unload_sd", True) is True,
             tts_backend=backend,
             tts_keep_alive_seconds=keep_alive,
+            tts_attention=TtsAttention(raw.get("tts_attention", TtsAttention.AUTO.value)),
         )

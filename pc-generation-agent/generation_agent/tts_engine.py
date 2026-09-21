@@ -8,7 +8,9 @@ from collections import OrderedDict
 from pathlib import Path
 
 from .reference_audio import decode_reference
-from .tts_options import (TtsBackend, FAST_PACKAGE_VERSION, MAX_NEW_TOKENS,
+from .qwen_runtime import import_qwen
+from .tts_attention import prepare_attention
+from .tts_options import (TtsBackend, TtsAttention, FAST_PACKAGE_VERSION, MAX_NEW_TOKENS,
                           GRAPH_SEQUENCE_LENGTH, GRAPH_PROMPT_RESERVE)
 
 _MAX_PROMPTS = 2
@@ -28,11 +30,14 @@ class TtsEngine:
         self._base = None
         self._key = None
         self._prompts = OrderedDict()
+        self._attention = {}
 
-    def _load(self, directory: str, backend: TtsBackend) -> None:
+    def _load(self, directory: str, backend: TtsBackend, attention: TtsAttention) -> None:
         import torch
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA版PyTorchとNVIDIAドライバーを確認してください。")
+        Qwen3TTSModel = import_qwen()
+        self._attention = prepare_attention(Path(directory), attention)
         if backend == TtsBackend.CUDA_GRAPH:
             try:
                 version = importlib.metadata.version("faster-qwen3-tts")
@@ -47,7 +52,6 @@ class TtsEngine:
             )
             self._base = self._model.model
         else:
-            from qwen_tts import Qwen3TTSModel
             self._model = Qwen3TTSModel.from_pretrained(
                 directory, device_map="cuda:0", dtype=torch.float16,
                 attn_implementation="sdpa", local_files_only=True,
@@ -55,7 +59,11 @@ class TtsEngine:
             self._base = self._model
         if getattr(self._base.model, "tts_model_type", None) != "base":
             raise ValueError("Qwen3-TTSのBaseモデルを指定してください。")
-        self._key = (directory, backend)
+        talker = self._base.model.talker
+        for name, module in (("talker", talker), ("predictor", talker.code_predictor)):
+            actual = getattr(module.config, "_attn_implementation", None)
+            self._attention[name] = actual if isinstance(actual, str) else "unknown"
+        self._key = (directory, backend, attention)
 
     def _prompt(self, root: Path, transcript: str):
         import numpy as np
@@ -84,13 +92,14 @@ class TtsEngine:
         import torch
         imports_done = time.monotonic()
         backend = TtsBackend(body.get("backend", TtsBackend.STANDARD.value))
+        attention = TtsAttention(body.get("attention", TtsAttention.AUTO.value))
         if backend == TtsBackend.CUDA_GRAPH:
             for chunk in chunks:
                 check_graph_budget(chunk, body["ref_text"])
         reused = self._model is not None
         if self._model is None:
-            self._load(body["model_dir"], backend)
-        elif self._key != (body["model_dir"], backend):
+            self._load(body["model_dir"], backend, attention)
+        elif self._key != (body["model_dir"], backend, attention):
             raise RuntimeError("モデル設定を変更したらエージェントを再起動してください。")
         torch.cuda.synchronize()
         model_done = time.monotonic()
@@ -116,7 +125,7 @@ class TtsEngine:
             generation_done = time.monotonic()
         sf.write(root / "speech.wav", np.concatenate(audio), rate, subtype="PCM_16")
         total = time.monotonic() - started
-        return {"backend": backend.value, "model_reused": reused, "prompt_cache": prompt_cache,
+        return {"backend": backend.value, "attention": self._attention, "model_reused": reused, "prompt_cache": prompt_cache,
                 "imports_s": round(imports_done - started, 2), "model_s": round(model_done - imports_done, 2),
                 "reference_s": round(prompt_done - model_done, 2),
                 "generation_s": round(generation_done - prompt_done, 2),

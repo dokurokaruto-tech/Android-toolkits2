@@ -119,6 +119,7 @@ class TtsServiceTest(unittest.TestCase):
             self.assertEqual((root / "reference.audio").read_bytes(), AUDIO)
             data = json.loads((root / "request.json").read_text(encoding="utf-8"))
             self.assertEqual(data["ref_text"], "サンプルです。")
+            self.assertEqual(data["attention"], "auto")
             self.assertTrue(self.lock.locked())
             self.sd.unload_checkpoint.assert_called_once()
             (root / "speech.wav").write_bytes(AUDIO)

@@ -93,7 +93,7 @@ class SoxInstallContractTest(unittest.TestCase):
     def test_qwen_path_order(self):
         setup = (ROOT / "tools/tts_setup.py").read_text()
         section = setup[setup.index("def runtime_check("):]
-        self.assertLess(section.index("configure_sox()"), section.index("from qwen_tts import"))
+        self.assertLess(section.index("configure_sox()"), section.index("import_qwen()"))
         worker = (ROOT / "generation_agent/tts_worker.py").read_text()
         for function in ("def generate(", "def serve("):
             section = worker[worker.index(function):]

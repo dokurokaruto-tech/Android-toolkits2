@@ -19,5 +19,6 @@
   "tts_timeout_seconds": 1200,
   "tts_unload_sd": true,
   "tts_backend": "standard",
+  "tts_attention": "auto",
   "tts_keep_alive_seconds": 0
 }

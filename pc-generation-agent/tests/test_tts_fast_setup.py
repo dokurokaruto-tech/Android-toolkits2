@@ -36,10 +36,12 @@ class FastSetupTest(unittest.TestCase):
             self.assertEqual(values["api_key"], "keep")
             self.assertFalse(values["tts_unload_sd"])
             self.assertEqual(values["tts_backend"], "cuda_graph")
+            self.assertEqual(values["tts_attention"], "auto")
             self.assertEqual(values["tts_keep_alive_seconds"], 120)
             set_backend(path, TtsBackend.STANDARD)
             values = json.loads(path.with_suffix(".local.json").read_text())
             self.assertEqual(values["tts_backend"], "standard")
+            self.assertEqual(values["tts_attention"], "sdpa")
             self.assertEqual(values["tts_keep_alive_seconds"], 0)
             self.assertEqual(path.read_bytes(), original)
 

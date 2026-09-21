@@ -16,7 +16,9 @@ sys.path.insert(0, str(ROOT))
 from generation_agent.config import AgentConfig, load_config_values
 from generation_agent.sox_runtime import configure_sox, find_sox
 from generation_agent.reference_audio import ffmpeg_executable
-from generation_agent.tts_options import TtsBackend
+from generation_agent.tts_options import TtsBackend, TtsAttention
+from generation_agent.tts_attention import prepare_attention
+from generation_agent.qwen_runtime import import_qwen
 from tools.tts_fast_setup import package_issues as fast_issues
 
 DEFAULT_MODEL_DIR = "models/Qwen3-TTS-12Hz-1.7B-Base"
@@ -114,14 +116,15 @@ def model_issues(model: Path | None) -> list[str]:
     return issues
 
 
-def runtime_check(backend: TtsBackend = TtsBackend.STANDARD) -> int:
+def runtime_check(backend: TtsBackend = TtsBackend.STANDARD,
+                  attention: TtsAttention = TtsAttention.AUTO, model_dir: Path | None = None) -> int:
     print(f"[OK] SoX: {configure_sox()}")
     subprocess.run([ffmpeg_executable(), "-version"], capture_output=True, timeout=10, check=True)
     print("[OK] FFmpeg audio decoder")
     import torch
     import torchaudio
     import soundfile
-    from qwen_tts import Qwen3TTSModel
+    import_qwen()
 
     print(f"[OK] qwen-tts {importlib.metadata.version('qwen-tts')}, torch {torch.__version__}")
     if not torch.cuda.is_available():
@@ -135,6 +138,8 @@ def runtime_check(backend: TtsBackend = TtsBackend.STANDARD) -> int:
     print(f"[OK] GPU: {properties.name}, VRAM: {properties.total_memory / 1024**3:.1f} GiB")
     if properties.major < 8:
         print("[INFO] GPU compute capability < 8: using FP16 + SDPA; standard FlashAttention 2 is not supported.")
+    report = prepare_attention(model_dir, attention)
+    print("[TTS attention] " + json.dumps(report, ensure_ascii=False))
     if backend == TtsBackend.CUDA_GRAPH:
         issues = fast_issues()
         if issues:
@@ -172,9 +177,11 @@ def check_setup(path: Path) -> int:
     if not executable.is_file():
         issues.append("TTS Python not found. Run setup-tts.bat or set tts_python in config.local.json.")
     else:
-        result = subprocess.run([str(executable), str(Path(__file__).resolve()), "--runtime-check",
-                                 "--backend", config.tts_backend.value],
-                                timeout=RUNTIME_TIMEOUT_SECONDS, check=False)
+        command = [str(executable), str(Path(__file__).resolve()), "--runtime-check",
+                   "--backend", config.tts_backend.value, "--attention", config.tts_attention.value]
+        if config.tts_model_dir is not None:
+            command.extend(["--model-dir", str(config.tts_model_dir)])
+        result = subprocess.run(command, timeout=RUNTIME_TIMEOUT_SECONDS, check=False)
         if result.returncode:
             issues.append("TTS runtime check failed. See the output above.")
     for issue in issues:
@@ -196,8 +203,9 @@ def main() -> int:
     modes.add_argument("--runtime-check", action="store_true")
     modes.add_argument("--packages-check", action="store_true")
     modes.add_argument("--sox-check", action="store_true")
-    parser.add_argument("--model-dir", help="Existing model directory; only used with --prepare")
+    parser.add_argument("--model-dir", help="Existing model directory for --prepare or --runtime-check")
     parser.add_argument("--backend", choices=[item.value for item in TtsBackend], default=TtsBackend.STANDARD.value)
+    parser.add_argument("--attention", choices=[item.value for item in TtsAttention], default=TtsAttention.AUTO.value)
     args = parser.parse_args()
     try:
         if args.sox_check:
@@ -213,7 +221,8 @@ def main() -> int:
                 print(f"[INFO] {issue}")
             return 1 if issues else 0
         if args.runtime_check:
-            return runtime_check(TtsBackend(args.backend))
+            return runtime_check(TtsBackend(args.backend), TtsAttention(args.attention),
+                                 Path(args.model_dir) if args.model_dir else None)
         if args.prepare:
             local = prepare_config(args.config, args.model_dir)
             print(f"[OK] Private settings saved to {local.name}; tracked config unchanged.")

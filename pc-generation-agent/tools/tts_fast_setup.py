@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from generation_agent.config import load_config_values
-from generation_agent.tts_options import TtsBackend, FAST_PACKAGE_VERSION, DEFAULT_KEEP_ALIVE_SECONDS
+from generation_agent.tts_options import TtsBackend, TtsAttention, FAST_PACKAGE_VERSION, DEFAULT_KEEP_ALIVE_SECONDS
 
 
 def package_issues() -> list[str]:
@@ -30,6 +30,7 @@ def set_backend(path: Path, backend: TtsBackend) -> None:
     if not values.get("tts_model_dir"):
         raise ValueError("Run setup-tts.bat first. Existing model path is required.")
     values["tts_backend"] = backend.value
+    values["tts_attention"] = TtsAttention.AUTO.value if backend == TtsBackend.CUDA_GRAPH else TtsAttention.SDPA.value
     values["tts_keep_alive_seconds"] = DEFAULT_KEEP_ALIVE_SECONDS if backend == TtsBackend.CUDA_GRAPH else 0
     local = path.with_suffix(".local.json")
     temporary = local.with_suffix(".tmp")

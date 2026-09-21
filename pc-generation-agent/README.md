@@ -364,6 +364,34 @@ CUDA GraphのVRAM不足や音質問題が出た場合はこちらを使ってく
 高速実装の生成手順は標準と異なるため、同じサンプルでも声・読みの確認が必要です。
 長い文字起こしはGraphの入力容量チェックで拒否する場合があります。無言で本文を切り詰めず、標準モードへの切替を案内します。
 
+#### `flash-attn is not installed` への対応
+
+この表示は、Qwen 0.1.1の **25Hz用エンコーダーのimport時** に出ます。使用中の12Hzモデル全体が手動Attentionへ落ちたことを示す表示ではありません。
+該当メッセージだけを説明文へ置き換え、他の警告・importエラーは残します。**警告を消しただけで速くなったとは扱いません。**
+
+RTX 2070（Turing / SM 7.5）は通常版FlashAttention 2の対応外です。`attn_implementation="flash_attention_2"` を強制したり、`pip install flash-attn` を自動実行したりはしません。
+[Turing専用移植版](https://github.com/ssiu/flash-attention-turing)も調査しましたが、通常版とはAPIが異なり、対応機能も限定されます。Windowsでの未検証ビルド・互換アダプターは導入しません。
+
+代わりに、**PyTorch内蔵のMemory-Efficient Attention**を検証します。
+PyTorch 2.7のGQA（`enable_gqa=True`）はFlash / Mathカーネル向けです。Transformers 4.57.3はマスクなしSDPAでこの指定を使うため、TuringではMath経路へ落ちる可能性があります。
+本更新では、K/Vのheadを明示的に展開してSDPAへ渡す、Transformers既存の代替経路を利用可能にします。
+
+- 対象は **SM 7.5 / PyTorch 2.7.1 / Transformers 4.57.3** のみ。
+- 起動時の小規模GPUテストで、Mathとの数値一致・有限値・prefill/decodeの速度改善を確認した場合だけ有効化。
+- テスト中はMathへのフォールバックを禁止し、本当にEfficientカーネルが実行できるか確認。速度比較にはK/V展開の費用も含めます。
+- 失敗・遅い・対象外なら従来のSDPAを維持。ファイルを書き換えず、TTSプロセス内のGQA選択だけを変更します。
+- 実際の全AttentionがEfficientカーネルになる保証はありません。形状による自動選択は維持し、CUDA Graphとも併用します。
+
+**PC更新 → `check-tts.bat` → エージェント再起動**で確認できます。追加インストールは不要です。
+`[TTS attention]` の `gqa_policy: "repeat_kv"` が適用済み、`"stock"` が従来経路です。`probe.reason` と `cases` に検証結果が出ます。
+生成時の `[TTS timing]` にも `attention` を記録し、`talker` / `predictor` にモデル設定の実値を出します。
+ベンチマークは小規模Attentionの比較であり、**RTX 2070でのTTS全体の高速化・音質は未検証**です。
+
+`tts_attention: "auto"` が既定です。対策を無効化して比較する場合は `config.local.json` に `"tts_attention": "sdpa"` を追加し、再起動してください。
+`setup-tts-standard.bat` でも対策を無効化します。`setup-tts-fast.bat` はY確認後に `auto` へ戻します。
+
+根拠：[Qwenの警告箇所](https://github.com/QwenLM/Qwen3-TTS/blob/main/qwen_tts/core/tokenizer_25hz/vq/whisper_encoder.py)、[Transformers 4.57.3のGQA選択](https://github.com/huggingface/transformers/blob/v4.57.3/src/transformers/integrations/sdpa_attention.py)、[PyTorch 2.7のGQA制約](https://docs.pytorch.org/docs/2.7/generated/torch.nn.functional.scaled_dot_product_attention.html)。
+
 #### 時間ログの見方
 
 PCコンソールの `[TTS timing]` を確認してください（計測行自体はエラーではありません）。

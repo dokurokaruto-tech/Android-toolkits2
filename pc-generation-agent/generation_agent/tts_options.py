@@ -7,6 +7,11 @@ class TtsBackend(str, Enum):
     CUDA_GRAPH = "cuda_graph"
 
 
+class TtsAttention(str, Enum):
+    AUTO = "auto"
+    SDPA = "sdpa"
+
+
 FAST_PACKAGE_VERSION = "0.3.2"
 MAX_AUDIO_BYTES = 64 * 1024 * 1024
 MAX_NEW_TOKENS = 2048

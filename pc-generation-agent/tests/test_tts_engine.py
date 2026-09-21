@@ -27,6 +27,8 @@ class EngineTest(unittest.TestCase):
         (self.root / "reference.audio").write_bytes(b"original audio")
         self.base = Mock()
         self.base.model.tts_model_type = "base"
+        self.base.model.talker.config._attn_implementation = "sdpa"
+        self.base.model.talker.code_predictor.config._attn_implementation = "sdpa"
         self.base.create_voice_clone_prompt.return_value = [object()]
         self.base.generate_voice_clone.return_value = ([np.ones(24000, dtype=np.float32)], 24000)
         self.factory = Mock()
@@ -48,6 +50,10 @@ class EngineTest(unittest.TestCase):
         self.decode = patch("generation_agent.tts_engine.decode_reference", side_effect=decode)
         self.decoder = self.decode.start()
         self.addCleanup(self.decode.stop)
+        attention = patch("generation_agent.tts_engine.prepare_attention",
+                          return_value={"implementation":"sdpa", "gqa_policy":"stock"})
+        attention.start()
+        self.addCleanup(attention.stop)
         self.body = {"model_dir":"existing/model", "text":"こんにちは", "ref_text":"サンプル", "backend":"standard"}
         self.engine = TtsEngine()
 
@@ -56,6 +62,9 @@ class EngineTest(unittest.TestCase):
         second = self.engine.synthesize(self.body, self.root, ["こんばんは"])
         self.assertFalse(first["model_reused"])
         self.assertTrue(second["model_reused"])
+        self.assertEqual(second["attention"]["implementation"], "sdpa")
+        self.assertEqual(second["attention"]["talker"], "sdpa")
+        self.assertEqual(second["attention"]["predictor"], "sdpa")
         self.assertEqual(second["prompt_cache"], "hit")
         self.factory.from_pretrained.assert_called_once()
         self.base.create_voice_clone_prompt.assert_called_once()

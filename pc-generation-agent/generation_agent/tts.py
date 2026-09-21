@@ -168,7 +168,7 @@ class TtsService:
 
     def _run_worker(self, model: Path, text: str, transcript: str, audio: bytes) -> bytes:
         body = {"model_dir": str(model), "text": text, "ref_text": transcript,
-                "backend": self._config.tts_backend.value}
+                "backend": self._config.tts_backend.value, "attention": self._config.tts_attention.value}
         if self._config.tts_keep_alive_seconds:
             return self._process.synthesize(body, audio)
         # Single-shot mode remains available for externally managed VRAM.
