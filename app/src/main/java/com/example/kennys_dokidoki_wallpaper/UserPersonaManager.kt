@@ -12,13 +12,16 @@ import java.util.UUID
 data class PersonaItem(
     val id: String = UUID.randomUUID().toString(),
     var content: String,
-    var isEnabled: Boolean = true
+    var isEnabled: Boolean = true,
+    /** 並べる枠。候補文は全枠共通のプールから選ぶので、ここでは位置だけを決める。 */
+    var categoryId: String = PersonaGroupPolicy.UNGROUPED_ID
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
             put("id", id)
             put("content", content)
             put("isEnabled", isEnabled)
+            put("categoryId", categoryId)
         }
     }
 
@@ -27,7 +30,8 @@ data class PersonaItem(
             return PersonaItem(
                 id = json.optString("id", UUID.randomUUID().toString()),
                 content = json.getString("content"),
-                isEnabled = json.optBoolean("isEnabled", true)
+                isEnabled = json.optBoolean("isEnabled", true),
+                categoryId = json.optString("categoryId", PersonaGroupPolicy.UNGROUPED_ID)
             )
         }
     }
@@ -111,6 +115,10 @@ object UserPersonaManager {
         val json = prefs.getString(KEY_PERSONAS, null)
         personas.clear()
 
+        // 枠とプールはペルソナ共通。先に読み、既存の指示はプールへ寄せる。
+        PersonaCategories.load(context)
+        PersonaPool.load(context)
+
         if (json != null) {
             val array = JSONArray(json)
             for (i in 0 until array.length()) {
@@ -129,6 +137,9 @@ object UserPersonaManager {
             activePersonaId = null
             savePersonas(context)
         }
+
+        // 旧データ含め、今ある指示書をすべてプールへ投げる（同じ文は増やさない）。
+        PersonaPool.absorb(context, personas.flatMap { it.items.map { item -> item.content } })
     }
 
     fun savePersonas(context: Context) {

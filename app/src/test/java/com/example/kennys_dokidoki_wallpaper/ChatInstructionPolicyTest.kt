@@ -6,12 +6,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatInstructionPolicyTest {
+
+    private fun line(id: String, body: String, category: String = "") =
+        ChatInstructionPolicy.PersonaLine(id, body, category)
+
     @Test
     fun groupsLeavesUnderCategories() {
         val categories = ChatInstructionPolicy.categories(
             ChatInstructionPolicy.Snapshot(
                 personaName = "ケニー",
-                personaItems = listOf("p1" to "甘える", "p2" to "短く話す"),
+                personaItems = listOf(
+                    line("p1", "甘える", "容姿・年齢"),
+                    line("p2", "短く話す", "文章の基本構成")
+                ),
                 imageDescription = "白いワンピース",
                 tags = listOf("金髪" to "髪は金色。", "幼女" to "幼い見た目。"),
                 memories = listOf("ドーナツが好き"),
@@ -33,13 +40,14 @@ class ChatInstructionPolicyTest {
         val user = categories.first { it.kind == ChatInstructionPolicy.Kind.USER }
         assertEquals(listOf("甘える", "短く話す"), user.leaves.map { it.body })
         assertEquals("p1", user.leaves.first().target.key)
+        assertEquals("1 / 2 · 容姿・年齢", user.leaves.first().subtitle)
         assertEquals(listOf("金髪", "幼女"), categories.first { it.kind == ChatInstructionPolicy.Kind.TAG }.leaves.map { it.title })
     }
 
     @Test
     fun collapsedListHidesLeavesUntilToggled() {
         val categories = ChatInstructionPolicy.categories(
-            ChatInstructionPolicy.Snapshot(personaItems = listOf("p1" to "甘える", "p2" to "短く話す"))
+            ChatInstructionPolicy.Snapshot(personaItems = listOf(line("p1", "甘える"), line("p2", "短く話す")))
         )
         val closed = ChatInstructionPolicy.visibleRows(categories, emptySet())
         assertEquals(6, closed.size)

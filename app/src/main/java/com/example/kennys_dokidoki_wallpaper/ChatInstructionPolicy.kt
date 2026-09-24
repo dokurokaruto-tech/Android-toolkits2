@@ -36,6 +36,9 @@ object ChatInstructionPolicy {
         val empty: Boolean = false
     )
 
+    /** ペルソナの指示1本。category は並べる枠の名前で、候補の絞り込みには使わない。 */
+    data class PersonaLine(val id: String, val body: String, val category: String = "")
+
     data class Category(
         val kind: Kind,
         val title: String,
@@ -51,7 +54,7 @@ object ChatInstructionPolicy {
     data class Snapshot(
         val roleText: String = ROLE_TEXT,
         val personaName: String? = null,
-        val personaItems: List<Pair<String, String>> = emptyList(),
+        val personaItems: List<PersonaLine> = emptyList(),
         val imageDescription: String? = null,
         val tags: List<Pair<String, String>> = emptyList(),
         val memories: List<String> = emptyList(),
@@ -61,6 +64,10 @@ object ChatInstructionPolicy {
     )
 
     fun roleText(stored: String?): String = stored?.trim().orEmpty().ifEmpty { ROLE_TEXT }
+
+    /** 枠名を「1 / 3 · 容姿・年齢」のように添える。未分類なら足さない。 */
+    fun categorySuffix(category: String): String =
+        if (category.isBlank()) "" else " · ${category.trim()}"
 
     fun isUneditedStoredSuggest(stored: String?): Boolean {
         val edited = stored?.trim().orEmpty()
@@ -119,15 +126,16 @@ object ChatInstructionPolicy {
     fun categories(snapshot: Snapshot): List<Category> {
         val role = roleText(snapshot.roleText)
         val persona = snapshot.personaName?.trim().orEmpty()
+        val filled = snapshot.personaItems.count { it.body.trim().isNotEmpty() }
         val userLeaves = snapshot.personaItems
-            .map { (id, content) -> id.trim() to content.trim() }
-            .filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
-            .mapIndexed { index, (id, content) ->
+            .map { line -> line.copy(id = line.id.trim(), body = line.body.trim()) }
+            .filter { it.id.isNotEmpty() && it.body.isNotEmpty() }
+            .mapIndexed { index, line ->
                 Leaf(
                     title = if (persona.isEmpty()) ChatInstructionCopy.USER else "${ChatInstructionCopy.USER} · $persona",
-                    subtitle = ChatInstructionCopy.part(index + 1, snapshot.personaItems.count { it.second.trim().isNotEmpty() }),
-                    body = content,
-                    target = Target(Kind.USER, id)
+                    subtitle = ChatInstructionCopy.part(index + 1, filled) + categorySuffix(line.category),
+                    body = line.body,
+                    target = Target(Kind.USER, line.id)
                 )
             }
             .ifEmpty {

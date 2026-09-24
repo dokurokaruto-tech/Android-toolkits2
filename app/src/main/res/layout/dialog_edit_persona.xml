@@ -43,8 +43,8 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
                 android:layout_width="0dp"
@@ -53,14 +53,26 @@
                 android:text="@string/persona_instructions"
                 android:textAppearance="?attr/textAppearanceTitleMedium"
                 android:textColor="?attr/colorOnSurface" />
+
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_add_instruction"
-                style="@style/Widget.Material3.Button.TextButton"
+                android:id="@+id/btn_persona_pool"
+                style="@style/Widget.Material3.Button.TextButton.Icon"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:minHeight="48dp"
-                android:text="@string/persona_instruction_add"
-                app:icon="@drawable/ic_md3_add" />
+                android:text="@string/persona_pool_button"
+                app:icon="@drawable/ic_md3_description"
+                app:iconSize="18dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_persona_categories"
+                style="@style/Widget.Material3.Button.TextButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/persona_category_button"
+                app:icon="@drawable/ic_md3_sort"
+                app:iconSize="18dp" />
 
         </LinearLayout>
 
@@ -69,7 +81,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
-            android:text="@string/persona_instruction_hint"
+            android:text="@string/persona_group_hint"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurfaceVariant" />
 

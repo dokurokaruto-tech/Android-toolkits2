@@ -4119,9 +4119,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
         val personaItems = persona?.items
             ?.filter { it.isEnabled && it.content.isNotBlank() }
-            ?.map { it.id to it.content }
+            ?.map { ChatInstructionPolicy.PersonaLine(it.id, it.content, PersonaCategories.nameOf(it.categoryId)) }
             .orEmpty()
-            .ifEmpty { listOfNotNull(persona?.mergedPrompt?.takeIf { it.isNotBlank() }?.let { (persona?.id ?: "") to it }) }
+            .ifEmpty {
+                listOfNotNull(
+                    persona?.mergedPrompt
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { ChatInstructionPolicy.PersonaLine(persona.id, it) }
+                )
+            }
         return ChatInstructionPolicy.Snapshot(
             roleText = ChatInstructionPolicy.roleText(prefs.getString(ChatInstructionPolicy.ROLE_KEY, null)),
             personaName = persona?.name,
@@ -4601,85 +4607,87 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         detailDialog.show()
     }
 
+    /**
+     * ペルソナの編集。指示書はカテゴリー（枠）ごとに並べ、枠をまたいでドラッグすれば、そのまま引っ越せる。
+     * 登録する文は常に共通のプールから選ぶので、枠によって候補が変わることは無い。
+     */
     private fun showEditPersonaDialog(persona: UserPersona?, onUpdate: () -> Unit) {
         val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_persona)
         val etName = dialogView.findViewById<EditText>(R.id.et_persona_name)
         val nameInput = dialogView.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.til_persona_name)
         etName.doAfterTextChanged { nameInput.error = null }
-        val tvTitle = dialogView.findViewById<TextView>(R.id.tv_edit_persona_title)
-        val btnCancel = dialogView.findViewById<View>(R.id.btn_cancel_persona)
-        val btnSave = dialogView.findViewById<View>(R.id.btn_save_persona)
-        
-        val btnAddInstruction = dialogView.findViewById<View>(R.id.btn_add_instruction)
-        val rvInstructions = dialogView.findViewById<RecyclerView>(R.id.rv_instructions)
 
-        val itemsList = mutableListOf<PersonaItem>()
-        if (persona != null) {
-            tvTitle.setText(R.string.persona_edit)
-            etName.setText(persona.name)
-            itemsList.addAll(persona.items.map { it.copy() }) 
-        } else {
-            tvTitle.setText(R.string.persona_new)
-            itemsList.add(PersonaItem(content = "", isEnabled = true))
-        }
+        dialogView.findViewById<TextView>(R.id.tv_edit_persona_title)
+            .setText(if (persona == null) R.string.persona_new else R.string.persona_edit)
+        etName.setText(persona?.name ?: "")
 
-        rvInstructions.layoutManager = LinearLayoutManager(dialogView.context)
-        
+        val list = dialogView.findViewById<RecyclerView>(R.id.rv_instructions)
+        list.layoutManager = LinearLayoutManager(dialogView.context)
+        val itemsList = persona?.items?.map { it.copy() }?.toMutableList() ?: mutableListOf()
+
         var touchHelper: ItemTouchHelper? = null
-        val adapter = PersonaInstructionsAdapter(
-            itemsList,
-            onStartDrag = { viewHolder ->
-                touchHelper?.startDrag(viewHolder)
+        lateinit var adapter: PersonaInstructionsAdapter
+        adapter = PersonaInstructionsAdapter(
+            items = itemsList,
+            categories = { PersonaCategories.all() },
+            onStartDrag = { viewHolder -> touchHelper?.startDrag(viewHolder) },
+            onEdit = { item ->
+                showDetailEditDialog(item) { body ->
+                    item.content = body
+                    adapter.paint()
+                }
             },
-            onItemClick = { item, position ->
-                showDetailEditDialog(item) { updatedContent ->
-                    item.content = updatedContent
-                    rvInstructions.adapter?.notifyItemChanged(position)
+            // 選んだ文はこの枠に登録するだけ。プールの中身そのものは動かない。
+            onAddTo = { group ->
+                PersonaPoolDialog.register(this, group, { itemsList }, { adapter.paint() }) { entry ->
+                    itemsList.add(PersonaItem(content = entry.body, categoryId = group.id))
+                    adapter.paint()
                 }
             }
         )
-        rvInstructions.adapter = adapter
-
-        val callback = PersonaTouchHelperCallback(adapter)
-        touchHelper = ItemTouchHelper(callback).apply {
-            attachToRecyclerView(rvInstructions)
+        list.adapter = adapter
+        adapter.paint()
+        touchHelper = ItemTouchHelper(PersonaTouchHelperCallback(adapter)).apply {
+            attachToRecyclerView(list)
         }
 
-        btnAddInstruction.setOnClickListener {
-            val newItem = PersonaItem(content = "", isEnabled = true)
-            showDetailEditDialog(newItem) { updatedContent ->
-                newItem.content = updatedContent
-                itemsList.add(newItem)
-                adapter.notifyItemInserted(itemsList.size - 1)
-                rvInstructions.scrollToPosition(itemsList.size - 1)
-            }
+        dialogView.findViewById<View>(R.id.btn_persona_categories).setOnClickListener {
+            PersonaCategoryDialog.show(this, { itemsList }) { adapter.paint() }
+        }
+        dialogView.findViewById<View>(R.id.btn_persona_pool).setOnClickListener {
+            PersonaPoolDialog.manage(this, { itemsList }) { adapter.paint() }
         }
 
         val dialog = createChatPopup(dialogView)
-
-        btnCancel.setOnClickListener {
-            dialog.dismiss()
+        dialogView.findViewById<View>(R.id.btn_cancel_persona).setOnClickListener { dialog.dismiss() }
+        dialogView.findViewById<View>(R.id.btn_save_persona).setOnClickListener {
+            commitPersona(persona, etName.text.toString(), nameInput, adapter.orderedItems(), onUpdate, dialog)
         }
-
-        btnSave.setOnClickListener {
-            val name = etName.text.toString().trim()
-            val cleanedItems = itemsList.filter { it.content.trim().isNotEmpty() }
-            
-            if (name.isNotEmpty()) {
-                if (persona == null) {
-                    UserPersonaManager.addPersona(this, name, "", cleanedItems)
-                } else {
-                    UserPersonaManager.editPersona(this, persona.id, name, "", cleanedItems)
-                }
-                onUpdate()
-                dialog.dismiss()
-            } else {
-                nameInput.error = getString(R.string.persona_name_required)
-                etName.requestFocus()
-            }
-        }
-
         dialog.show()
+    }
+
+    /** 表示された順がそのまま結合順。空行を落としてから保存する。 */
+    private fun commitPersona(
+        persona: UserPersona?,
+        rawName: String,
+        nameInput: com.google.android.material.textfield.TextInputLayout,
+        ordered: List<PersonaItem>,
+        onUpdate: () -> Unit,
+        dialog: androidx.appcompat.app.AppCompatDialog
+    ) {
+        val name = rawName.trim()
+        if (name.isEmpty()) {
+            nameInput.error = getString(R.string.persona_name_required)
+            return
+        }
+        val cleaned = ordered.filter { it.content.trim().isNotEmpty() }
+        if (persona == null) {
+            UserPersonaManager.addPersona(this, name, "", cleaned)
+        } else {
+            UserPersonaManager.editPersona(this, persona.id, name, "", cleaned)
+        }
+        onUpdate()
+        dialog.dismiss()
     }
 
 }
