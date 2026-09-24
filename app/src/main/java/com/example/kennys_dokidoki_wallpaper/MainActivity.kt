@@ -849,10 +849,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         
         updateGenSettingsUI()
 
-        findViewById<View>(R.id.btn_setting_resolution).setOnClickListener { showResolutionDialog() }
-        findViewById<View>(R.id.btn_setting_steps).setOnClickListener { showStepsDialog() }
-        findViewById<View>(R.id.btn_setting_batch).setOnClickListener { showBatchDialog() }
-        findViewById<View>(R.id.btn_setting_sampler).setOnClickListener { showSamplerDialog() }
+        findViewById<View>(R.id.btn_setting_resolution).setOnClickListener { showGenSettingDialog(BuilderGenSettingPolicy.Kind.RESOLUTION) }
+        findViewById<View>(R.id.btn_setting_steps).setOnClickListener { showGenSettingDialog(BuilderGenSettingPolicy.Kind.STEPS) }
+        findViewById<View>(R.id.btn_setting_batch).setOnClickListener { showGenSettingDialog(BuilderGenSettingPolicy.Kind.BATCH) }
+        findViewById<View>(R.id.btn_setting_sampler).setOnClickListener { showGenSettingDialog(BuilderGenSettingPolicy.Kind.SAMPLER) }
         findViewById<View>(R.id.btn_reset_builder).setOnClickListener { showResetBuilderDialog() }
 
         cbShowTags.isChecked = settingsPrefs.getBoolean("show_tags_on_thumbnail", true)
@@ -2290,11 +2290,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun updateGenSettingsUI() {
-        tvSettingResolution.text = "${genWidth} x ${genHeight}"
-        tvSettingSteps.text = "Steps: $genSteps"
-        tvSettingBatch.text = "Batch: $genBatchCount"
-        tvSettingSampler.text = genSampler
+        tvSettingResolution.text = previewOf(BuilderGenSettingPolicy.Kind.RESOLUTION)
+        tvSettingSteps.text = previewOf(BuilderGenSettingPolicy.Kind.STEPS)
+        tvSettingBatch.text = previewOf(BuilderGenSettingPolicy.Kind.BATCH)
+        tvSettingSampler.text = previewOf(BuilderGenSettingPolicy.Kind.SAMPLER)
     }
+
+    private fun previewOf(kind: BuilderGenSettingPolicy.Kind): String =
+        BuilderGenSettingPolicy.preview(kind, builderGenSettings())
 
     private fun saveGenSettings() {
         getSharedPreferences("settings", Context.MODE_PRIVATE).edit().apply {
@@ -2309,72 +2312,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         commitBuilderState()
     }
 
-    private fun showResolutionDialog() {
-        val options = arrayOf("720 x 1280 (9:16)", "1280 x 720 (16:9)", "512 x 512 (1:1)", "512 x 768 (2:3)", "768 x 512 (3:2)", "カスタム入力")
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setTitle("解像度の選択")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> { genWidth = 720; genHeight = 1280 }
-                    1 -> { genWidth = 1280; genHeight = 720 }
-                    2 -> { genWidth = 512; genHeight = 512 }
-                    3 -> { genWidth = 512; genHeight = 768 }
-                    4 -> { genWidth = 768; genHeight = 512 }
-                    5 -> { showCustomResolutionDialog(); return@setItems }
-                }
-                saveGenSettings()
-            }.show()
-    }
-
-    private fun showCustomResolutionDialog() {
-        val etW = EditText(this).apply { hint = "横"; setText(genWidth.toString()); inputType = android.text.InputType.TYPE_CLASS_NUMBER; setTextColor(Color.WHITE); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        val etH = EditText(this).apply { hint = "縦"; setText(genHeight.toString()); inputType = android.text.InputType.TYPE_CLASS_NUMBER; setTextColor(Color.WHITE); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        val dialogLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(64, 32, 64, 32)
-            addView(etW); addView(TextView(context).apply { text = " x "; setTextColor(Color.WHITE) }); addView(etH)
+    /** Builder 上部4ボタン共通のポップアップ。スワイプと数値入力を同じ画面で扱う。 */
+    private fun showGenSettingDialog(kind: BuilderGenSettingPolicy.Kind) {
+        GenSettingDialog.show(this, kind, builderGenSettings()) { settings ->
+            genWidth = settings.width
+            genHeight = settings.height
+            genSteps = settings.steps
+            genBatchCount = settings.batch
+            genSampler = settings.sampler
+            saveGenSettings()
         }
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setTitle("カスタム解像度")
-            .setView(dialogLayout)
-            .setPositiveButton("OK") { _, _ ->
-                genWidth = etW.text.toString().toIntOrNull() ?: 720
-                genHeight = etH.text.toString().toIntOrNull() ?: 1280
-                saveGenSettings()
-            }.setNegativeButton("キャンセル", null).show()
     }
 
-    private fun showStepsDialog() {
-        val input = EditText(this).apply { setText(genSteps.toString()); inputType = android.text.InputType.TYPE_CLASS_NUMBER; setTextColor(Color.WHITE) }
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setTitle("ステップ数 (1-100)")
-            .setView(input)
-            .setPositiveButton("OK") { _, _ ->
-                genSteps = input.text.toString().toIntOrNull()?.coerceIn(1, 100) ?: 20
-                saveGenSettings()
-            }.show()
-    }
-
-    private fun showBatchDialog() {
-        val input = EditText(this).apply { setText(genBatchCount.toString()); inputType = android.text.InputType.TYPE_CLASS_NUMBER; setTextColor(Color.WHITE) }
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setTitle("バッチカウント (一度に生成する枚数)")
-            .setView(input)
-            .setPositiveButton("OK") { _, _ ->
-                genBatchCount = input.text.toString().toIntOrNull()?.coerceIn(1, 10) ?: 1
-                saveGenSettings()
-            }.show()
-    }
-
-    private fun showSamplerDialog() {
-        val samplers = arrayOf("Euler a", "Euler", "LMS", "Heun", "DPM2", "DPM2 a", "DPM++ 2S a", "DPM++ 2M", "DPM++ SDE", "DPM++ 2M Karras", "DPM++ SDE Karras", "DDIM")
-        AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper)
-            .setTitle("サンプラーの選択")
-            .setItems(samplers) { _, which ->
-                genSampler = samplers[which]
-                saveGenSettings()
-            }.show()
-    }
+    private fun builderGenSettings(): BuilderGenSettingPolicy.Settings =
+        BuilderGenSettingPolicy.Settings(genWidth, genHeight, genSteps, genBatchCount, genSampler)
 
     private fun showEditPromptCardDialog(card: PromptCard?, initialCategory: String = "未分類") {
         val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_prompt_card)
