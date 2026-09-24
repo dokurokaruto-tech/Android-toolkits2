@@ -170,7 +170,7 @@ object PersonaPool {
      * 並びに載っていない行は末尾に残すので、行が増えた直後でも壊れない。
      */
     fun arrange(context: Context, order: List<Pair<String, String>>) {
-        val next = order.mapNotNull { (id, categoryId) -> byId(id)?.apply { this.categoryId = categoryId } }
+        val next = order.mapNotNull { (id, categoryId) -> byId(id)?.apply { this.categoryId = categoryId } }.toMutableList()
         items.filterNot { entry -> order.any { it.first == entry.id } }.forEach { next += it }
         replace(context, next)
     }
