@@ -20,10 +20,9 @@ object PersonaCategoryDialog {
     private const val ACTION_DELETE = "削除"
 
     /**
-     * @param working 編集中のペルソナの指示。件数表示に読むだけで書き換えない。
      * @param onChanged 枠が変わるたびに外の一覧を塗り替える合図。
      */
-    fun show(activity: Activity, working: () -> List<PersonaItem>, onChanged: () -> Unit) {
+    fun show(activity: Activity, onChanged: () -> Unit) {
         val (_, view) = Md3PopupDialog.inflate(activity, R.layout.dialog_persona_list)
         view.findViewById<MaterialTextView>(R.id.tv_persona_list_title).setText(R.string.persona_categories_title)
         view.findViewById<MaterialTextView>(R.id.tv_persona_list_hint).setText(R.string.persona_categories_hint)
@@ -38,11 +37,12 @@ object PersonaCategoryDialog {
 
         lateinit var adapter: PersonaActionRowAdapter
 
-        fun paint(items: List<PersonaItem>) {
+        fun paint() {
             val categories = PersonaCategories.all()
             empty.visibility = if (categories.isEmpty()) View.VISIBLE else View.GONE
             adapter.submit(categories.mapIndexed { index, category ->
-                val owned = items.count { it.categoryId == category.id }
+                // 件数はプール側の共通の数。ペルソナごとの持ち分ではない
+                val owned = PersonaPool.countOf(category.id)
                 PersonaActionRow(
                     id = category.id,
                     body = "${index + 1}. ${category.name}",
@@ -63,7 +63,7 @@ object PersonaCategoryDialog {
                 if (!PersonaCategories.rename(activity, id, name)) {
                     Toast.makeText(activity, R.string.persona_duplicate, Toast.LENGTH_SHORT).show()
                 }
-                paint(working())
+                paint()
                 onChanged()
             }
         }
@@ -81,13 +81,13 @@ object PersonaCategoryDialog {
                 // 枠を消しても文は捨てない。未分類へ落ちるだけなので確認は挟まない。
                 ACTION_DELETE -> PersonaCategories.remove(activity, row.id)
             }
-            paint(working())
+            paint()
             onChanged()
         }
 
         adapter = PersonaActionRowAdapter(::handle)
         list.adapter = adapter
-        paint(working())
+        paint()
 
         add.setOnClickListener {
             PersonaTextInputDialog.show(
@@ -100,7 +100,7 @@ object PersonaCategoryDialog {
                 if (!PersonaCategories.add(activity, name)) {
                     Toast.makeText(activity, R.string.persona_duplicate, Toast.LENGTH_SHORT).show()
                 }
-                paint(working())
+                paint()
                 onChanged()
             }
         }

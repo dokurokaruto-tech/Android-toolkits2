@@ -4119,7 +4119,13 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
         val personaItems = persona?.items
             ?.filter { it.isEnabled && it.content.isNotBlank() }
-            ?.map { ChatInstructionPolicy.PersonaLine(it.id, it.content, PersonaCategories.nameOf(it.categoryId)) }
+            ?.map {
+                ChatInstructionPolicy.PersonaLine(
+                    it.id,
+                    it.content,
+                    PersonaCategories.nameOf(PersonaPool.categoryIdOf(it.content))
+                )
+            }
             .orEmpty()
             .ifEmpty {
                 listOfNotNull(
@@ -4210,9 +4216,17 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val items = persona.items.map { it.copy() }.toMutableList()
         val index = items.indexOfFirst { it.id == key }
         if (index >= 0) {
-            if (body.isEmpty()) items.removeAt(index) else items[index].content = body
+            if (body.isEmpty()) {
+                items.removeAt(index)
+            } else {
+                // 文と枠の結びつきは共通なので、書き換えた文へ枠を追わせる
+                val bound = PersonaPool.categoryIdOf(items[index].content)
+                items[index].content = body
+                PersonaPool.absorb(this, listOf(body to bound))
+            }
         } else if (body.isNotEmpty()) {
             items.add(PersonaItem(content = body))
+            PersonaPool.absorb(this, listOf(body to PersonaGroupPolicy.UNGROUPED_ID))
         }
         UserPersonaManager.editPersona(this, persona.id, persona.name, persona.description, items)
         return true
@@ -4609,7 +4623,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     /**
      * ペルソナの編集。指示書はカテゴリー（枠）ごとに並べ、枠をまたいでドラッグすれば、そのまま引っ越せる。
-     * 登録する文は常に共通のプールから選ぶので、枠によって候補が変わることは無い。
+     * 登録する文は常に共通のプールから選び、文と枠の結びつきもペルソナで共有する。
      */
     private fun showEditPersonaDialog(persona: UserPersona?, onUpdate: () -> Unit) {
         val (_, dialogView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_persona)
@@ -4630,17 +4644,23 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         adapter = PersonaInstructionsAdapter(
             items = itemsList,
             categories = { PersonaCategories.all() },
+            bindings = { PersonaPool.bindings() },
+            onCategorize = { next -> PersonaPool.categorize(this, next) },
             onStartDrag = { viewHolder -> touchHelper?.startDrag(viewHolder) },
             onEdit = { item ->
+                // 文を差し替えても、付いていた枠は新しい文へ引き継ぐ
+                val bound = PersonaPool.categoryIdOf(item.content)
                 showDetailEditDialog(item) { body ->
                     item.content = body
+                    PersonaPool.absorb(this, listOf(body.trim() to bound))
                     adapter.paint()
                 }
             },
-            // 選んだ文はこの枠に登録するだけ。プールの中身そのものは動かない。
             onAddTo = { group ->
-                PersonaPoolDialog.register(this, group, { itemsList }, { adapter.paint() }) { entry ->
-                    itemsList.add(PersonaItem(content = entry.body, categoryId = group.id))
+                PersonaPoolDialog.register(this, group, { adapter.paint() }) { entry ->
+                    itemsList.add(PersonaItem(content = entry.body))
+                    // 枠の決まっていない文をこの枠から選んだときだけ、ここで枠を結ぶ
+                    PersonaPool.absorb(this, listOf(entry.body to group.id))
                     adapter.paint()
                 }
             }
@@ -4652,10 +4672,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
 
         dialogView.findViewById<View>(R.id.btn_persona_categories).setOnClickListener {
-            PersonaCategoryDialog.show(this, { itemsList }) { adapter.paint() }
+            PersonaCategoryDialog.show(this) { adapter.paint() }
         }
         dialogView.findViewById<View>(R.id.btn_persona_pool).setOnClickListener {
-            PersonaPoolDialog.manage(this, { itemsList }) { adapter.paint() }
+            PersonaPoolDialog.manage(this) { adapter.paint() }
         }
 
         val dialog = createChatPopup(dialogView)

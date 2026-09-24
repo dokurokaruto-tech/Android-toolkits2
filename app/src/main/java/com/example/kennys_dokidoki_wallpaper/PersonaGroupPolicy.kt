@@ -3,9 +3,11 @@ package com.example.kennys_dokidoki_wallpaper
 /**
  * ペルソナ指示書をカテゴリー単位で束ねる規則。
  * 保存は常に平坦な items（＝結合順）で、group は表示のためにその場で作る。
+ * 文がどの枠に属するかはプール側が全局で持つので、ここはその写しを見るだけ。
  *
- *   items ──groups()──> [Header, Entry, Entry, Header, Entry] ──flatten()──> items
- *                                  ↑ ここに落とすと、そのカテゴリの並びに引っ越す
+ *   bindings ──┐
+ *              ├─groups()──> [Header, Entry, Entry, Header, Entry] ──flatten()──> items
+ *   items ─────┘                     ↑ ここに落とすと、その枠へ引っ越す
  */
 object PersonaGroupPolicy {
 
@@ -31,13 +33,21 @@ object PersonaGroupPolicy {
      * カテゴリー順 → その中での並び順に並べ替える。
      * 空カテゴリも出す。ここが「追加」の受け口になるので隠さない。
      */
-    fun groups(items: List<PersonaItem>, categories: List<PersonaCategory>): List<Group> {
+    /** 本文（前後の空白は無視）が属する枠。プールに無い文は未分類。 */
+    fun categoryOf(bindings: Map<String, String>, body: String): String =
+        bindings[body.trim()].orEmpty()
+
+    fun groups(
+        items: List<PersonaItem>,
+        categories: List<PersonaCategory>,
+        categoryOf: (PersonaItem) -> String
+    ): List<Group> {
         val buckets = LinkedHashMap<String, Group>()
         categories.forEach { buckets[it.id] = Group(it.id, it.name) }
         val other = Group(UNGROUPED_ID, UNGROUPED_LABEL)
 
         items.forEach { item ->
-            (buckets[item.categoryId] ?: other).items.add(item)
+            (buckets[categoryOf(item)] ?: other).items.add(item)
         }
         if (other.items.isNotEmpty()) {
             buckets[UNGROUPED_ID] = other
@@ -45,16 +55,22 @@ object PersonaGroupPolicy {
         return buckets.values.toList()
     }
 
-    fun rows(items: List<PersonaItem>, categories: List<PersonaCategory>): List<Row> =
-        groups(items, categories).flatMap { group ->
-            listOf<Row>(Row.Header(group)) + group.items.map { Row.Entry(group, it) }
-        }
+    fun rows(
+        items: List<PersonaItem>,
+        categories: List<PersonaCategory>,
+        categoryOf: (PersonaItem) -> String
+    ): List<Row> = groups(items, categories, categoryOf).flatMap { group ->
+        listOf<Row>(Row.Header(group)) + group.items.map { Row.Entry(group, it) }
+    }
 
-    /** 表示行を結合順の平坦リストへ戻す。ここでカテゴリIDも確定する。 */
+    /** 表示行を結合順の平坦リストへ戻す。 */
     fun flatten(rows: List<Row>): List<PersonaItem> =
-        rows.filterIsInstance<Row.Entry>().map { entry ->
-            entry.item.apply { categoryId = entry.group.id }
-        }
+        rows.filterIsInstance<Row.Entry>().map { it.item }
+
+    /** 見た目上の「文 → 枠」。ここをプールへ書き戻せば、全ペルソナに同じ束縛が効く。 */
+    fun bindings(rows: List<Row>): Map<String, String> =
+        rows.filterIsInstance<Row.Entry>()
+            .associate { entry -> entry.item.content.trim() to entry.group.id }
 
     /**
      * from の行を to に落とすときの、1行除けた後の並びでの挿入位置。

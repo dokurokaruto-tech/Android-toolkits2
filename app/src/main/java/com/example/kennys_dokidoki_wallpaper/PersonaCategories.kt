@@ -11,9 +11,12 @@ import java.util.UUID
  * 指示書を並べる枠（ユーザーが自由に増やせる）と、枠をどれを選んでも同じ一覧になる候補文のプール。
  *
  *   [カテゴリー]  結合の「順」だけを決める。中身は制限しない
- *   [プール]      全カテゴリー共通の候補。登録時に本文をコピーする
- *                        ↓
- *   UserPersona.items = (プール由来の本文 + categoryId + 有効フラグ) の平坦な列 = 結合順
+ *   [プール]      全カテゴリー共通の候補。文ごとに枠を1つだけ持つ
+ *                        ↓ 本文（前後の空白は無視）で引く
+ *   UserPersona.items = プールからコピーした本文 + 有効フラグ の平坦な列 = 結合順
+ *
+ * 文と枠の結びつきはペルソナ側には持たせない。どれか1つのペルソナで枠を動かせば、
+ * 同じ文を使っているペルソナは全部まとめて並び直る。
  */
 private const val PREFS = "user_persona_prefs"
 
@@ -30,8 +33,12 @@ private fun parseArray(raw: String?): JSONArray? = try {
 /** 並び枠。id は固定なので、名前を変えても既存の指示はついてくる。 */
 data class PersonaCategory(val id: String = UUID.randomUUID().toString(), var name: String)
 
-/** プール候補。 */
-data class PersonaPoolEntry(val id: String = UUID.randomUUID().toString(), var body: String)
+/** プール候補。categoryId が「この文はどの枠に入るか」の共通の束縛そのもの。 */
+data class PersonaPoolEntry(
+    val id: String = UUID.randomUUID().toString(),
+    var body: String,
+    var categoryId: String = PersonaGroupPolicy.UNGROUPED_ID
+)
 
 /** カテゴリーの一覧と順番。ペルソナ共通で使う。 */
 object PersonaCategories {
@@ -122,7 +129,7 @@ object PersonaCategories {
     }
 }
 
-/** 候補文のプール。カテゴリーでは絞らない。 */
+/** 候補文のプール。枠では絞らないが、文ごとの「どの枠か」はここで持つ。 */
 object PersonaPool {
     private const val KEY = "persona_pool"
 
@@ -139,19 +146,56 @@ object PersonaPool {
             if (body.isEmpty()) {
                 continue
             }
-            items.add(PersonaPoolEntry(id = obj.optString("id").ifEmpty { UUID.randomUUID().toString() }, body = body))
+            items.add(
+                PersonaPoolEntry(
+                    id = obj.optString("id").ifEmpty { UUID.randomUUID().toString() },
+                    body = body,
+                    categoryId = obj.optString("categoryId")
+                )
+            )
         }
     }
 
-    fun bodyOf(id: String): String = items.firstOrNull { it.id == id }?.body.orEmpty()
+    /** 本文 → 枠。ペルソナ側はこれで並びを見る。 */
+    fun bindings(): Map<String, String> = items.associate { it.body.trim() to it.categoryId }
 
-    /** 空と重複は弾いて追加。 */
-    fun add(context: Context, body: String): PersonaPoolEntry? {
+    fun categoryIdOf(body: String): String = PersonaGroupPolicy.categoryOf(bindings(), body)
+
+    /** その枠に結ばれている文の数。ペルソナをまたいだ共通の数。 */
+    fun countOf(categoryId: String): Int = items.count { it.categoryId == categoryId }
+
+    /**
+     * 文と枠を結び付ける。プールに無い文なら、その場で候補として加える。
+     * 空の枠IDは「未分類」なので、外す使い方もできる。
+     */
+    fun categorize(context: Context, next: Map<String, String>) {
+        var changed = false
+        next.forEach { (rawBody, categoryId) ->
+            val body = rawBody.trim()
+            if (body.isEmpty()) {
+                return@forEach
+            }
+            val target = items.firstOrNull { it.body.trim() == body }
+            if (target == null) {
+                items.add(PersonaPoolEntry(body = body, categoryId = categoryId))
+                changed = true
+            } else if (target.categoryId != categoryId) {
+                target.categoryId = categoryId
+                changed = true
+            }
+        }
+        if (changed) {
+            save(context)
+        }
+    }
+
+    /** 空と重複は弾いて追加。枠が決まっていれば、それごと預かる。 */
+    fun add(context: Context, body: String, categoryId: String = PersonaGroupPolicy.UNGROUPED_ID): PersonaPoolEntry? {
         val clean = body.trim()
         if (clean.isEmpty() || items.any { it.body.trim() == clean }) {
             return null
         }
-        return PersonaPoolEntry(body = clean).also {
+        return PersonaPoolEntry(body = clean, categoryId = categoryId).also {
             items.add(it)
             save(context)
         }
@@ -184,27 +228,34 @@ object PersonaPool {
     }
 
     /**
-     * 今ある指示書をプールへ投げる。同じ文は増やさない。
-     * UserPersonaManager.loadPersonas から呼ぶので、旧データは開いた瞬間に揃う。
+     * 今ある指示書をプールへ投げる。同じ文は増やさず、枠の指定は空いているときだけ埋める。
+     * UserPersonaManager.loadPersonas から呼ぶので、旧データは開いた瞬間に共通の束縛へ移る。
      */
-    fun absorb(context: Context, bodies: List<String>) {
-        val seen = items.mapTo(mutableSetOf()) { it.body.trim() }
-        val before = items.size
-        bodies.forEach { raw ->
-            val body = raw.trim()
-            if (body.isEmpty() || !seen.add(body)) {
+    fun absorb(context: Context, seeds: List<Pair<String, String>>) {
+        var changed = false
+        seeds.forEach { (rawBody, rawCategory) ->
+            val body = rawBody.trim()
+            val categoryId = rawCategory.trim()
+            if (body.isEmpty()) {
                 return@forEach
             }
-            items.add(PersonaPoolEntry(body = body))
+            val target = items.firstOrNull { it.body.trim() == body }
+            if (target == null) {
+                items.add(PersonaPoolEntry(body = body, categoryId = categoryId))
+                changed = true
+            } else if (target.categoryId.isEmpty() && categoryId.isNotEmpty()) {
+                target.categoryId = categoryId
+                changed = true
+            }
         }
-        if (items.size > before) {
+        if (changed) {
             save(context)
         }
     }
 
     private fun save(context: Context) {
         val array = JSONArray()
-        items.forEach { array.put(JSONObject().put("id", it.id).put("body", it.body)) }
+            array.put(JSONObject().put("id", it.id).put("body", it.body).put("categoryId", it.categoryId))
         preferences(context).edit().putString(KEY, array.toString()).apply()
     }
 }

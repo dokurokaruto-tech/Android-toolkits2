@@ -14,16 +14,19 @@ import com.google.android.material.button.MaterialButton
 /**
  * ペルソナの指示書一覧。カテゴリー見出しつきの行を並べる。
  * 保存は平坦な items（＝結合順）のままなので、見出しは表示用にその場で組み直す。
+ * 文がどの枠に属するかはプール（全ペルソナ共通）が覚えている。
  *
  *   [Header 社会的な立場]   ← ここで「ここに追加」＝プールから1本選ぶ
  *     [✓ 指示文      ] ⠿
  *   [Header 容姿・年齢]
  *     [✓ 指示文      ] ⠿
- *   ⠿ を引いて別枠の Header に落とすと、その枠の先頭へ引っ越す
+ *   ⠿ を引いて別枠の Header に落とすと、枠の結びつきはプールごと書き換わる
  */
 class PersonaInstructionsAdapter(
     private val items: MutableList<PersonaItem>,
     private val categories: () -> List<PersonaCategory>,
+    private val bindings: () -> Map<String, String>,
+    private val onCategorize: (Map<String, String>) -> Unit,
     private val onStartDrag: (RecyclerView.ViewHolder) -> Unit,
     private val onEdit: (PersonaItem) -> Unit,
     private val onAddTo: (PersonaGroupPolicy.Group) -> Unit
@@ -44,10 +47,11 @@ class PersonaInstructionsAdapter(
         val handle: ImageButton = view.findViewById(R.id.tv_drag_handle)
     }
 
-    /** 現在の items と枠から見出し込みの行を組み直す。 */
+    /** 現在の items と、プール側の「文 → 枠」から見出し込みの行を組み直す。 */
     fun paint() {
+        val current = bindings()
         rows.clear()
-        rows.addAll(PersonaGroupPolicy.rows(items, categories()))
+        rows.addAll(PersonaGroupPolicy.rows(items, categories()) { item -> PersonaGroupPolicy.categoryOf(current, item.content) })
         notifyDataSetChanged()
     }
 
@@ -71,10 +75,14 @@ class PersonaInstructionsAdapter(
     /** 表示中の並び＝結合順を、平坦な列として返す。 */
     fun orderedItems(): List<PersonaItem> = PersonaGroupPolicy.flatten(rows)
 
-    /** 枠をまたいだ移動を、items の並びと categoryId に書き戻す。 */
+    /**
+     * ドラッグを確定する。items はこのペルソナの並び直し、枠の結びつきはプールへの共通書き込み。
+     * 書き戻しはまとめて1回だけやるので、連続した行の移動も保存は1度で済む。
+     */
     fun commitDrag() {
         items.clear()
         items.addAll(PersonaGroupPolicy.flatten(rows))
+        onCategorize(PersonaGroupPolicy.bindings(rows))
         paint()
     }
 

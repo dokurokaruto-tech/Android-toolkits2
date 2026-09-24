@@ -12,16 +12,13 @@ import java.util.UUID
 data class PersonaItem(
     val id: String = UUID.randomUUID().toString(),
     var content: String,
-    var isEnabled: Boolean = true,
-    /** 並べる枠。候補文は全枠共通のプールから選ぶので、ここでは位置だけを決める。 */
-    var categoryId: String = PersonaGroupPolicy.UNGROUPED_ID
+    var isEnabled: Boolean = true
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
             put("id", id)
             put("content", content)
             put("isEnabled", isEnabled)
-            put("categoryId", categoryId)
         }
     }
 
@@ -30,8 +27,7 @@ data class PersonaItem(
             return PersonaItem(
                 id = json.optString("id", UUID.randomUUID().toString()),
                 content = json.getString("content"),
-                isEnabled = json.optBoolean("isEnabled", true),
-                categoryId = json.optString("categoryId", PersonaGroupPolicy.UNGROUPED_ID)
+                isEnabled = json.optBoolean("isEnabled", true)
             )
         }
     }
@@ -119,11 +115,14 @@ object UserPersonaManager {
         PersonaCategories.load(context)
         PersonaPool.load(context)
 
+        val legacy = mutableListOf<Pair<String, String>>()
         if (json != null) {
             val array = JSONArray(json)
             for (i in 0 until array.length()) {
                 try {
-                    personas.add(UserPersona.fromJson(array.getJSONObject(i)))
+                    val obj = array.getJSONObject(i)
+                    personas.add(UserPersona.fromJson(obj))
+                    readLegacyBindings(obj, legacy)
                 } catch (e: Exception) {
                     // 壊れたデータはスキップ
                 }
@@ -138,8 +137,21 @@ object UserPersonaManager {
             savePersonas(context)
         }
 
-        // 旧データ含め、今ある指示書をすべてプールへ投げる（同じ文は増やさない）。
-        PersonaPool.absorb(context, personas.flatMap { it.items.map { item -> item.content } })
+        // 指示書をプールへ投げる。昔ペルソナごとに持っていた枠の指定が、ここで共通の束縛になる。
+        val bodies = personas.flatMap { persona -> persona.items.map { it.content to PersonaPool.categoryIdOf(it.content) } }
+        PersonaPool.absorb(context, legacy + bodies)
+    }
+
+    /** 旧形式の items から「文 → 枠」だけ拾う。新しい形ではプールが同じ役割を持つ。 */
+    private fun readLegacyBindings(persona: JSONObject, into: MutableList<Pair<String, String>>) {
+        val items = persona.optJSONArray("items") ?: return
+        for (index in 0 until items.length()) {
+            val item = items.optJSONObject(index) ?: continue
+            val body = item.optString("content").trim()
+            if (body.isNotEmpty()) {
+                into += body to item.optString("categoryId")
+            }
+        }
     }
 
     fun savePersonas(context: Context) {

@@ -12,7 +12,8 @@ import com.google.android.material.textview.MaterialTextView
 
 /**
  * 指示文のプール。カテゴリーをどれ選んでも同じ一覧が出る（候補は共通）。
- * 登録時に本文をコピーするので、プールを直しても登録済みは動かない。
+ * 登録時に本文をコピーするので、プールを直しても登録済みの文は動かない。
+ * ただし「どの枠か」の指定だけは共通で、ここで動かせば全ペルソナの並びに効く。
  */
 object PersonaPoolDialog {
 
@@ -25,30 +26,29 @@ object PersonaPoolDialog {
     enum class Mode { MANAGE, REGISTER }
 
     /** プールの中身そのものを整備する。 */
-    fun manage(activity: Activity, working: () -> List<PersonaItem>, onChanged: () -> Unit) {
-        show(activity, Mode.MANAGE, "", working, onChanged) {}
+    fun manage(activity: Activity, onChanged: () -> Unit) {
+        show(activity, Mode.MANAGE, null, onChanged) {}
     }
 
     /** カテゴリーヘッダーの「ここに追加」から開く。選んだら登録して閉じる。 */
     fun register(
         activity: Activity,
         group: PersonaGroupPolicy.Group,
-        working: () -> List<PersonaItem>,
         onChanged: () -> Unit,
         onPick: (PersonaPoolEntry) -> Unit
     ) {
-        show(activity, Mode.REGISTER, group.name, working, onChanged, onPick)
+        show(activity, Mode.REGISTER, group, onChanged, onPick)
     }
 
     private fun show(
         activity: Activity,
         mode: Mode,
-        groupName: String,
-        working: () -> List<PersonaItem>,
+        group: PersonaGroupPolicy.Group?,
         onChanged: () -> Unit,
         onPick: (PersonaPoolEntry) -> Unit
     ) {
         val registering = mode == Mode.REGISTER
+        val groupName = group?.name.orEmpty()
         val (_, view) = Md3PopupDialog.inflate(activity, R.layout.dialog_persona_list)
         view.findViewById<MaterialTextView>(R.id.tv_persona_list_title).setText(R.string.persona_pool_title)
         view.findViewById<MaterialTextView>(R.id.tv_persona_list_hint).text = hintOf(activity, mode, groupName)
@@ -81,17 +81,16 @@ object PersonaPoolDialog {
 
         fun paint() {
             val entries = visibleEntries()
-            val taken = working().map { it.content.trim() }.toSet()
             empty.visibility = if (entries.isEmpty()) View.VISIBLE else View.GONE
             adapter.submit(entries.mapIndexed { index, entry ->
                 PersonaActionRow(
                     id = entry.id,
                     body = entry.body,
-                    note = if (registering && entry.body.trim() in taken) {
-                        activity.getString(R.string.persona_pool_registered)
-                    } else {
-                        ""
-                    },
+                    // 文がどの枠かは全ペルソナ共通。ここで見るのがそのまま実態
+                    note = activity.getString(
+                        R.string.persona_pool_group_note,
+                        PersonaCategories.nameOf(entry.categoryId)
+                    ),
                     actions = if (registering) listOf(ACTION_USE) else actionsOf(index, entries.size),
                     onTap = if (registering) { { pick(entry) } } else null
                 )
@@ -156,7 +155,8 @@ object PersonaPoolDialog {
                 "",
                 PersonaTextInputDialog.Mode.BODY
             ) { body ->
-                val added = PersonaPool.add(activity, body)
+                // 枠から開いているなら、その枠のまま預かる（他に枠が無い文なので）
+                val added = PersonaPool.add(activity, body, group?.id.orEmpty())
                 if (added == null) {
                     Toast.makeText(activity, R.string.persona_duplicate, Toast.LENGTH_SHORT).show()
                     return@show
