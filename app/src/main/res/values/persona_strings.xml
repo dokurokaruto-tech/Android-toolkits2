@@ -20,8 +20,6 @@
     <string name="persona_name">ペルソナの名称</string>
     <string name="persona_name_required">名称を入力してください</string>
     <string name="persona_instructions">カスタム指示</string>
-    <string name="persona_instruction_add">追加</string>
-    <string name="persona_instruction_hint">有効な指示を上から順に適用します。\n右端のハンドルをドラッグして並べ替えられます。</string>
     <string name="persona_instruction_edit">カスタム指示を編集</string>
     <string name="persona_detail_hint">呼び方や接し方など、AIキャラへの指示を入力してください。</string>
     <string name="persona_instruction_body">指示内容</string>
@@ -34,4 +32,33 @@
     <string name="persona_enable_instruction">指示を有効にする</string>
     <string name="persona_delete_instruction">指示を削除</string>
     <string name="persona_reorder_instruction">指示を並べ替え</string>
+
+    <!-- 指示書を並べる枠と、全ペルソナ共通の指示書一覧 -->
+    <string name="persona_group_hint">カテゴリーの順 → その中の順で結合する。文も枠も並びも全ペルソナ共通で、ここで変えると他のペルソナにもそのまま返る。このペルソナ専用なのは on/off だけ。</string>
+    <string name="persona_category_button">カテゴリー</string>
+    <string name="persona_pool_button">共通の指示書</string>
+    <string name="persona_group_add">この枠に追加</string>
+    <string name="persona_categories_title">指示書のカテゴリー</string>
+    <string name="persona_categories_hint">並べる枠の名前と順番。枠の順番が、そのままプロンプトの結合順になる。件数は全ペルソナ共通の一覧の数で、枠を消した文は未分類へ落ちる。</string>
+    <string name="persona_category_empty">枠が無い。下から追加して。</string>
+    <string name="persona_category_add">新しいカテゴリー</string>
+    <string name="persona_category_new_title">新しいカテゴリー</string>
+    <string name="persona_category_new_hint">同名の枠は作れない。</string>
+    <string name="persona_category_rename_title">カテゴリー名を編集</string>
+    <string name="persona_category_rename_hint">登録済みの指示は、新しい名前についてくる。</string>
+    <string name="persona_pool_title">指示書の一覧</string>
+    <string name="persona_pool_manage_hint">文・枠・並びをここで決める。変更はすべてのペルソナにそのまま反映される。点ける/消すだけがペルソナごとの設定。</string>
+    <string name="persona_pool_add">新しい指示文</string>
+    <string name="persona_pool_group_note">枠: %1$s</string>
+    <string name="persona_pool_empty">まだ1行もない。下から追加して。</string>
+    <string name="persona_pool_search">含まれる語で絞る</string>
+    <string name="persona_pool_entry_edit">指示書の文を編集</string>
+    <string name="persona_pool_entry_hint">同じ文を使っているペルソナは、全部この文についてくる。</string>
+    <string name="persona_pool_new_title">新しい指示文</string>
+    <string name="persona_pool_new_hint">全ペルソナ共通の行として加わる。同じ文がもうあれば増やさない。</string>
+    <string name="persona_line_new_title">『%1$s』に新しい指示文</string>
+    <string name="persona_line_new_hint">この枠に加えて、全ペルソナ共通の行にする。</string>
+    <string name="persona_line_reused">その文はもう共通の行にある。この枠へ移した。</string>
+    <string name="persona_duplicate">同じものは追加できない。</string>
+    <string name="persona_input_required">入力してください。</string>
 </resources>

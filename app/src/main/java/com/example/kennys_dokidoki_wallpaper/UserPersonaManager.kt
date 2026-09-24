@@ -6,8 +6,8 @@ import org.json.JSONObject
 import java.util.UUID
 
 /**
- * ユーザーの人格（ペルソナ）内の個別指示。
- * Geminiのカスタム指示のように、個別に有効/無効、並べ替えができるわ☆
+ * ペルソナ1行ぶん。id と on/off が本体で、content は共通の一覧の写し。
+ * 文・枠・並びを変えたいときは PersonaPool 側へ書く（=全ペルソナに効く）。
  */
 data class PersonaItem(
     val id: String = UUID.randomUUID().toString(),
@@ -111,11 +111,18 @@ object UserPersonaManager {
         val json = prefs.getString(KEY_PERSONAS, null)
         personas.clear()
 
+        // 枠と指示書の一覧はペルソナ共通。先に読むので、古い行も同じ一覧に寄せることができる。
+        PersonaCategories.load(context)
+        PersonaPool.load(context)
+
+        val legacyCategory = mutableMapOf<String, String>()
         if (json != null) {
             val array = JSONArray(json)
             for (i in 0 until array.length()) {
                 try {
-                    personas.add(UserPersona.fromJson(array.getJSONObject(i)))
+                    val obj = array.getJSONObject(i)
+                    personas.add(UserPersona.fromJson(obj))
+                    readLegacyCategories(obj, legacyCategory)
                 } catch (e: Exception) {
                     // 壊れたデータはスキップ
                 }
@@ -128,6 +135,59 @@ object UserPersonaManager {
         if (activePersonaId != null && personas.none { it.id == activePersonaId }) {
             activePersonaId = null
             savePersonas(context)
+        }
+
+        // 旧データはここで一度だけ、共通の一覧へ寄せる。既存のプロンプトの文は変えない。
+        alignWithPool(context, legacyCategory, defaultOn = false)
+    }
+
+    /**
+     * 共通の一覧を全ペルソナに行き渡らせる。文・枠・並びは共有され、on/off だけがペルソナに残る。
+     * 一覧側を書き換えた後なら、新規の行は全ペルソナで点いたまま加わる。
+     */
+    fun syncWithRegistry(context: Context) {
+        alignWithPool(context, emptyMap(), defaultOn = true)
+    }
+
+    private fun alignWithPool(context: Context, legacyCategory: Map<String, String>, defaultOn: Boolean) {
+        val result = PersonaLineAligner.align(PersonaPool.working(), personas, legacyCategory, defaultOn)
+        PersonaPool.replace(context, PersonaPool.working())
+        if (result.personasChanged) {
+            savePersonas(context)
+        }
+    }
+
+    /** このペルソナの on/off だけを変える。文と枠には触らない。 */
+    fun setInstructionEnabled(context: Context, personaId: String, lineId: String, on: Boolean) {
+        val item = personas.find { it.id == personaId }?.items?.firstOrNull { it.id == lineId } ?: return
+        if (item.isEnabled != on) {
+            item.isEnabled = on
+            savePersonas(context)
+        }
+    }
+
+    /** 旧形式の items に残っていた「行のid → 枠」を拾う。新しい形では一覧側が枠を持つ。 */
+    private fun readLegacyCategories(persona: JSONObject, into: MutableMap<String, String>) {
+        val items = persona.optJSONArray("items") ?: return
+        for (index in 0 until items.length()) {
+            val item = items.optJSONObject(index) ?: continue
+            val category = item.optString("categoryId")
+            val id = item.optString("id")
+            if (category.isNotEmpty() && id.isNotEmpty()) {
+                into[id] = category
+            }
+        }
+    }
+
+    /** 旧形式の items から「文 → 枠」だけ拾う。新しい形ではプールが同じ役割を持つ。 */
+    private fun readLegacyBindings(persona: JSONObject, into: MutableList<Pair<String, String>>) {
+        val items = persona.optJSONArray("items") ?: return
+        for (index in 0 until items.length()) {
+            val item = items.optJSONObject(index) ?: continue
+            val body = item.optString("content").trim()
+            if (body.isNotEmpty()) {
+                into += body to item.optString("categoryId")
+            }
         }
     }
 
@@ -148,10 +208,6 @@ object UserPersonaManager {
             description = description,
             items = items.toMutableList()
         )
-        // itemsが空でdescriptionが非空なら自動変換
-        if (persona.items.isEmpty() && description.isNotEmpty()) {
-            persona.items.add(PersonaItem(content = description, isEnabled = true))
-        }
         personas.add(persona)
         // 最初のペルソナなら自動でアクティブにする
         if (personas.size == 1) {
@@ -161,12 +217,21 @@ object UserPersonaManager {
         return persona
     }
 
-    fun editPersona(context: Context, id: String, newName: String, newDescription: String, newItems: List<PersonaItem> = emptyList()) {
+    /** newItems を渡さない限り、行は共通の一覧から作り直す（on/off だけ引き継ぐ）。 */
+    fun editPersona(
+        context: Context,
+        id: String,
+        newName: String,
+        newDescription: String,
+        newItems: List<PersonaItem>? = null
+    ) {
         val persona = personas.find { it.id == id } ?: return
         persona.name = newName
         persona.description = newDescription
-        persona.items = newItems.toMutableList()
-        savePersonas(context)
+        if (newItems != null) {
+            persona.items = newItems.toMutableList()
+        }
+        syncWithRegistry(context)
     }
 
     fun updatePersona(context: Context, updated: UserPersona) {
