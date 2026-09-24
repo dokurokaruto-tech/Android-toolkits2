@@ -74,6 +74,11 @@ object PersonaPoolDialog {
             return entries.filter { it.body.contains(needle, ignoreCase = true) }
         }
 
+        fun pick(entry: PersonaPoolEntry) {
+            onPick(entry)
+            dismiss()
+        }
+
         fun paint() {
             val entries = visibleEntries()
             val taken = working().map { it.content.trim() }.toSet()
@@ -91,11 +96,6 @@ object PersonaPoolDialog {
                     onTap = if (registering) { { pick(entry) } } else null
                 )
             })
-        }
-
-        fun pick(entry: PersonaPoolEntry) {
-            onPick(entry)
-            dismiss()
         }
 
         fun edit(entry: PersonaPoolEntry) {
