@@ -8,15 +8,15 @@ import org.json.JSONObject
 import java.util.UUID
 
 /*
- * 指示書を並べる枠（ユーザーが自由に増やせる）と、枠をどれを選んでも同じ一覧になる候補文のプール。
+ * 指示書を並べる枠（ユーザーが自由に増やせる）と、指示書そのものの共有一覧。
  *
- *   [カテゴリー]  結合の「順」だけを決める。中身は制限しない
- *   [プール]      全カテゴリー共通の候補。文ごとに枠を1つだけ持つ
- *                        ↓ 本文（前後の空白は無視）で引く
- *   UserPersona.items = プールからコピーした本文 + 有効フラグ の平坦な列 = 結合順
+ *   [カテゴリー]  枠の名前と順番。結合順を決める
+ *   [一覧]        枠に結ばれた文。全ペルソナが同じものを使う
+ *                        ↓ id で引く
+ *   UserPersona.items = (共通の行 id + このペルソナの on/off) だけ
  *
- * 文と枠の結びつきはペルソナ側には持たせない。どれか1つのペルソナで枠を動かせば、
- * 同じ文を使っているペルソナは全部まとめて並び直る。
+ * どれか1つのペルソナで文・枠・並びを変えたら、全ペルソナにそのまま返る。
+ * ペルソナごとに違うのは on/off だけ。
  */
 private const val PREFS = "user_persona_prefs"
 
@@ -129,7 +129,7 @@ object PersonaCategories {
     }
 }
 
-/** 候補文のプール。枠では絞らないが、文ごとの「どの枠か」はここで持つ。 */
+/** 全ペルソナで共有する指示書の一覧。文・枠・並びをここで持つ。 */
 object PersonaPool {
     private const val KEY = "persona_pool"
 
@@ -156,37 +156,45 @@ object PersonaPool {
         }
     }
 
-    /** 本文 → 枠。ペルソナ側はこれで並びを見る。 */
-    fun bindings(): Map<String, String> = items.associate { it.body.trim() to it.categoryId }
-
-    fun categoryIdOf(body: String): String = PersonaGroupPolicy.categoryOf(bindings(), body)
+    /** id で引く。ペルソナが持つのはこの id と on/off だけ。 */
+    fun byId(id: String): PersonaPoolEntry? = items.firstOrNull { it.id == id }
 
     /** その枠に結ばれている文の数。ペルソナをまたいだ共通の数。 */
     fun countOf(categoryId: String): Int = items.count { it.categoryId == categoryId }
 
+    /** 組み直し用の作業列。entry は中身を共有するので、直せば登録に返る。 */
+    fun working(): MutableList<PersonaPoolEntry> = items
+
     /**
-     * 文と枠を結び付ける。プールに無い文なら、その場で候補として加える。
-     * 空の枠IDは「未分類」なので、外す使い方もできる。
+     * 並びと枠をまとめて書き換える。ドラッグを離した時の1回だけの保存に使う。
+     * 並びに載っていない行は末尾に残すので、行が増えた直後でも壊れない。
      */
-    fun categorize(context: Context, next: Map<String, String>) {
-        var changed = false
-        next.forEach { (rawBody, categoryId) ->
-            val body = rawBody.trim()
-            if (body.isEmpty()) {
-                return@forEach
-            }
-            val target = items.firstOrNull { it.body.trim() == body }
-            if (target == null) {
-                items.add(PersonaPoolEntry(body = body, categoryId = categoryId))
-                changed = true
-            } else if (target.categoryId != categoryId) {
-                target.categoryId = categoryId
-                changed = true
-            }
+    fun arrange(context: Context, order: List<Pair<String, String>>) {
+        val next = order.mapNotNull { (id, categoryId) -> byId(id)?.apply { this.categoryId = categoryId } }
+        items.filterNot { entry -> order.any { it.first == entry.id } }.forEach { next += it }
+        replace(context, next)
+    }
+
+    /** 枠の順番に一覧全体を並び替える。枠の中の順はそのまま残す。 */
+    fun applyCategoryOrder(context: Context, categories: List<PersonaCategory>) {
+        val rank = categories.withIndex().associate { (index, category) -> category.id to index }
+        val last = categories.size
+        val next = items
+            .mapIndexed { index, entry -> Triple(rank[entry.categoryId] ?: last, index, entry) }
+            .sortedWith(compareBy({ it.first }, { it.second }))
+            .map { it.third }
+        replace(context, next)
+    }
+
+    /** 一覧そのものを置き換える。中身が変わっていなければ保存もしない。 */
+    fun replace(context: Context, next: List<PersonaPoolEntry>) {
+        val target = next.toList()
+        if (target == items) {
+            return
         }
-        if (changed) {
-            save(context)
-        }
+        items.clear()
+        items.addAll(target)
+        save(context)
     }
 
     /** 空と重複は弾いて追加。枠が決まっていれば、それごと預かる。 */
@@ -220,35 +228,9 @@ object PersonaPool {
         save(context)
     }
 
-    /** プールから消しても、登録済みの指示はコピー済みなので無傷。 */
+    /** 行を消すと、次の同期で全ペルソナの並びから外れる。 */
     fun remove(context: Context, id: String) {
         if (items.removeAll { it.id == id }) {
-            save(context)
-        }
-    }
-
-    /**
-     * 今ある指示書をプールへ投げる。同じ文は増やさず、枠の指定は空いているときだけ埋める。
-     * UserPersonaManager.loadPersonas から呼ぶので、旧データは開いた瞬間に共通の束縛へ移る。
-     */
-    fun absorb(context: Context, seeds: List<Pair<String, String>>) {
-        var changed = false
-        seeds.forEach { (rawBody, rawCategory) ->
-            val body = rawBody.trim()
-            val categoryId = rawCategory.trim()
-            if (body.isEmpty()) {
-                return@forEach
-            }
-            val target = items.firstOrNull { it.body.trim() == body }
-            if (target == null) {
-                items.add(PersonaPoolEntry(body = body, categoryId = categoryId))
-                changed = true
-            } else if (target.categoryId.isEmpty() && categoryId.isNotEmpty()) {
-                target.categoryId = categoryId
-                changed = true
-            }
-        }
-        if (changed) {
             save(context)
         }
     }

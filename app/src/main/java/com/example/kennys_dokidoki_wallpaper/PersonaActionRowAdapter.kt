@@ -6,20 +6,18 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.card.MaterialCardView
 import com.google.android.material.textview.MaterialTextView
 
-/** 1行ぶん。本文と、その下に並ぶ短い操作ボタンだけ持つ。 */
+/** 1行ぶん。本文・添え書き・その下に並ぶ短い操作ボタンだけ持つ。 */
 data class PersonaActionRow(
     val id: String,
     val body: String,
     val note: String = "",
-    val actions: List<String> = emptyList(),
-    val onTap: (() -> Unit)? = null
+    val actions: List<String> = emptyList()
 )
 
 /**
- * カテゴリー管理とプール管理で同じ行を使うための軽いアダプター。
+ * 枠の管理と指示書の一覧で同じ行を使うための、軽いアダプター。
  * ボタン押下は (行, ラベル) で上に戻すので、ここで状態を持たない。
  */
 class PersonaActionRowAdapter(
@@ -29,7 +27,6 @@ class PersonaActionRowAdapter(
     private val rows = mutableListOf<PersonaActionRow>()
 
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
-        val card: MaterialCardView = view.findViewById(R.id.card_persona_row)
         val body: MaterialTextView = view.findViewById(R.id.tv_persona_row_body)
         val note: MaterialTextView = view.findViewById(R.id.tv_persona_row_note)
         val actions: LinearLayout = view.findViewById(R.id.ll_persona_row_actions)
@@ -62,10 +59,6 @@ class PersonaActionRowAdapter(
             button.setOnClickListener { onAction(row, label) }
             holder.actions.addView(button)
         }
-
-        val tap = row.onTap
-        holder.card.isClickable = tap != null
-        holder.card.setOnClickListener { tap?.invoke() }
     }
 
     override fun getItemCount(): Int = rows.size

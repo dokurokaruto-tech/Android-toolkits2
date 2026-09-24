@@ -12,24 +12,24 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 
 /**
- * ペルソナの指示書一覧。カテゴリー見出しつきの行を並べる。
- * 保存は平坦な items（＝結合順）のままなので、見出しは表示用にその場で組み直す。
- * 文がどの枠に属するかはプール（全ペルソナ共通）が覚えている。
+ * ペルソナの指示書一覧。全ペルソナで共有している行を、カテゴリー見出しつきで並べる。
+ * 文・枠・並びは共通の一覧が持つので、ここでの変更は他のペルソナにもそのまま返る。
+ * ペルソナごとに違うのはチェック（on/off）だけ。
  *
- *   [Header 社会的な立場]   ← ここで「ここに追加」＝プールから1本選ぶ
- *     [✓ 指示文      ] ⠿
+ *   [Header 社会的な立場]   ← ＋ でこの枠に新しい行を作る（やっぱり全ペルソナ共通）
+ *     [✓ 共通の指示文    ] ⠿
  *   [Header 容姿・年齢]
- *     [✓ 指示文      ] ⠿
- *   ⠿ を引いて別枠の Header に落とすと、枠の結びつきはプールごと書き換わる
+ *     [✓ 共通の指示文    ] ⠿
+ *   ⠿ を引いて別枠の Header に落とすと、一覧ごとその枠へ書き換わる
  */
 class PersonaInstructionsAdapter(
-    private val items: MutableList<PersonaItem>,
+    private val lines: () -> List<PersonaGroupPolicy.Line>,
     private val categories: () -> List<PersonaCategory>,
-    private val bindings: () -> Map<String, String>,
-    private val onCategorize: (Map<String, String>) -> Unit,
     private val onStartDrag: (RecyclerView.ViewHolder) -> Unit,
-    private val onEdit: (PersonaItem) -> Unit,
-    private val onAddTo: (PersonaGroupPolicy.Group) -> Unit
+    private val onToggle: (PersonaPoolEntry, Boolean) -> Unit,
+    private val onEdit: (PersonaPoolEntry) -> Unit,
+    private val onAddTo: (PersonaGroupPolicy.Group) -> Unit,
+    private val onArrange: (List<Pair<String, String>>) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val rows = mutableListOf<PersonaGroupPolicy.Row>()
@@ -47,15 +47,14 @@ class PersonaInstructionsAdapter(
         val handle: ImageButton = view.findViewById(R.id.tv_drag_handle)
     }
 
-    /** 現在の items と、プール側の「文 → 枠」から見出し込みの行を組み直す。 */
+    /** 共通の一覧に、このペルソナの on/off をかぶせて行を組み直す。 */
     fun paint() {
-        val current = bindings()
         rows.clear()
-        rows.addAll(PersonaGroupPolicy.rows(items, categories()) { item -> PersonaGroupPolicy.categoryOf(current, item.content) })
+        rows.addAll(PersonaGroupPolicy.rows(lines(), categories()))
         notifyDataSetChanged()
     }
 
-    /** ドラッグ中は行だけ動かす。平坦な items への反映は離した時にまとめる。 */
+    /** ドラッグ中は行だけ動かす。一覧への書き戻しは離した時にまとめる。 */
     fun onItemMove(fromPosition: Int, toPosition: Int): Boolean {
         val source = rows.getOrNull(fromPosition)
         if (source !is PersonaGroupPolicy.Row.Entry) {
@@ -65,25 +64,16 @@ class PersonaInstructionsAdapter(
 
         rows.removeAt(fromPosition)
         val insertAt = requested.coerceIn(0, rows.size)
-        // 落とした位置の枠を覚えさせるので、離した時に categoryId まで揃う
+        // 落とした位置の枠を覚えさせるので、書き戻した時に枠まで揃う
         val group = PersonaGroupPolicy.groupBefore(rows, insertAt) ?: source.group
-        rows.add(insertAt, PersonaGroupPolicy.Row.Entry(group, source.item))
+        rows.add(insertAt, PersonaGroupPolicy.Row.Entry(group, source.line))
         notifyItemMoved(fromPosition, insertAt)
         return true
     }
 
-    /** 表示中の並び＝結合順を、平坦な列として返す。 */
-    fun orderedItems(): List<PersonaItem> = PersonaGroupPolicy.flatten(rows)
-
-    /**
-     * ドラッグを確定する。items はこのペルソナの並び直し、枠の結びつきはプールへの共通書き込み。
-     * 書き戻しはまとめて1回だけやるので、連続した行の移動も保存は1度で済む。
-     */
+    /** 離した合図。見た目どおりの並びと枠を、共通の一覧へ書き戻す。 */
     fun commitDrag() {
-        items.clear()
-        items.addAll(PersonaGroupPolicy.flatten(rows))
-        onCategorize(PersonaGroupPolicy.bindings(rows))
-        paint()
+        onArrange(PersonaGroupPolicy.arrangement(rows))
     }
 
     override fun getItemCount(): Int = rows.size
@@ -102,7 +92,7 @@ class PersonaInstructionsAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
             is PersonaGroupPolicy.Row.Header -> bindHeader(holder as HeaderHolder, row.group)
-            is PersonaGroupPolicy.Row.Entry -> bindEntry(holder as EntryHolder, row.item)
+            is PersonaGroupPolicy.Row.Entry -> bindEntry(holder as EntryHolder, row.line)
         }
     }
 
@@ -112,14 +102,14 @@ class PersonaInstructionsAdapter(
         holder.add.setOnClickListener { onAddTo(group) }
     }
 
-    private fun bindEntry(holder: EntryHolder, item: PersonaItem) {
+    private fun bindEntry(holder: EntryHolder, line: PersonaGroupPolicy.Line) {
         holder.enabled.setOnCheckedChangeListener(null)
-        holder.enabled.isChecked = item.isEnabled
-        holder.enabled.setOnCheckedChangeListener { _, checked -> item.isEnabled = checked }
+        holder.enabled.isChecked = line.on
+        holder.enabled.setOnCheckedChangeListener { _, checked -> onToggle(line.entry, checked) }
 
-        holder.content.text = item.content
-        holder.content.alpha = if (item.isEnabled) 1f else MUTED_ALPHA
-        holder.content.setOnClickListener { onEdit(item) }
+        holder.content.text = line.entry.body
+        holder.content.alpha = if (line.on) 1f else MUTED_ALPHA
+        holder.content.setOnClickListener { onEdit(line.entry) }
 
         holder.handle.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -127,10 +117,8 @@ class PersonaInstructionsAdapter(
             }
             false
         }
-        holder.delete.setOnClickListener {
-            items.remove(item)
-            paint()
-        }
+        // 行は全ペルソナ共通なので、この画面から消す手段は無い。点ける/点けないだけ。
+        holder.delete.visibility = View.GONE
     }
 
     private companion object {
@@ -142,7 +130,7 @@ class PersonaInstructionsAdapter(
 
 /**
  * ドラッグ＆ドロップを管理するタッチヘルパーコールバック。
- * 離した瞬間に commitDrag して、平坦な結合順へ書き戻す。
+ * 離した瞬間に commitDrag して、共通の一覧へ並びと枠を書き戻す。
  */
 class PersonaTouchHelperCallback(
     private val adapter: PersonaInstructionsAdapter
@@ -163,7 +151,7 @@ class PersonaTouchHelperCallback(
         target: RecyclerView.ViewHolder
     ): Boolean = adapter.onItemMove(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
 
-    override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+    override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
 
     override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
         super.clearView(recyclerView, viewHolder)
