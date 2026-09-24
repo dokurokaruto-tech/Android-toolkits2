@@ -255,7 +255,7 @@ object PersonaPool {
 
     private fun save(context: Context) {
         val array = JSONArray()
-            array.put(JSONObject().put("id", it.id).put("body", it.body).put("categoryId", it.categoryId))
+        items.forEach { array.put(JSONObject().put("id", it.id).put("body", it.body).put("categoryId", it.categoryId)) }
         preferences(context).edit().putString(KEY, array.toString()).apply()
     }
 }
