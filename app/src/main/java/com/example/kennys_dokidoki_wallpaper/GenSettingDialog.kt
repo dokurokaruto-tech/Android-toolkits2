@@ -115,7 +115,7 @@ object GenSettingDialog {
             rowView.findViewById<MaterialTextView>(R.id.tv_gen_number_unit).text = axis.unit
 
             val field = rowView.findViewById<EditText>(R.id.et_gen_number_value)
-            field.filters = arrayOf(InputFilter.LengthFilter(MAX_DIGITS))
+            field.filters = arrayOf<InputFilter>(InputFilter.LengthFilter(MAX_DIGITS))
 
             val row = Row(axis, field, rowView.findViewById<Slider>(R.id.sl_gen_number_value))
             rows[axis] = row
