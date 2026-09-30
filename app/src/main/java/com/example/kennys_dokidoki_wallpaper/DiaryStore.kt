@@ -79,6 +79,23 @@ object DiaryStore {
 
     fun imageFile(context: Context, fileName: String): File = File(imagesDir(context), fileName)
 
+    /** Drive 同期が使う生データ。中身の解釈はせず、ファイルとして出し入れする */
+    fun readRaw(context: Context, dateKey: String): String? =
+        AtomicFiles.readUtf8(entryFile(context, dateKey))
+
+    fun writeRaw(context: Context, dateKey: String, json: String) {
+        AtomicFiles.writeUtf8(entryFile(context, dateKey), json)
+    }
+
+    fun entryModifiedMs(context: Context, dateKey: String): Long =
+        entryFile(context, dateKey).let { if (it.isFile) it.lastModified() else 0L }
+
+    fun hasImage(context: Context, fileName: String): Boolean = imageFile(context, fileName).isFile
+
+    /** 日付と本文の文字数。カレンダーの緑の濃さに使う */
+    fun textLengths(context: Context): Map<String, Int> =
+        savedDates(context).associateWith { load(context, it).text.length }
+
     /** どの日記からも参照されなくなった画像を片付ける */
     fun purgeUnusedImages(context: Context) {
         val used = savedDates(context)
