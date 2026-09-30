@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 日記の用紙。画面より十分に長く取り、画像を自由に置けるようにする -->
+    <dimen name="diary_canvas_height">1600dp</dimen>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 設定: 歯車 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.8"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M15.5,12a3.5,3.5 0 1,1 -7,0a3.5,3.5 0 1,1 7,0z" />
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M12,2.2v3M12,18.8v3M2.2,12h3M18.8,12h3M5.1,5.1l2.1,2.1M16.8,16.8l2.1,2.1M18.9,5.1l-2.1,2.1M5.1,18.9l2.1,-2.1" />
+</vector>

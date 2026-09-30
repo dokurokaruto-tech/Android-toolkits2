@@ -31,4 +31,25 @@ object HomeCarouselPolicy {
     /** 左右の余白。アイコン1つ分を中央に置き、隣を覗かせる */
     fun sidePadding(listWidth: Int, itemWidth: Int): Int =
         ((listWidth - itemWidth) / 2).coerceAtLeast(0)
+
+    /**
+     * 端をつなげて循環させるため、同じ並びを何周も敷き詰める。
+     * 先頭の左に最後の機能が居る状態を、実際のリストの真ん中から始めて作る。
+     */
+    const val LOOP_ROUNDS = 400
+
+    fun loopCount(sectionCount: Int): Int =
+        if (sectionCount <= 1) sectionCount else sectionCount * LOOP_ROUNDS
+
+    fun sectionIndex(position: Int, sectionCount: Int): Int =
+        if (sectionCount <= 0) 0 else Math.floorMod(position, sectionCount)
+
+    /** 左右どちらへもたっぷりスワイプできる開始位置。先頭の機能が中央に来る */
+    fun startPosition(sectionCount: Int): Int {
+        if (sectionCount <= 1) {
+            return 0
+        }
+        val middle = loopCount(sectionCount) / 2
+        return middle - Math.floorMod(middle, sectionCount)
+    }
 }

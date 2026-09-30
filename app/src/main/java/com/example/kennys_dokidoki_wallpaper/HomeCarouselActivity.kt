@@ -3,6 +3,7 @@ package com.example.kennys_dokidoki_wallpaper
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -12,10 +13,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.button.MaterialButton
 
 /**
  * アプリの入口。機能ごとの丸アイコンをカルーセルで見せ、選んだ画面だけを開く。
- * 中央のアイコンが選択中で、左右スワイプで隣の機能へ移る。
+ * 端はつながっていて、先頭「全画像」の左には末尾の機能が現れる。
  */
 class HomeCarouselActivity : AppCompatActivity() {
 
@@ -23,7 +25,8 @@ class HomeCarouselActivity : AppCompatActivity() {
     private lateinit var dots: LinearLayout
 
     private val snapHelper = PagerSnapHelper()
-    private val sections = HomeSection.entries
+    private val carouselAdapter = HomeCarouselAdapter { section, view -> openSection(section, view) }
+    private var sections: List<HomeSection> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,14 +40,15 @@ class HomeCarouselActivity : AppCompatActivity() {
 
         carousel = findViewById(R.id.recycler_home_carousel)
         dots = findViewById(R.id.home_carousel_dots)
+        findViewById<ImageButton>(R.id.btn_home_settings).setOnClickListener { showHomeSettings() }
 
         setupCarousel()
-        setupDots()
+        applyOrder(HomeSectionOrder.load(this))
     }
 
     private fun setupCarousel() {
         carousel.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        carousel.adapter = HomeCarouselAdapter(sections) { section, view -> openSection(section, view) }
+        carousel.adapter = carouselAdapter
         snapHelper.attachToRecyclerView(carousel)
 
         // 先頭のアイコンを画面中央に置くため、アイコン1つ分の余白を左右に入れる
@@ -62,6 +66,22 @@ class HomeCarouselActivity : AppCompatActivity() {
         })
     }
 
+    /** 並びを反映し、先頭の機能を中央へ戻す */
+    private fun applyOrder(order: List<HomeSection>) {
+        sections = order
+        carouselAdapter.submit(order)
+        setupDots()
+        // 左右の余白が付いたあとに中央へ寄せたいので、レイアウト後に走らせる
+        carousel.post {
+            layoutManager()?.scrollToPositionWithOffset(
+                HomeCarouselPolicy.startPosition(order.size), 0
+            )
+            applyCarouselTransform()
+        }
+    }
+
+    private fun layoutManager(): LinearLayoutManager? = carousel.layoutManager as? LinearLayoutManager
+
     /** スクロールに合わせて中央のアイコンを大きく、隣を小さく薄くする */
     private fun applyCarouselTransform() {
         val listCenter = carousel.width / 2f
@@ -75,16 +95,17 @@ class HomeCarouselActivity : AppCompatActivity() {
             child.scaleY = scale
             child.alpha = HomeCarouselPolicy.alpha(ratio)
         }
-        updateDots(currentPosition())
+        updateDots(currentSectionIndex())
     }
 
-    private fun currentPosition(): Int {
+    private fun currentSectionIndex(): Int {
         val manager = carousel.layoutManager ?: return 0
         val snapped = snapHelper.findSnapView(manager) ?: return 0
-        return manager.getPosition(snapped)
+        return HomeCarouselPolicy.sectionIndex(manager.getPosition(snapped), sections.size)
     }
 
     private fun setupDots() {
+        dots.removeAllViews()
         val size = resources.getDimensionPixelSize(R.dimen.home_carousel_dot_size)
         val gap = size / 2
         sections.forEach { _ ->
@@ -128,13 +149,35 @@ class HomeCarouselActivity : AppCompatActivity() {
     }
 
     private fun launchSection(section: HomeSection, source: View) {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            putExtra(HomeSection.EXTRA_KEY, section.name)
-        }
         val options = ActivityOptionsCompat.makeScaleUpAnimation(
             source, 0, 0, source.width, source.height
         )
-        startActivity(intent, options.toBundle())
+        startActivity(intentFor(section), options.toBundle())
+    }
+
+    /** 専用画面を持つ機能はその Activity へ、それ以外は MainActivity の該当画面へ */
+    private fun intentFor(section: HomeSection): Intent = when (section) {
+        HomeSection.DIARY -> Intent(this, DiaryCalendarActivity::class.java)
+        else -> Intent(this, MainActivity::class.java)
+            .putExtra(HomeSection.EXTRA_KEY, section.name)
+    }
+
+    /** 右上の設定。いまは並び順の入れ替えだけを扱う */
+    private fun showHomeSettings() {
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_home_carousel_settings)
+        val recycler = view.findViewById<RecyclerView>(R.id.recycler_home_section_order)
+        val adapter = HomeSectionOrderAdapter(sections) { reordered ->
+            HomeSectionOrder.save(this, reordered)
+            applyOrder(reordered)
+        }
+        recycler.layoutManager = LinearLayoutManager(view.context)
+        recycler.adapter = adapter
+        adapter.attachDrag(recycler)
+
+        val dialog = Md3PopupDialog.show(this, view)
+        view.findViewById<MaterialButton>(R.id.btn_home_settings_close).setOnClickListener {
+            dialog.dismiss()
+        }
     }
 
     override fun onResume() {

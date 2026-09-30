@@ -43,7 +43,23 @@ class HomeCarouselPolicyTest {
     fun firstSectionIsAllImagesAndSecondIsSets() {
         assertEquals(HomeSection.ALL_IMAGES, HomeSection.entries.first())
         assertEquals(HomeSection.IMAGE_SETS, HomeSection.entries[1])
-        assertEquals(5, HomeSection.entries.size)
+    }
+
+    @Test
+    fun loopWrapsBothEnds() {
+        val count = HomeSection.entries.size
+        val start = HomeCarouselPolicy.startPosition(count)
+        assertEquals(0, HomeCarouselPolicy.sectionIndex(start, count))
+        // 先頭の左には末尾の機能が居る
+        assertEquals(count - 1, HomeCarouselPolicy.sectionIndex(start - 1, count))
+        assertEquals(0, HomeCarouselPolicy.sectionIndex(start + count, count))
+        assertTrue(HomeCarouselPolicy.loopCount(count) > count)
+    }
+
+    @Test
+    fun singleSectionDoesNotLoop() {
+        assertEquals(1, HomeCarouselPolicy.loopCount(1))
+        assertEquals(0, HomeCarouselPolicy.startPosition(1))
     }
 
     @Test

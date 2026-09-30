@@ -4,6 +4,20 @@
     <dimen name="home_carousel_icon_radius">84dp</dimen>
     <dimen name="home_carousel_dot_size">6dp</dimen>
 
+    <!-- 機能ごとの色。地の色と、その上に乗るアイコンの色を対にする -->
+    <color name="home_all_images_container">#4F378B</color>
+    <color name="home_all_images_icon">#EADDFF</color>
+    <color name="home_image_sets_container">#14504F</color>
+    <color name="home_image_sets_icon">#A6F0E4</color>
+    <color name="home_tags_container">#6B4A12</color>
+    <color name="home_tags_icon">#FFE0A3</color>
+    <color name="home_builder_container">#7A2F55</color>
+    <color name="home_builder_icon">#FFD6E7</color>
+    <color name="home_diary_container">#2F5230</color>
+    <color name="home_diary_icon">#C8F0BE</color>
+    <color name="home_settings_container">#3A4A5E</color>
+    <color name="home_settings_icon">#CFE0F5</color>
+
     <!-- 旧ボトムメニューのID。画面の切り替え先を指す名前として残す -->
     <item name="nav_all_images" type="id" />
     <item name="nav_sets" type="id" />

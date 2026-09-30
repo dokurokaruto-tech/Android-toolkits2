@@ -596,7 +596,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         setupUI()
-        showSection(HomeSection.of(intent.getStringExtra(HomeSection.EXTRA_KEY)).navId)
+        showSection(sectionIdFrom(intent))
         observeGenerationProgress()
         // アプリを閉じている間もPC側で続いたジョブへ再接続する。
         // 問い合わせが終わるまで生成ボタンを新規受付に使わせず、二重送信を防ぐ。
@@ -688,7 +688,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra(HomeSection.EXTRA_KEY)?.let { showSection(HomeSection.of(it).navId) }
+        if (intent.hasExtra(HomeSection.EXTRA_KEY)) {
+            showSection(sectionIdFrom(intent))
+        }
         handleChatConciergeExtras(intent)
     }
 
@@ -2717,6 +2719,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
 
+
+    /** カルーセルホームが指定した機能。専用画面を持つ機能はここには来ない */
+    private fun sectionIdFrom(intent: Intent): Int =
+        HomeSection.of(intent.getStringExtra(HomeSection.EXTRA_KEY)).navId ?: R.id.nav_all_images
 
     /** カルーセルホームから渡された機能だけを出す。画面の切り替えはここに集約する */
     private fun showSection(sectionId: Int) {
