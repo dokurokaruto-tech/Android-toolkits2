@@ -23,10 +23,12 @@ class HomeCarouselActivity : AppCompatActivity() {
 
     private lateinit var carousel: RecyclerView
     private lateinit var dots: LinearLayout
+    private lateinit var live2dStage: BocchiLive2dStageView
 
     private val snapHelper = PagerSnapHelper()
     private val carouselAdapter = HomeCarouselAdapter { section, view -> openSection(section, view) }
     private var sections: List<HomeSection> = emptyList()
+    private var activeSectionIndex = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +42,7 @@ class HomeCarouselActivity : AppCompatActivity() {
 
         carousel = findViewById(R.id.recycler_home_carousel)
         dots = findViewById(R.id.home_carousel_dots)
+        live2dStage = findViewById(R.id.live2d_bocchi_stage)
         findViewById<ImageButton>(R.id.btn_home_settings).setOnClickListener { showHomeSettings() }
 
         setupCarousel()
@@ -62,6 +65,7 @@ class HomeCarouselActivity : AppCompatActivity() {
         carousel.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 applyCarouselTransform()
+                live2dStage.onCarouselScroll(dx.toFloat(), recyclerView.width.toFloat())
             }
         })
     }
@@ -95,7 +99,12 @@ class HomeCarouselActivity : AppCompatActivity() {
             child.scaleY = scale
             child.alpha = HomeCarouselPolicy.alpha(ratio)
         }
-        updateDots(currentSectionIndex())
+        val sectionIdx = currentSectionIndex()
+        updateDots(sectionIdx)
+        if (sectionIdx != activeSectionIndex && sections.isNotEmpty()) {
+            activeSectionIndex = sectionIdx
+            live2dStage.onSectionSelect(sections[sectionIdx])
+        }
     }
 
     private fun currentSectionIndex(): Int {
@@ -182,7 +191,13 @@ class HomeCarouselActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        live2dStage.startStage()
         carousel.post { applyCarouselTransform() }
+    }
+
+    override fun onPause() {
+        live2dStage.stopStage()
+        super.onPause()
     }
 
     private companion object {

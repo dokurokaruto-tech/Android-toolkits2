@@ -4,7 +4,18 @@
     android:id="@+id/home_carousel_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?android:attr/colorBackground">
+    android:background="#060512"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <com.example.kennys_dokidoki_wallpaper.BocchiLive2dStageView
+        android:id="@+id/live2d_bocchi_stage"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
         android:id="@+id/tv_home_title"
@@ -12,8 +23,12 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="24dp"
         android:layout_marginTop="24dp"
+        android:shadowColor="#CC00E5FF"
+        android:shadowDx="0"
+        android:shadowDy="0"
+        android:shadowRadius="10"
         android:text="@string/app_name"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="#F2FAFF"
         android:textSize="22sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
@@ -30,7 +45,7 @@
         android:src="@drawable/ic_home_settings"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:tint="?attr/colorOnSurfaceVariant" />
+        app:tint="#E0F7FF" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_home_carousel"
@@ -42,13 +57,14 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.82" />
 
     <LinearLayout
         android:id="@+id/home_carousel_dots"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="48dp"
+        android:layout_marginBottom="32dp"
         android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

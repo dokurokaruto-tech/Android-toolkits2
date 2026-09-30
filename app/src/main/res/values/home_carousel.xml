@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <dimen name="home_carousel_icon_size">168dp</dimen>
-    <dimen name="home_carousel_icon_radius">84dp</dimen>
+    <dimen name="home_carousel_icon_size">124dp</dimen>
+    <dimen name="home_carousel_icon_radius">62dp</dimen>
     <dimen name="home_carousel_dot_size">6dp</dimen>
 
     <!-- 機能ごとの色。地の色と、その上に乗るアイコンの色を対にする -->

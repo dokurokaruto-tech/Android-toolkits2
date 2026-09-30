@@ -14,13 +14,15 @@
         android:focusable="true"
         app:cardBackgroundColor="?attr/colorPrimaryContainer"
         app:cardCornerRadius="@dimen/home_carousel_icon_radius"
-        app:cardElevation="6dp"
-        app:rippleColor="?attr/colorOnPrimaryContainer">
+        app:cardElevation="8dp"
+        app:rippleColor="?attr/colorOnPrimaryContainer"
+        app:strokeColor="#6600E5FF"
+        app:strokeWidth="2dp">
 
         <ImageView
             android:id="@+id/iv_home_section"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:layout_gravity="center"
             android:importantForAccessibility="no"
             app:tint="?attr/colorOnPrimaryContainer" />
@@ -30,9 +32,13 @@
         android:id="@+id/tv_home_section"
         android:layout_width="@dimen/home_carousel_icon_size"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="12dp"
         android:gravity="center"
-        android:textColor="?attr/colorOnSurface"
-        android:textSize="18sp"
+        android:shadowColor="#EE060512"
+        android:shadowDx="0"
+        android:shadowDy="2"
+        android:shadowRadius="8"
+        android:textColor="#F4FAFF"
+        android:textSize="16sp"
         android:textStyle="bold" />
 </LinearLayout>
