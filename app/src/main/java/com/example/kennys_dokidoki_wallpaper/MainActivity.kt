@@ -31,7 +31,6 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.progressindicator.LinearProgressIndicator
@@ -123,6 +122,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var genBatchCount = 1
     private var genSampler = "Euler a"
 
+    // いま出している機能。ボトムメニューの代わりに状態をここで持つ
+    private var currentSectionId: Int = R.id.nav_all_images
     private var currentFilterTarget: String? = null
     private var currentFilterHas: Boolean = true
     private var isSortAscending: Boolean = true
@@ -329,8 +330,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         override fun filterImages(tag: String) {
-            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId =
-                R.id.nav_all_images
+            showSection(R.id.nav_all_images)
             currentFilterTarget = tag
             currentFilterHas = true
             applyQuickFilter()
@@ -338,8 +338,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         override fun startGeneration() {
-            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId =
-                R.id.nav_builder
+            showSection(R.id.nav_builder)
             btnGenerateConcatenatedTop.performClick()
         }
 
@@ -393,8 +392,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             ConciergeFilterState(currentFilterTarget, currentFilterHas)
 
         override fun setFilter(target: String?, has: Boolean) {
-            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId =
-                R.id.nav_all_images
+            showSection(R.id.nav_all_images)
             currentFilterTarget = target
             currentFilterHas = has
             applyQuickFilter()
@@ -598,7 +596,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         setupUI()
-        setupBottomNavigation()
+        showSection(HomeSection.of(intent.getStringExtra(HomeSection.EXTRA_KEY)).navId)
         observeGenerationProgress()
         // アプリを閉じている間もPC側で続いたジョブへ再接続する。
         // 問い合わせが終わるまで生成ボタンを新規受付に使わせず、二重送信を防ぐ。
@@ -690,6 +688,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        intent.getStringExtra(HomeSection.EXTRA_KEY)?.let { showSection(HomeSection.of(it).navId) }
         handleChatConciergeExtras(intent)
     }
 
@@ -700,14 +699,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         if (intent.getBooleanExtra("concierge_auto_generate", false)) {
             intent.removeExtra("concierge_auto_generate")
-            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId = R.id.nav_builder
+            showSection(R.id.nav_builder)
             btnGenerateConcatenatedTop.post { btnGenerateConcatenatedTop.performClick() }
         }
         if (intent.hasExtra("concierge_filter_apply")) {
             intent.removeExtra("concierge_filter_apply")
             val tag = intent.getStringExtra("concierge_filter_tag")
             intent.removeExtra("concierge_filter_tag")
-            findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId = R.id.nav_all_images
+            showSection(R.id.nav_all_images)
             currentFilterTarget = tag
             currentFilterHas = tag != null
             applyQuickFilter()
@@ -931,8 +930,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     fabAddPromptCategory.visibility = View.GONE
                 } else {
                     selectionActionBar.visibility = View.GONE
-                    val currentNavId = findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId
-                    updateFabVisibility(currentNavId)
+                    updateFabVisibility(currentSectionId)
                     if (recyclerViewAllImages.visibility == View.VISIBLE) {
                         allImagesActionBar.visibility = View.VISIBLE
                     }
@@ -2720,41 +2718,39 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
 
 
-    private fun setupBottomNavigation() {
-        val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
-        bottomNav.setOnItemSelectedListener { item ->
-            recyclerViewAllImages.visibility = View.GONE
-            recyclerViewSets.visibility = View.GONE
-            recyclerViewTagPrompts.visibility = View.GONE
-            layoutBuilder.visibility = View.GONE
-            settingsLayout.visibility = View.GONE
-            updateFabVisibility(item.itemId)
-            allImagesActionBar.visibility = View.GONE
-            imageSetsActionBar.visibility = View.GONE
-            when (item.itemId) {
-                R.id.nav_all_images -> {
-                    recyclerViewAllImages.visibility = View.VISIBLE
-                    allImagesActionBar.visibility = if (!allImagesAdapter.isSelectionMode) View.VISIBLE else View.GONE
-                    applyQuickFilter() 
-                }
-                R.id.nav_sets -> {
-                    recyclerViewSets.visibility = View.VISIBLE
-                    imageSetsActionBar.visibility = View.VISIBLE
-                }
-                R.id.nav_tag_prompts -> {
-                    recyclerViewTagPrompts.visibility = View.VISIBLE
-                    tagPromptAdapter.refreshItemsFromManager()
-                }
-                R.id.nav_builder -> {
-                    layoutBuilder.visibility = View.VISIBLE
-                    syncBuilderRestorePipButton()
-                    refreshBaseModels(silent = true)
-                }
-                R.id.nav_settings -> { 
-                    settingsLayout.visibility = View.VISIBLE
-                }
+    /** カルーセルホームから渡された機能だけを出す。画面の切り替えはここに集約する */
+    private fun showSection(sectionId: Int) {
+        currentSectionId = sectionId
+        recyclerViewAllImages.visibility = View.GONE
+        recyclerViewSets.visibility = View.GONE
+        recyclerViewTagPrompts.visibility = View.GONE
+        layoutBuilder.visibility = View.GONE
+        settingsLayout.visibility = View.GONE
+        updateFabVisibility(sectionId)
+        allImagesActionBar.visibility = View.GONE
+        imageSetsActionBar.visibility = View.GONE
+        when (sectionId) {
+            R.id.nav_all_images -> {
+                recyclerViewAllImages.visibility = View.VISIBLE
+                allImagesActionBar.visibility = if (!allImagesAdapter.isSelectionMode) View.VISIBLE else View.GONE
+                applyQuickFilter() 
             }
-            true
+            R.id.nav_sets -> {
+                recyclerViewSets.visibility = View.VISIBLE
+                imageSetsActionBar.visibility = View.VISIBLE
+            }
+            R.id.nav_tag_prompts -> {
+                recyclerViewTagPrompts.visibility = View.VISIBLE
+                tagPromptAdapter.refreshItemsFromManager()
+            }
+            R.id.nav_builder -> {
+                layoutBuilder.visibility = View.VISIBLE
+                syncBuilderRestorePipButton()
+                refreshBaseModels(silent = true)
+            }
+            R.id.nav_settings -> { 
+                settingsLayout.visibility = View.VISIBLE
+            }
         }
     }
 

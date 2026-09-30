@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="home_carousel_icon_size">168dp</dimen>
+    <dimen name="home_carousel_icon_radius">84dp</dimen>
+    <dimen name="home_carousel_dot_size">6dp</dimen>
+
+    <!-- 旧ボトムメニューのID。画面の切り替え先を指す名前として残す -->
+    <item name="nav_all_images" type="id" />
+    <item name="nav_sets" type="id" />
+    <item name="nav_tag_prompts" type="id" />
+    <item name="nav_builder" type="id" />
+    <item name="nav_settings" type="id" />
+</resources>

@@ -347,7 +347,7 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun openApp() {
-            val intent = Intent(applicationContext, MainActivity::class.java).apply {
+            val intent = Intent(applicationContext, HomeCarouselActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             applicationContext.startActivity(intent)
