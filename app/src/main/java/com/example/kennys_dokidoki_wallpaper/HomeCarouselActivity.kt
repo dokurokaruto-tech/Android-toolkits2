@@ -1,6 +1,7 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.View
 import android.widget.ImageButton
@@ -24,10 +25,12 @@ class HomeCarouselActivity : AppCompatActivity() {
     private lateinit var carousel: RecyclerView
     private lateinit var dots: LinearLayout
     private lateinit var live2dStage: BocchiLive2dStageView
+    private lateinit var characterButton: MaterialButton
 
     private val snapHelper = PagerSnapHelper()
     private val carouselAdapter = HomeCarouselAdapter { section, view -> openSection(section, view) }
     private var sections: List<HomeSection> = emptyList()
+    private var selectedCharacter = HomeStageCharacter.BOCCHI
     private var activeSectionIndex = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +46,13 @@ class HomeCarouselActivity : AppCompatActivity() {
         carousel = findViewById(R.id.recycler_home_carousel)
         dots = findViewById(R.id.home_carousel_dots)
         live2dStage = findViewById(R.id.live2d_bocchi_stage)
+        characterButton = findViewById(R.id.btn_home_character)
         findViewById<ImageButton>(R.id.btn_home_settings).setOnClickListener { showHomeSettings() }
+
+        selectedCharacter = HomeStageCharacterStore.load(this)
+        live2dStage.setCharacter(selectedCharacter)
+        updateCharacterButton()
+        characterButton.setOnClickListener { switchCharacter() }
 
         setupCarousel()
         applyOrder(HomeSectionOrder.load(this))
@@ -169,6 +178,25 @@ class HomeCarouselActivity : AppCompatActivity() {
         HomeSection.DIARY -> Intent(this, DiaryCalendarActivity::class.java)
         else -> Intent(this, MainActivity::class.java)
             .putExtra(HomeSection.EXTRA_KEY, section.name)
+    }
+
+    private fun switchCharacter() {
+        selectedCharacter = HomeStageCharacterPolicy.next(selectedCharacter)
+        HomeStageCharacterStore.save(this, selectedCharacter)
+        live2dStage.setCharacter(selectedCharacter)
+        updateCharacterButton()
+    }
+
+    private fun updateCharacterButton() {
+        val name = getString(selectedCharacter.labelRes)
+        val accent = ColorStateList.valueOf(selectedCharacter.accentColor)
+        characterButton.text = name
+        characterButton.contentDescription = getString(
+            R.string.home_character_switch_description,
+            name
+        )
+        characterButton.iconTint = accent
+        characterButton.strokeColor = accent
     }
 
     /** 右上の設定。いまは並び順の入れ替えだけを扱う */

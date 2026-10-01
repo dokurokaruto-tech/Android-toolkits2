@@ -27,12 +27,12 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * SOUND VOLTEX 風サイバーステージと後藤ひとり Live2D メッシュを描画する背景 View。
+ * SOUND VOLTEX 風サイバーステージと選択中キャラクターを描く背景 View。
  *
  *   +---------------------------------------------------+
  *   | [7] NEMSYS Cyber-Visor HUD Frame & Telemetry      |
  *   | [6] Floating Prism Particles & Hex Touch Bursts   |
- *   | [5] Gotoh Hitori 28x36 ArtMesh + 10x8 Face Mesh   |
+ *   | [5] Selected Member 28x36 ArtMesh + face motion   |
  *   | [4] Counter-Rotating NEMSYS Rings & 48-Band EQ    |
  *   | [3] VOL-L (Cyan) & VOL-R (Magenta) Laser Beams    |
  *   | [2] 3D Perspective Hexagon Grid Floor & Tunnel    |
@@ -45,10 +45,15 @@ class BocchiLive2dStageView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr), Choreographer.FrameCallback {
 
+    private var selectedCharacter = HomeStageCharacter.BOCCHI
+    private var activeSection = HomeSection.ALL_IMAGES
     private val physics = BocchiPhysicsEngine()
+    private val kitaPhysics = KitaPhysicsEngine()
     private var currentPose = BocchiPose()
+    private var kitaPose = KitaPose()
 
     private var bodyBitmap: Bitmap? = null
+    private var kitaBodyBitmap: Bitmap? = null
     private val faceBitmaps = mutableMapOf<BocchiExpression, Bitmap>()
 
     private val bodyVerts = FloatArray((BocchiLive2dPolicy.MESH_COLS + 1) * (BocchiLive2dPolicy.MESH_ROWS + 1) * 2)
@@ -67,6 +72,11 @@ class BocchiLive2dStageView @JvmOverloads constructor(
 
     private var accentColor = COLOR_BOCCHI_PINK
     private var targetAccentColor = COLOR_BOCCHI_PINK
+    private val characterAccentColor: Int
+        get() = when (selectedCharacter) {
+            HomeStageCharacter.BOCCHI -> COLOR_BOCCHI_PINK
+            HomeStageCharacter.KITA -> KitaLive2dPolicy.ACCENT_COLOR
+        }
 
     private val bursts = Array(MAX_BURSTS) { HexBurst() }
     private var burstCursor = 0
@@ -134,8 +144,25 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         Choreographer.getInstance().removeFrameCallback(this)
     }
 
+    internal fun setCharacter(character: HomeStageCharacter) {
+        if (selectedCharacter == character) {
+            return
+        }
+        selectedCharacter = character
+        when (selectedCharacter) {
+            HomeStageCharacter.BOCCHI -> physics.onSectionChange(activeSection)
+            HomeStageCharacter.KITA -> kitaPhysics.onSectionChange(activeSection)
+        }
+        targetAccentColor = sectionAccentColor(activeSection)
+        echoPinkPaint.colorFilter = PorterDuffColorFilter(characterAccentColor, PorterDuff.Mode.SRC_ATOP)
+        invalidate()
+    }
+
     fun onCarouselScroll(deltaPx: Float, viewWidth: Float) {
-        physics.onScroll(deltaPx, viewWidth)
+        when (selectedCharacter) {
+            HomeStageCharacter.BOCCHI -> physics.onScroll(deltaPx, viewWidth)
+            HomeStageCharacter.KITA -> kitaPhysics.onScroll(deltaPx, viewWidth)
+        }
         val norm = if (viewWidth > 0f) {
             abs(deltaPx / viewWidth)
         } else {
@@ -145,8 +172,21 @@ class BocchiLive2dStageView @JvmOverloads constructor(
     }
 
     fun onSectionSelect(section: HomeSection) {
-        physics.onSectionChange(section)
-        targetAccentColor = ContextCompat.getColor(context, section.iconColorRes)
+        activeSection = section
+        when (selectedCharacter) {
+            HomeStageCharacter.BOCCHI -> physics.onSectionChange(section)
+            HomeStageCharacter.KITA -> kitaPhysics.onSectionChange(section)
+        }
+        targetAccentColor = sectionAccentColor(section)
+    }
+
+    private fun sectionAccentColor(section: HomeSection): Int {
+        val sectionColor = ContextCompat.getColor(context, section.iconColorRes)
+        return if (selectedCharacter == HomeStageCharacter.KITA) {
+            blendColor(KitaLive2dPolicy.ACCENT_COLOR, sectionColor, KITA_SECTION_BLEND)
+        } else {
+            sectionColor
+        }
     }
 
     override fun onAttachedToWindow() {
@@ -173,7 +213,13 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         gridScrollPhase = (gridScrollPhase + dt * GRID_SPEED) % 1f
         accentColor = blendColor(accentColor, targetAccentColor, dt * COLOR_LERP_SPEED)
 
-        currentPose = physics.step(dt)
+        when (selectedCharacter) {
+            HomeStageCharacter.BOCCHI -> currentPose = physics.step(dt)
+            HomeStageCharacter.KITA -> {
+                kitaPose = kitaPhysics.step(dt)
+                currentPose = kitaPose.stagePose()
+            }
+        }
         stepBursts(dt)
         invalidate()
         Choreographer.getInstance().postFrameCallback(this)
@@ -190,9 +236,25 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val ty = event.y
         val u = (tx - charLeft) / charWidth
         val v = (ty - charTop) / charHeight
-        val zone = BocchiLive2dPolicy.hitZone(u, v)
-        physics.onTapZone(zone, tx / w, ty / h)
-        spawnBurst(tx, ty, zone)
+        val normX = tx / w
+        val normY = ty / h
+        when (selectedCharacter) {
+            HomeStageCharacter.BOCCHI -> {
+                val zone = BocchiLive2dPolicy.hitZone(u, v)
+                physics.onTapZone(zone, normX, normY)
+                spawnBurst(tx, ty, zone)
+            }
+            HomeStageCharacter.KITA -> {
+                val zone = KitaLive2dPolicy.hitZone(u, v)
+                kitaPhysics.onTapZone(zone, normX, normY)
+                val burstZone = when (zone) {
+                    KitaHitZone.HEAD -> BocchiHitZone.HEAD_PANIC
+                    KitaHitZone.GUITAR -> BocchiHitZone.GUITAR_STRUM
+                    KitaHitZone.STAGE -> BocchiHitZone.STAGE_BURST
+                }
+                spawnBurst(tx, ty, burstZone)
+            }
+        }
         return true
     }
 
@@ -221,7 +283,10 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         drawPerspectiveGrid(canvas, w, h)
         drawValkyrieLasers(canvas, w, h, currentPose)
         drawNemsysRings(canvas, w, h, currentPose)
-        drawBocchiLive2d(canvas, w, h, currentPose)
+        when (selectedCharacter) {
+            HomeStageCharacter.BOCCHI -> drawBocchiLive2d(canvas, w, h, currentPose)
+            HomeStageCharacter.KITA -> drawKitaLive2d(canvas, w, h, kitaPose)
+        }
         drawFloatingPrisms(canvas, w, h)
         drawTouchBursts(canvas)
         drawSdvxHudFrame(canvas, w, h, currentPose)
@@ -229,6 +294,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
 
     private fun loadAssets() {
         bodyBitmap = decodeAsset(BocchiLive2dPolicy.BODY_ASSET)
+        kitaBodyBitmap = decodeAsset(KitaLive2dPolicy.BODY_ASSET)
         for (expr in BocchiExpression.entries) {
             val path = expr.assetName ?: continue
             val bmp = decodeAsset(path) ?: continue
@@ -249,7 +315,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
     private fun drawBackdrop(canvas: Canvas, w: Float, h: Float) {
         canvas.drawRect(0f, 0f, w, h, bgPaint)
 
-        // 左上：ぼっちピンク×選択中セクション色のネビュラ発光
+        // 左上：選択中キャラクター×機能色のネビュラ発光
         val pinkRadius = max(w, h) * 0.48f
         nebulaPaint.shader = RadialGradient(
             w * 0.26f, h * 0.30f, pinkRadius,
@@ -284,7 +350,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             val persp = t * t
             val y = horizonY + persp * (h - horizonY)
             val alpha = (28 + (persp * 95f).toInt()).coerceIn(0, 255)
-            gridPaint.color = withAlpha(COLOR_BOCCHI_PINK, alpha)
+            gridPaint.color = withAlpha(characterAccentColor, alpha)
             canvas.drawLine(0f, y, w, y, gridPaint)
         }
 
@@ -300,7 +366,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             gridPaint.color = if (idx % 2 == 0) {
                 withAlpha(COLOR_NEON_CYAN, alpha)
             } else {
-                withAlpha(COLOR_BOCCHI_PINK, alpha)
+                withAlpha(characterAccentColor, alpha)
             }
             drawPolygon(canvas, cx, cy, hexRadius, 6, 0f, gridPaint)
         }
@@ -317,12 +383,12 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val ly1 = h * 0.64f
         drawLaserBeam(canvas, lx0, ly0, lx1, ly1, COLOR_NEON_CYAN, beatPulse)
 
-        // VOL-R マゼンタレーザー
+        // VOL-R キャラクターアクセントレーザー
         val rx0 = w * 1.04f
         val ry0 = h * 0.09f
         val rx1 = w * 0.04f + tilt
         val ry1 = h * 0.66f
-        drawLaserBeam(canvas, rx0, ry0, rx1, ry1, COLOR_BOCCHI_PINK, beatPulse)
+        drawLaserBeam(canvas, rx0, ry0, rx1, ry1, characterAccentColor, beatPulse)
     }
 
     private fun drawLaserBeam(
@@ -368,7 +434,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         canvas.rotate(-stageTimeSec * 20f, cx, cy)
         ringPaint.pathEffect = dashInner
         ringPaint.strokeWidth = 3.0f
-        ringPaint.color = withAlpha(COLOR_BOCCHI_PINK, 135)
+        ringPaint.color = withAlpha(characterAccentColor, 135)
         canvas.drawCircle(cx, cy, midR, ringPaint)
         canvas.restore()
 
@@ -391,7 +457,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             eqPaint.color = if (band % 2 == 0) {
                 withAlpha(COLOR_NEON_CYAN, 155)
             } else {
-                withAlpha(COLOR_BOCCHI_PINK, 155)
+                withAlpha(characterAccentColor, 155)
             }
             canvas.drawLine(
                 cx + cosA * baseR,
@@ -479,6 +545,164 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         drawLive2dOverlays(canvas, pose)
     }
 
+    private fun drawKitaLive2d(canvas: Canvas, w: Float, h: Float, pose: KitaPose) {
+        val body = kitaBodyBitmap ?: return
+        val aspect = body.width.toFloat() / body.height.toFloat()
+        charHeight = h * KITA_CHAR_HEIGHT_RATIO
+        charWidth = charHeight * aspect
+        if (charWidth > w * MAX_CHAR_WIDTH_RATIO) {
+            charWidth = w * MAX_CHAR_WIDTH_RATIO
+            charHeight = charWidth / aspect
+        }
+        charLeft = (w - charWidth) * 0.5f
+        charTop = h * KITA_CHAR_TOP_RATIO
+
+        KitaLive2dPolicy.fillBodyMesh(pose, charLeft, charTop, charWidth, charHeight, bodyVerts)
+
+        val echoOffset = 3.5f + abs(pose.guitarRock) * 2.5f
+        shiftVerts(bodyVerts, echoVerts, -echoOffset, 0f)
+        echoCyanPaint.alpha = 74
+        canvas.drawBitmapMesh(
+            body,
+            KitaLive2dPolicy.MESH_COLS,
+            KitaLive2dPolicy.MESH_ROWS,
+            echoVerts,
+            0,
+            null,
+            0,
+            echoCyanPaint
+        )
+
+        shiftVerts(bodyVerts, echoVerts, echoOffset, 0f)
+        echoPinkPaint.alpha = 72
+        canvas.drawBitmapMesh(
+            body,
+            KitaLive2dPolicy.MESH_COLS,
+            KitaLive2dPolicy.MESH_ROWS,
+            echoVerts,
+            0,
+            null,
+            0,
+            echoPinkPaint
+        )
+
+        meshPaint.alpha = 255
+        canvas.drawBitmapMesh(
+            body,
+            KitaLive2dPolicy.MESH_COLS,
+            KitaLive2dPolicy.MESH_ROWS,
+            bodyVerts,
+            0,
+            null,
+            0,
+            meshPaint
+        )
+        drawKitaOverlays(canvas, pose)
+    }
+
+    private fun drawKitaOverlays(canvas: Canvas, pose: KitaPose) {
+        if (pose.eyeOpen > 0.66f) {
+            val gazeU = pose.eyeBallX * 0.004f
+            val gazeV = pose.eyeBallY * 0.003f
+            val (leftX, leftY) = kitaScreenPoint(
+                KitaLive2dPolicy.EYE_LEFT_U + gazeU,
+                KitaLive2dPolicy.EYE_V + gazeV,
+                pose
+            )
+            val (rightX, rightY) = kitaScreenPoint(
+                KitaLive2dPolicy.EYE_RIGHT_U + gazeU,
+                KitaLive2dPolicy.EYE_V + gazeV,
+                pose
+            )
+            val sparkleSize = charWidth * (0.008f + 0.002f * abs(sin(stageTimeSec * 4.4f)))
+            fxPaint.style = Paint.Style.FILL
+            fxPaint.color = Color.WHITE
+            drawStarSparkle(canvas, leftX, leftY, sparkleSize, fxPaint)
+            drawStarSparkle(canvas, rightX, rightY, sparkleSize, fxPaint)
+        } else {
+            drawKitaBlink(canvas, pose)
+        }
+
+        val (tailX, tailY) = kitaScreenPoint(0.545f + pose.sidePonytail * 0.025f, 0.215f, pose)
+        val hairGlint = charWidth * 0.010f * (0.7f + 0.3f * sin(stageTimeSec * 3.8f))
+        fxPaint.style = Paint.Style.FILL
+        fxPaint.color = withAlpha(KitaLive2dPolicy.ACCENT_COLOR, 185)
+        drawStarSparkle(canvas, tailX, tailY, hairGlint, fxPaint)
+
+        val (bridgeX, bridgeY) = kitaScreenPoint(
+            KitaLive2dPolicy.GUITAR_BRIDGE_U,
+            KitaLive2dPolicy.GUITAR_BRIDGE_V,
+            pose
+        )
+        val (nutX, nutY) = kitaScreenPoint(
+            KitaLive2dPolicy.GUITAR_NUT_U,
+            KitaLive2dPolicy.GUITAR_NUT_V,
+            pose
+        )
+        val strumAmp = abs(pose.armStrum) * charWidth * 0.010f
+        if (strumAmp > 0.5f) {
+            val middleX = (bridgeX + nutX) * 0.5f
+            val middleY = (bridgeY + nutY) * 0.5f + sin(stageTimeSec * 42f) * strumAmp
+            stringPath.reset()
+            stringPath.moveTo(bridgeX, bridgeY)
+            stringPath.quadTo(middleX, middleY, nutX, nutY)
+            fxPaint.style = Paint.Style.STROKE
+            fxPaint.strokeWidth = 2.2f
+            fxPaint.color = withAlpha(KitaLive2dPolicy.GUITAR_COLOR, 190)
+            canvas.drawPath(stringPath, fxPaint)
+        }
+
+        if (pose.expression == KitaExpression.SPARKLE) {
+            val (sparkleX, sparkleY) = kitaScreenPoint(0.575f, 0.155f, pose)
+            fxPaint.style = Paint.Style.FILL
+            fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, 225)
+            drawStarSparkle(canvas, sparkleX, sparkleY, charWidth * 0.025f, fxPaint)
+        }
+    }
+
+    private fun drawKitaBlink(canvas: Canvas, pose: KitaPose) {
+        val closed = ((1f - pose.eyeOpen) * 1.35f).coerceIn(0f, 1f)
+        if (closed <= 0.08f) {
+            return
+        }
+        val fillAlpha = (closed * 255f).toInt().coerceIn(0, 255)
+        val halfWidth = charWidth * KitaLive2dPolicy.EYE_WIDTH * 0.55f
+        val halfHeight = charHeight * KitaLive2dPolicy.EYE_HEIGHT * 0.55f
+        val gazeU = pose.eyeBallX * 0.003f
+        val gazeV = pose.eyeBallY * 0.002f
+        val eyeCenters = arrayOf(KitaLive2dPolicy.EYE_LEFT_U, KitaLive2dPolicy.EYE_RIGHT_U)
+
+        fxPaint.style = Paint.Style.FILL
+        fxPaint.color = withAlpha(KitaLive2dPolicy.SKIN_COLOR, fillAlpha)
+        for (eyeU in eyeCenters) {
+            val (eyeX, eyeY) = kitaScreenPoint(eyeU + gazeU, KitaLive2dPolicy.EYE_V + gazeV, pose)
+            canvas.drawOval(
+                eyeX - halfWidth,
+                eyeY - halfHeight * 0.7f,
+                eyeX + halfWidth,
+                eyeY + halfHeight * 0.7f,
+                fxPaint
+            )
+
+            if (closed > 0.45f) {
+                stringPath.reset()
+                stringPath.moveTo(eyeX - halfWidth, eyeY)
+                stringPath.quadTo(eyeX, eyeY + halfHeight * 0.45f, eyeX + halfWidth, eyeY)
+                fxPaint.style = Paint.Style.STROKE
+                fxPaint.strokeWidth = max(1.2f, charWidth * 0.006f)
+                fxPaint.strokeCap = Paint.Cap.ROUND
+                fxPaint.color = withAlpha(KitaLive2dPolicy.EYE_LASH_COLOR, fillAlpha)
+                canvas.drawPath(stringPath, fxPaint)
+                fxPaint.style = Paint.Style.FILL
+            }
+        }
+    }
+
+    private fun kitaScreenPoint(u: Float, v: Float, pose: KitaPose): Pair<Float, Float> {
+        val (deformedU, deformedV) = KitaLive2dPolicy.deformUv(u, v, pose)
+        return (charLeft + deformedU * charWidth) to (charTop + deformedV * charHeight)
+    }
+
     private fun drawLive2dOverlays(canvas: Canvas, pose: BocchiPose) {
         // 開眼時は瞳の上に視線追従するキラキラハイライトを描画
         if (pose.eyeOpen > 0.65f && pose.expression != BocchiExpression.BOCCHI_PANIC) {
@@ -555,7 +779,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             val alpha = (sin(progress * PI.toFloat()) * 165f).toInt().coerceIn(0, 255)
             fxPaint.color = when (i % 3) {
                 0 -> withAlpha(COLOR_NEON_CYAN, alpha)
-                1 -> withAlpha(COLOR_BOCCHI_PINK, alpha)
+                1 -> withAlpha(characterAccentColor, alpha)
                 else -> withAlpha(COLOR_CUBE_YELLOW, alpha)
             }
             drawPolygon(canvas, px, py, size, 4, stageTimeSec + i, fxPaint)
@@ -582,15 +806,22 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val topLineY = h * 0.095f
         hudLinePaint.color = withAlpha(COLOR_NEON_CYAN, 130)
         canvas.drawLine(w * 0.05f, topLineY, w * 0.42f, topLineY, hudLinePaint)
-        hudLinePaint.color = withAlpha(COLOR_BOCCHI_PINK, 130)
+        hudLinePaint.color = withAlpha(characterAccentColor, 130)
         canvas.drawLine(w * 0.58f, topLineY, w * 0.95f, topLineY, hudLinePaint)
 
         // ステータスバッジ表示
-        val modeLabel = when (pose.expression) {
-            BocchiExpression.BOCCHI_PANIC -> "CREW: HITORI GOTOH // PANIC GLITCH!"
-            BocchiExpression.AWAKENED_GROOVE -> "CREW: HITORI GOTOH // GUITAR HERO"
-            BocchiExpression.HAPPY_SMILE -> "CREW: HITORI GOTOH // KESSOKU LIVE"
-            else -> "CREW: HITORI GOTOH // LIVE2D 150BPM"
+        val modeLabel = when (selectedCharacter) {
+            HomeStageCharacter.BOCCHI -> when (pose.expression) {
+                BocchiExpression.BOCCHI_PANIC -> "CREW: HITORI GOTOH // PANIC GLITCH!"
+                BocchiExpression.AWAKENED_GROOVE -> "CREW: HITORI GOTOH // GUITAR HERO"
+                BocchiExpression.HAPPY_SMILE -> "CREW: HITORI GOTOH // KESSOKU LIVE"
+                else -> "CREW: HITORI GOTOH // LIVE2D 150BPM"
+            }
+            HomeStageCharacter.KITA -> when (pose.expression) {
+                BocchiExpression.AWAKENED_GROOVE -> "CREW: IKUYO KITA // VOCAL GUITAR"
+                BocchiExpression.HAPPY_SMILE -> "CREW: IKUYO KITA // KITA-ON!"
+                else -> "CREW: IKUYO KITA // LIVE2D 150BPM"
+            }
         }
         hudTextPaint.color = withAlpha(COLOR_HUD_TEXT, 190)
         canvas.drawText(modeLabel, w * 0.06f, topLineY - 12f, hudTextPaint)
@@ -600,7 +831,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val deckBottomY = h * 0.915f
         hudLinePaint.color = withAlpha(COLOR_NEON_CYAN, 115)
         canvas.drawLine(w * 0.06f, deckTopY, w * 0.94f, deckTopY, hudLinePaint)
-        hudLinePaint.color = withAlpha(COLOR_BOCCHI_PINK, 115)
+        hudLinePaint.color = withAlpha(characterAccentColor, 115)
         canvas.drawLine(w * 0.12f, deckBottomY, w * 0.88f, deckBottomY, hudLinePaint)
     }
 
@@ -672,8 +903,11 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         b.y = y
         b.elapsed = 0f
         b.color = when (zone) {
-            BocchiHitZone.HEAD_PANIC -> COLOR_BOCCHI_PINK
-            BocchiHitZone.GUITAR_STRUM -> COLOR_CUBE_YELLOW
+            BocchiHitZone.HEAD_PANIC -> characterAccentColor
+            BocchiHitZone.GUITAR_STRUM -> when (selectedCharacter) {
+                HomeStageCharacter.BOCCHI -> COLOR_CUBE_YELLOW
+                HomeStageCharacter.KITA -> KitaLive2dPolicy.GUITAR_COLOR
+            }
             BocchiHitZone.STAGE_BURST -> COLOR_NEON_CYAN
         }
     }
@@ -722,6 +956,9 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         const val HORIZON_RATIO = 0.68f
         const val CHAR_TOP_RATIO = 0.045f
         const val CHAR_HEIGHT_RATIO = 0.76f
+        const val KITA_CHAR_TOP_RATIO = 0.105f
+        const val KITA_CHAR_HEIGHT_RATIO = 0.72f
+        const val KITA_SECTION_BLEND = 0.38f
         const val MAX_CHAR_WIDTH_RATIO = 0.96f
         const val CHAR_X_BIAS = 0.02f
 
@@ -739,7 +976,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         const val COLOR_BG_BOTTOM = 0xFF070514.toInt()
 
         const val COLOR_NEON_CYAN = 0xFF00E5FF.toInt()
-        const val COLOR_BOCCHI_PINK = 0xFFFF3E9D.toInt()
+        const val COLOR_BOCCHI_PINK = HOME_BOCCHI_ACCENT_COLOR
         const val COLOR_CUBE_YELLOW = 0xFFFFD54F.toInt()
         const val COLOR_HUD_TEXT = 0xFFD8F6FF.toInt()
     }
