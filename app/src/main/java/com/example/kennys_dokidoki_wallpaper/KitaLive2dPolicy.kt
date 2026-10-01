@@ -409,7 +409,7 @@ internal class KitaPhysicsEngine {
 
     private class DampedSpring(
         private val omega: Float,
-        private val damping: Float
+        private val zeta: Float
     ) {
         private var position = 0f
         private var velocity = 0f
@@ -419,7 +419,7 @@ internal class KitaPhysicsEngine {
         }
 
         fun step(target: Float, dt: Float): Float {
-            val force = omega * omega * (target - position) - 2f * damping * omega * velocity
+            val force = omega * omega * (target - position) - 2f * zeta * omega * velocity
             velocity += force * dt
             position = (position + velocity * dt).coerceIn(-1f, 1f)
             return position
