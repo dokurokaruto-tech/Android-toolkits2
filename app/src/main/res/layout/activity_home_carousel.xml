@@ -47,6 +47,25 @@
         app:layout_constraintTop_toTopOf="parent"
         app:tint="#E0F7FF" />
 
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_home_character"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="12dp"
+        android:minHeight="48dp"
+        android:textColor="#FFF4E7"
+        android:textSize="13sp"
+        app:backgroundTint="#D9120A28"
+        app:strokeColor="#FFAD75"
+        app:cornerRadius="24dp"
+        app:layout_constrainedWidth="true"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/recycler_home_carousel" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_home_carousel"
         android:layout_width="match_parent"

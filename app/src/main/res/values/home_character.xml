@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="character_hitori">後藤ひとり</string>
+    <string name="character_kita">喜多郁代</string>
+    <string name="character_switch">キャラ変更 · %1$s</string>
+    <string name="character_picker_title">ステージのキャラクター</string>
+    <string name="character_switch_failed">キャラクターの素材を読み込めませんでした</string>
+</resources>

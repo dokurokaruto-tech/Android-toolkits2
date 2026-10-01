@@ -27,12 +27,12 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * SOUND VOLTEX 風サイバーステージと後藤ひとり Live2D メッシュを描画する背景 View。
+ * SOUND VOLTEX 風サイバーステージとキャラクターの2Dメッシュを描画する背景 View。
  *
  *   +---------------------------------------------------+
  *   | [7] NEMSYS Cyber-Visor HUD Frame & Telemetry      |
  *   | [6] Floating Prism Particles & Hex Touch Bursts   |
- *   | [5] Gotoh Hitori 28x36 ArtMesh + 10x8 Face Mesh   |
+ *   | [5] Character 28x36 ArtMesh + 10x8 Face Mesh     |
  *   | [4] Counter-Rotating NEMSYS Rings & 48-Band EQ    |
  *   | [3] VOL-L (Cyan) & VOL-R (Magenta) Laser Beams    |
  *   | [2] 3D Perspective Hexagon Grid Floor & Tunnel    |
@@ -45,7 +45,9 @@ class BocchiLive2dStageView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr), Choreographer.FrameCallback {
 
-    private val physics = BocchiPhysicsEngine()
+    private var physics = BocchiPhysicsEngine()
+    private var character = HomeCharacter.HITORI
+    private var activeSection: HomeSection? = null
     private var currentPose = BocchiPose()
 
     private var bodyBitmap: Bitmap? = null
@@ -114,7 +116,24 @@ class BocchiLive2dStageView @JvmOverloads constructor(
     private val stringPath = Path()
 
     init {
-        loadAssets()
+        loadAssets(character)
+    }
+
+    fun setCharacter(selected: HomeCharacter): Boolean {
+        if (selected == character) {
+            return bodyBitmap != null
+        }
+        if (!loadAssets(selected)) {
+            return false
+        }
+        character = selected
+        physics = BocchiPhysicsEngine()
+        activeSection?.let { physics.onSectionChange(it) }
+        currentPose = character.adaptPose(BocchiPose())
+        echoPinkPaint.colorFilter = PorterDuffColorFilter(character.accent, PorterDuff.Mode.SRC_ATOP)
+        spawnBurst(width * 0.5f, height * 0.3f, BocchiHitZone.STAGE_BURST)
+        invalidate()
+        return true
     }
 
     fun startStage() {
@@ -145,6 +164,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
     }
 
     fun onSectionSelect(section: HomeSection) {
+        activeSection = section
         physics.onSectionChange(section)
         targetAccentColor = ContextCompat.getColor(context, section.iconColorRes)
     }
@@ -173,7 +193,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         gridScrollPhase = (gridScrollPhase + dt * GRID_SPEED) % 1f
         accentColor = blendColor(accentColor, targetAccentColor, dt * COLOR_LERP_SPEED)
 
-        currentPose = physics.step(dt)
+        currentPose = character.adaptPose(physics.step(dt))
         stepBursts(dt)
         invalidate()
         Choreographer.getInstance().postFrameCallback(this)
@@ -191,7 +211,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val u = (tx - charLeft) / charWidth
         val v = (ty - charTop) / charHeight
         val zone = BocchiLive2dPolicy.hitZone(u, v)
-        physics.onTapZone(zone, tx / w, ty / h)
+        physics.onTapZone(character.tapZone(zone), tx / w, ty / h)
         spawnBurst(tx, ty, zone)
         return true
     }
@@ -227,13 +247,19 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         drawSdvxHudFrame(canvas, w, h, currentPose)
     }
 
-    private fun loadAssets() {
-        bodyBitmap = decodeAsset(BocchiLive2dPolicy.BODY_ASSET)
+    private fun loadAssets(selected: HomeCharacter): Boolean {
+        val body = decodeAsset(selected.bodyAsset) ?: return false
+        val faces = mutableMapOf<BocchiExpression, Bitmap>()
         for (expr in BocchiExpression.entries) {
-            val path = expr.assetName ?: continue
-            val bmp = decodeAsset(path) ?: continue
-            faceBitmaps[expr] = bmp
+            val path = selected.faceAsset(expr) ?: continue
+            val bitmap = decodeAsset(path) ?: return false
+            faces[expr] = bitmap
         }
+        // 全素材の読み込み後に交換し、異なるキャラの顔が混ざるのを防ぐ。
+        bodyBitmap = body
+        faceBitmaps.clear()
+        faceBitmaps.putAll(faces)
+        return true
     }
 
     private fun decodeAsset(assetPath: String): Bitmap? {
@@ -284,7 +310,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             val persp = t * t
             val y = horizonY + persp * (h - horizonY)
             val alpha = (28 + (persp * 95f).toInt()).coerceIn(0, 255)
-            gridPaint.color = withAlpha(COLOR_BOCCHI_PINK, alpha)
+            gridPaint.color = withAlpha(character.accent, alpha)
             canvas.drawLine(0f, y, w, y, gridPaint)
         }
 
@@ -300,7 +326,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             gridPaint.color = if (idx % 2 == 0) {
                 withAlpha(COLOR_NEON_CYAN, alpha)
             } else {
-                withAlpha(COLOR_BOCCHI_PINK, alpha)
+                withAlpha(character.accent, alpha)
             }
             drawPolygon(canvas, cx, cy, hexRadius, 6, 0f, gridPaint)
         }
@@ -322,7 +348,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val ry0 = h * 0.09f
         val rx1 = w * 0.04f + tilt
         val ry1 = h * 0.66f
-        drawLaserBeam(canvas, rx0, ry0, rx1, ry1, COLOR_BOCCHI_PINK, beatPulse)
+        drawLaserBeam(canvas, rx0, ry0, rx1, ry1, character.accent, beatPulse)
     }
 
     private fun drawLaserBeam(
@@ -368,7 +394,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         canvas.rotate(-stageTimeSec * 20f, cx, cy)
         ringPaint.pathEffect = dashInner
         ringPaint.strokeWidth = 3.0f
-        ringPaint.color = withAlpha(COLOR_BOCCHI_PINK, 135)
+        ringPaint.color = withAlpha(character.accent, 135)
         canvas.drawCircle(cx, cy, midR, ringPaint)
         canvas.restore()
 
@@ -391,7 +417,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             eqPaint.color = if (band % 2 == 0) {
                 withAlpha(COLOR_NEON_CYAN, 155)
             } else {
-                withAlpha(COLOR_BOCCHI_PINK, 155)
+                withAlpha(character.accent, 155)
             }
             canvas.drawLine(
                 cx + cosA * baseR,
@@ -498,17 +524,23 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             fxPaint.style = Paint.Style.FILL
             fxPaint.color = Color.WHITE
             drawStarSparkle(canvas, lx - sparkleSize * 0.8f, ly - sparkleSize * 0.6f, sparkleSize, fxPaint)
-            drawStarSparkle(canvas, rx - sparkleSize * 0.8f, ry - sparkleSize * 0.6f, sparkleSize, fxPaint)
+            if (character != HomeCharacter.KITA || pose.expression != BocchiExpression.AWAKENED_GROOVE) {
+                drawStarSparkle(canvas, rx - sparkleSize * 0.8f, ry - sparkleSize * 0.6f, sparkleSize, fxPaint)
+            }
         }
 
-        // 青と黄色のキューブ髪飾りのキラリ反射
-        val (bx, by) = screenPoint(BocchiLive2dPolicy.CUBE_BLUE_U, BocchiLive2dPolicy.CUBE_BLUE_V, pose)
-        val (yx, yy) = screenPoint(BocchiLive2dPolicy.CUBE_YELLOW_U, BocchiLive2dPolicy.CUBE_YELLOW_V, pose)
-        val cubeGlint = charWidth * 0.014f * (0.6f + 0.4f * sin(stageTimeSec * 4.2f))
-        fxPaint.color = withAlpha(COLOR_NEON_CYAN, 180)
-        drawStarSparkle(canvas, bx, by, cubeGlint, fxPaint)
-        fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, 180)
-        drawStarSparkle(canvas, yx, yy, cubeGlint * 0.9f, fxPaint)
+        if (character == HomeCharacter.HITORI) {
+            // 青と黄色のキューブ髪飾りのキラリ反射
+            val (bx, by) = screenPoint(BocchiLive2dPolicy.CUBE_BLUE_U, BocchiLive2dPolicy.CUBE_BLUE_V, pose)
+            val (yx, yy) = screenPoint(BocchiLive2dPolicy.CUBE_YELLOW_U, BocchiLive2dPolicy.CUBE_YELLOW_V, pose)
+            val cubeGlint = charWidth * 0.014f * (0.6f + 0.4f * sin(stageTimeSec * 4.2f))
+            fxPaint.color = withAlpha(COLOR_NEON_CYAN, 180)
+            drawStarSparkle(canvas, bx, by, cubeGlint, fxPaint)
+            fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, 180)
+            drawStarSparkle(canvas, yx, yy, cubeGlint * 0.9f, fxPaint)
+        } else {
+            drawKitaAura(canvas, pose)
+        }
 
         // レスポール・カスタムの弦振動エフェクト
         val (gx0, gy0) = screenPoint(BocchiLive2dPolicy.GUITAR_BRIDGE_U, BocchiLive2dPolicy.GUITAR_BRIDGE_V, pose)
@@ -537,10 +569,24 @@ class BocchiLive2dStageView @JvmOverloads constructor(
                 fxPaint.color = if (i % 2 == 0) {
                     withAlpha(COLOR_NEON_CYAN, (pose.glitchIntensity * 150f).toInt())
                 } else {
-                    withAlpha(COLOR_BOCCHI_PINK, (pose.glitchIntensity * 150f).toInt())
+                    withAlpha(character.accent, (pose.glitchIntensity * 150f).toInt())
                 }
                 canvas.drawRect(charLeft, gy, charLeft + charWidth, gy + gh, fxPaint)
             }
+        }
+    }
+
+    private fun drawKitaAura(canvas: Canvas, pose: BocchiPose) {
+        val energy = if (pose.expression == BocchiExpression.AWAKENED_GROOVE) 1f else 0.45f
+        fxPaint.style = Paint.Style.FILL
+        for (index in 0 until KITA_SPARKLES) {
+            val phase = stageTimeSec * 2f + index * 1.3f
+            val u = if (index % 2 == 0) 0.16f else 0.65f
+            val v = 0.12f + index * 0.055f
+            val (x, y) = screenPoint(u, v, pose)
+            val pulse = 0.5f + 0.5f * sin(phase)
+            fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, (210f * energy * pulse).toInt())
+            drawStarSparkle(canvas, x, y, charWidth * (0.012f + pulse * 0.013f), fxPaint)
         }
     }
 
@@ -555,7 +601,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             val alpha = (sin(progress * PI.toFloat()) * 165f).toInt().coerceIn(0, 255)
             fxPaint.color = when (i % 3) {
                 0 -> withAlpha(COLOR_NEON_CYAN, alpha)
-                1 -> withAlpha(COLOR_BOCCHI_PINK, alpha)
+                1 -> withAlpha(character.accent, alpha)
                 else -> withAlpha(COLOR_CUBE_YELLOW, alpha)
             }
             drawPolygon(canvas, px, py, size, 4, stageTimeSec + i, fxPaint)
@@ -582,16 +628,17 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val topLineY = h * 0.095f
         hudLinePaint.color = withAlpha(COLOR_NEON_CYAN, 130)
         canvas.drawLine(w * 0.05f, topLineY, w * 0.42f, topLineY, hudLinePaint)
-        hudLinePaint.color = withAlpha(COLOR_BOCCHI_PINK, 130)
+        hudLinePaint.color = withAlpha(character.accent, 130)
         canvas.drawLine(w * 0.58f, topLineY, w * 0.95f, topLineY, hudLinePaint)
 
         // ステータスバッジ表示
-        val modeLabel = when (pose.expression) {
-            BocchiExpression.BOCCHI_PANIC -> "CREW: HITORI GOTOH // PANIC GLITCH!"
-            BocchiExpression.AWAKENED_GROOVE -> "CREW: HITORI GOTOH // GUITAR HERO"
-            BocchiExpression.HAPPY_SMILE -> "CREW: HITORI GOTOH // KESSOKU LIVE"
-            else -> "CREW: HITORI GOTOH // LIVE2D 150BPM"
+        val mode = when (pose.expression) {
+            BocchiExpression.BOCCHI_PANIC -> "PANIC GLITCH!"
+            BocchiExpression.AWAKENED_GROOVE -> if (character == HomeCharacter.KITA) "KITA~N!" else "GUITAR HERO"
+            BocchiExpression.HAPPY_SMILE -> "KESSOKU LIVE"
+            else -> "2D MESH 150BPM"
         }
+        val modeLabel = "CREW: ${character.crewName} // $mode"
         hudTextPaint.color = withAlpha(COLOR_HUD_TEXT, 190)
         canvas.drawText(modeLabel, w * 0.06f, topLineY - 12f, hudTextPaint)
 
@@ -600,7 +647,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val deckBottomY = h * 0.915f
         hudLinePaint.color = withAlpha(COLOR_NEON_CYAN, 115)
         canvas.drawLine(w * 0.06f, deckTopY, w * 0.94f, deckTopY, hudLinePaint)
-        hudLinePaint.color = withAlpha(COLOR_BOCCHI_PINK, 115)
+        hudLinePaint.color = withAlpha(character.accent, 115)
         canvas.drawLine(w * 0.12f, deckBottomY, w * 0.88f, deckBottomY, hudLinePaint)
     }
 
@@ -672,7 +719,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         b.y = y
         b.elapsed = 0f
         b.color = when (zone) {
-            BocchiHitZone.HEAD_PANIC -> COLOR_BOCCHI_PINK
+            BocchiHitZone.HEAD_PANIC -> character.accent
             BocchiHitZone.GUITAR_STRUM -> COLOR_CUBE_YELLOW
             BocchiHitZone.STAGE_BURST -> COLOR_NEON_CYAN
         }
@@ -729,6 +776,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         const val GRID_ROWS = 10
         const val HEX_TILE_COUNT = 12
         const val EQ_BAND_COUNT = 48
+        const val KITA_SPARKLES = 6
         const val PRISM_COUNT = 16
         const val MAX_BURSTS = 6
         const val BURST_DURATION_SEC = 0.55f

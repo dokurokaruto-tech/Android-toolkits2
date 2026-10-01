@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.View
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityOptionsCompat
@@ -14,6 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
  * アプリの入口。機能ごとの丸アイコンをカルーセルで見せ、選んだ画面だけを開く。
@@ -24,6 +26,9 @@ class HomeCarouselActivity : AppCompatActivity() {
     private lateinit var carousel: RecyclerView
     private lateinit var dots: LinearLayout
     private lateinit var live2dStage: BocchiLive2dStageView
+
+    private var character = HomeCharacter.HITORI
+    private lateinit var characterButton: MaterialButton
 
     private val snapHelper = PagerSnapHelper()
     private val carouselAdapter = HomeCarouselAdapter { section, view -> openSection(section, view) }
@@ -45,8 +50,38 @@ class HomeCarouselActivity : AppCompatActivity() {
         live2dStage = findViewById(R.id.live2d_bocchi_stage)
         findViewById<ImageButton>(R.id.btn_home_settings).setOnClickListener { showHomeSettings() }
 
+        setupCharacterPicker()
         setupCarousel()
         applyOrder(HomeSectionOrder.load(this))
+    }
+
+    private fun setupCharacterPicker() {
+        characterButton = findViewById(R.id.btn_home_character)
+        selectCharacter(HomeCharacterStore.load(this))
+        characterButton.setOnClickListener {
+            val characters = HomeCharacter.entries
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.character_picker_title)
+                .setSingleChoiceItems(
+                    characters.map { getString(it.labelRes) }.toTypedArray(),
+                    characters.indexOf(character)
+                ) { dialog, index ->
+                    selectCharacter(characters[index])
+                    dialog.dismiss()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
+    }
+
+    private fun selectCharacter(selected: HomeCharacter) {
+        if (live2dStage.setCharacter(selected)) {
+            character = selected
+            HomeCharacterStore.save(this, character)
+        } else {
+            Toast.makeText(this, R.string.character_switch_failed, Toast.LENGTH_SHORT).show()
+        }
+        characterButton.text = getString(R.string.character_switch, getString(character.labelRes))
     }
 
     private fun setupCarousel() {
