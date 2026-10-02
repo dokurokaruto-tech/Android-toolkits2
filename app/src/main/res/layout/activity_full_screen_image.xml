@@ -84,7 +84,53 @@
         app:layout_constraintTop_toTopOf="parent"
         app:tint="#E6E1E5" />
 
-    <!-- 削除 / 枚数 / 仮チャット。削除は枚数とチャットの左。 -->
+    <TextView
+        android:id="@+id/tv_image_counter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintBottom_toTopOf="@id/viewer_chrome_bar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:background="@drawable/bg_counter_bubble"
+        android:fontFamily="sans-serif-medium"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:text="1 / 1"
+        android:textColor="#E6E1E5"
+        android:textSize="14sp" />
+
+    <View
+        android:id="@+id/viewer_saved_border"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_generated_saved_border"
+        android:importantForAccessibility="no"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@id/full_screen_image"
+        app:layout_constraintBottom_toBottomOf="@id/full_screen_image"
+        app:layout_constraintStart_toStartOf="@id/full_screen_image"
+        app:layout_constraintEnd_toEndOf="@id/full_screen_image" />
+
+    <TextView
+        android:id="@+id/viewer_saved_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="28dp"
+        android:background="@drawable/bg_generated_saved_badge"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:text="@string/generated_saved_badge"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:accessibilityLiveRegion="polite"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- 下部の操作列。枚数は列の上に置き、小さい画面でも操作を収める。 -->
     <LinearLayout
         android:id="@+id/viewer_chrome_bar"
         android:layout_width="wrap_content"
@@ -122,19 +168,6 @@
                 android:visibility="invisible" />
         </FrameLayout>
 
-        <TextView
-            android:id="@+id/tv_image_counter"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:background="@drawable/bg_counter_bubble"
-            android:fontFamily="sans-serif-medium"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="8dp"
-            android:text="1 / 1"
-            android:textColor="#E6E1E5"
-            android:textSize="14sp" />
-
         <ImageView
             android:id="@+id/btn_start_temp_chat"
             android:layout_width="44dp"
@@ -146,6 +179,20 @@
             android:focusable="true"
             android:padding="10dp"
             android:src="@drawable/ic_md3_chat"
+            android:visibility="gone"
+            app:tint="#E6E1E5" />
+
+        <ImageView
+            android:id="@+id/btn_save_device_image"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_counter_bubble"
+            android:clickable="true"
+            android:contentDescription="@string/viewer_save_device"
+            android:focusable="true"
+            android:padding="12dp"
+            android:src="@drawable/ic_viewer_download"
             android:visibility="gone"
             app:tint="#E6E1E5" />
 

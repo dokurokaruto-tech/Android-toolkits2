@@ -12,6 +12,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.animation.LinearInterpolator
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -59,6 +60,11 @@ class FullScreenImageActivity : AppCompatActivity() {
     private lateinit var deleteHoldRing: HoldConfirmRingView
     private lateinit var deleteHoldCenterRing: HoldConfirmRingView
     private lateinit var btnCreatePreset: View
+    private lateinit var btnSaveImage: ImageView
+    private lateinit var savedBorder: View
+    private lateinit var savedBadge: View
+    private var savedCheck: Job? = null
+    private var saveState = ViewerSavePolicy.State.HIDDEN
     private lateinit var btnReplayGeneration: View
     private val deletedUris = arrayListOf<String>()
     private val chromeHandler = Handler(Looper.getMainLooper())
@@ -93,6 +99,9 @@ class FullScreenImageActivity : AppCompatActivity() {
         deleteHoldCenterRing = findViewById(R.id.delete_hold_center_ring)
         deleteHoldCenterRing.setStrokeWidthPx(5f * resources.displayMetrics.density)
         btnCreatePreset = findViewById(R.id.btn_create_preset_from_image)
+        btnSaveImage = findViewById(R.id.btn_save_device_image)
+        savedBorder = findViewById(R.id.viewer_saved_border)
+        savedBadge = findViewById(R.id.viewer_saved_badge)
         btnReplayGeneration = findViewById(R.id.btn_replay_generation)
         albumName = intent.getStringExtra("ALBUM_NAME") ?: ""
         currentIndex = intent.getIntExtra("START_INDEX", 0)
@@ -104,8 +113,69 @@ class FullScreenImageActivity : AppCompatActivity() {
         loadImages()
         showImage()
         setupViewerActions()
+        btnSaveImage.setOnClickListener {
+            if (saveState != ViewerSavePolicy.State.READY) {
+                return@setOnClickListener
+            }
+            val source = currentEntries.getOrNull(currentIndex)?.uri ?: return@setOnClickListener
+            GeneratedImageDeviceStore.saveInBackground(this, source)
+        }
+        lifecycleScope.launch {
+            GeneratedImageDeviceStore.savingUri.collect { refreshSavedState() }
+        }
         setupPageTurnTouches()
         observeLiveLibrary()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshSavedState()
+    }
+
+    private fun refreshSavedState() {
+        savedCheck?.cancel()
+        val source = currentEntries.getOrNull(currentIndex)?.uri
+        if (!isGeneratedViewer || source == null || isClosing) {
+            renderSaveState(ViewerSavePolicy.State.HIDDEN)
+            return
+        }
+        renderSaveState(ViewerSavePolicy.state(source.toString(), null, GeneratedImageDeviceStore.savingUri.value))
+        savedCheck = lifecycleScope.launch {
+            val saved = GeneratedSavedImages.contains(this@FullScreenImageActivity, source)
+            val key = GeneratedImageIdentity.canonicalKey(source.toString())
+            val current = currentEntries.getOrNull(currentIndex)?.uri?.toString()
+            if (isClosing || key != GeneratedImageIdentity.canonicalKey(current)) {
+                return@launch
+            }
+            val keys = if (saved) setOf(key) else emptySet()
+            renderSaveState(ViewerSavePolicy.state(current, keys, GeneratedImageDeviceStore.savingUri.value))
+        }
+    }
+
+    private fun renderSaveState(state: ViewerSavePolicy.State) {
+        saveState = state
+        val saved = state == ViewerSavePolicy.State.SAVED
+        savedBorder.visibility = if (saved) View.VISIBLE else View.GONE
+        savedBadge.visibility = if (saved) View.VISIBLE else View.GONE
+        btnSaveImage.visibility = if (state == ViewerSavePolicy.State.HIDDEN) View.GONE else View.VISIBLE
+        btnSaveImage.isEnabled = state == ViewerSavePolicy.State.READY
+        btnSaveImage.setImageResource(if (saved) R.drawable.ic_cyber_check else R.drawable.ic_viewer_download)
+        val label = when (state) {
+            ViewerSavePolicy.State.SAVED -> R.string.generated_saved_badge
+            ViewerSavePolicy.State.SAVING -> R.string.viewer_save_in_progress
+            ViewerSavePolicy.State.WAITING -> R.string.viewer_save_other
+            ViewerSavePolicy.State.CHECKING -> R.string.viewer_save_checking
+            else -> R.string.viewer_save_device
+        }
+        btnSaveImage.contentDescription = getString(label)
+        btnSaveImage.tooltipText = getString(label)
+        btnSaveImage.imageTintList = android.content.res.ColorStateList.valueOf(
+            when (state) {
+                ViewerSavePolicy.State.SAVED -> android.graphics.Color.rgb(105, 240, 174)
+                ViewerSavePolicy.State.READY -> android.graphics.Color.WHITE
+                else -> android.graphics.Color.GRAY
+            }
+        )
     }
 
     override fun onStart() {
@@ -553,6 +623,7 @@ class FullScreenImageActivity : AppCompatActivity() {
         cancelDeleteHold()
         progressiveJob?.cancel()
         prefetchJob?.cancel()
+        savedCheck?.cancel()
         activeTarget?.let { Glide.with(this).clear(it) }
         super.onDestroy()
     }
@@ -582,6 +653,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     private fun showImage() {
         if (isClosing || currentIndex !in currentEntries.indices) return
         val entry = currentEntries[currentIndex]
+        refreshSavedState()
         val viewedIndex = currentIndex
         val serial = ++requestSerial
         progressiveJob?.cancel()

@@ -166,6 +166,9 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         val dataPrefs = getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE)
         dataPrefs.registerOnSharedPreferenceChangeListener(this)
         observeLiveLibrary()
+        lifecycleScope.launch {
+            GeneratedImageDeviceStore.savingUri.collect { refreshSavedImages() }
+        }
     }
 
     override fun onStart() {
@@ -473,25 +476,15 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                         var added = 0
                         Toast.makeText(this@AlbumDetailActivity, "ダウンロード中...", Toast.LENGTH_SHORT).show()
                         targets.forEach { entry ->
-                            val localUri = GeneratedImageImporter.download(this@AlbumDetailActivity, entry.uri, remoteDate)
-                            if (localUri != null) {
+                            val saved = GeneratedImageDeviceStore.save(this@AlbumDetailActivity, entry.uri, remoteDate)
+                            if (saved != null) {
                                 downloaded++
-                                val existing = DataManager.allImages.find { it.uri.toString() == localUri.toString() }
-                                val imported = GeneratedImageDraftStore.migrateOnImport(
-                                    this@AlbumDetailActivity, entry.uri, localUri
-                                )
-                                if (existing == null) {
-                                    DataManager.allImages.add(0, imported)
+                                if (saved.addedToLibrary) {
                                     added++
-                                } else {
-                                    if (existing.tags.isEmpty()) existing.tags.addAll(imported.tags)
-                                    if (existing.description.isNullOrBlank()) existing.description = imported.description
-                                    if (existing.linkedChatId.isNullOrBlank()) existing.linkedChatId = imported.linkedChatId
                                 }
                             }
                         }
                         refreshSavedImages()
-                        if (added > 0) DataManager.saveData(this@AlbumDetailActivity)
                         if (imageAdapter.isSelectionMode) imageAdapter.stopSelectionMode()
                         val result = if (downloaded > 0) "${downloaded}件を端末へ保存（全画像へ新規追加: ${added}件）"
                         else "保存できませんでした。設定で『全画像に入れる』画像の保存先を確認してください。"
@@ -673,7 +666,9 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         }
         savedImagesJob?.cancel()
         savedImagesJob = lifecycleScope.launch {
-            imageAdapter.setSavedGenerated(GeneratedSavedImages.keys(this@AlbumDetailActivity, remoteDate))
+            val keys = GeneratedSavedImages.keys(this@AlbumDetailActivity, remoteDate)
+            val saving = GeneratedImageDeviceStore.savingUri.value?.let(GeneratedImageIdentity::canonicalKey)
+            imageAdapter.setSavedGenerated(keys - setOfNotNull(saving))
         }
     }
 

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="viewer_save_device">端末に保存</string>
+    <string name="viewer_save_success">端末に保存しました。「全画像」からも閲覧できます。</string>
+    <string name="viewer_save_failed">保存できませんでした。PCとの接続と、設定の「全画像に入れる」画像の保存先・アクセス権・空き容量を確認してください。</string>
+    <string name="viewer_save_in_progress">この画像を保存中</string>
+    <string name="viewer_save_other">別の画像を保存中</string>
+    <string name="viewer_save_checking">保存状態を確認中</string>
+</resources>
