@@ -32,9 +32,10 @@ object ImageGenerationCoordinator {
             Toast.makeText(activity, "生成できるプロンプトがありません。", Toast.LENGTH_SHORT).show()
             return false
         }
-        if (isBusy()) {
-            Toast.makeText(activity, GeneratedImageReplayPolicy.BUSY, Toast.LENGTH_SHORT).show()
-            return false
+        if (isBusy() || GenerationAgentClient.hasPendingJob(activity) ||
+            GenerationAgentClient.hasPendingInsertion(activity)
+        ) {
+            return GenerationInsertionCoordinator.offer(activity, valid)
         }
         val app = activity.applicationContext
         GenerationProgressManager.startGeneration(batchMode = valid.size > 1, total = valid.size)
@@ -51,7 +52,7 @@ object ImageGenerationCoordinator {
                 }
                 val accepted = GenerationAgentClient.submit(app, valid)
                 val completed = GenerationAgentClient.monitor(app, accepted)
-                completed.imageUrls.forEachIndexed { order, url ->
+                completed.legacyImageUrls.forEachIndexed { order, url ->
                     val request = valid.getOrNull(order) ?: valid.last()
                     GeneratedImageDraftStore.seedGeneratedSource(
                         app,

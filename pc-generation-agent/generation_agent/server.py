@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from . import __version__
 from .config import AgentConfig
 from .service import GenerationService
 
@@ -19,6 +20,7 @@ _CANCEL = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/cancel$")
 _SKIP = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/skip$")
 _STOP_AFTER_CURRENT = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/stop-after-current$")
 _REFRESH_PENDING = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/refresh-pending$")
+_INSERT_NEXT = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/insert-next$")
 _PREVIEW = re.compile(r"^/api/v1/jobs/([0-9a-f]{32})/preview$")
 _FILE = re.compile(r"^/api/v1/files/([^/]+)/([^/]+)$")
 _MOBILE_THUMBNAIL = re.compile(r"^/api/v1/mobile-thumbnails/([^/]+)/([^/]+)$")
@@ -58,7 +60,8 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 return
             self._json(HTTPStatus.OK, {
                 "service": "android-toolkits-generation-agent",
-                "version": "1.0.0",
+                "version": __version__,
+                "insert_next": True,
                 "sd_reachable": self.server.service.sd.health(),
                 "output_dir": str(self.server.config.output_dir),
                 "thumbnail_dir": str(self.server.config.thumbnail_dir),
@@ -195,6 +198,16 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.ACCEPTED, self.server.service.submit(body))
             except ValueError as error:
                 self._error(HTTPStatus.BAD_REQUEST, str(error))
+            except Exception as error:
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
+            return
+        match = _INSERT_NEXT.fullmatch(path)
+        if match:
+            try:
+                result = self.server.service.insert_next(match.group(1), self._read_json())
+                self._json(HTTPStatus.ACCEPTED, result)
+            except ValueError as error:
+                self._error(HTTPStatus.CONFLICT, str(error))
             except Exception as error:
                 self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
             return

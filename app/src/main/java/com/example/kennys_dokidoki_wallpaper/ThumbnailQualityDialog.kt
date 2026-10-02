@@ -93,7 +93,11 @@ object ThumbnailQualityDialog {
         view.findViewById<MaterialButton>(R.id.btn_quality_cancel).setOnClickListener {
             dialog.dismiss()
         }
-        view.findViewById<MaterialButton>(R.id.btn_quality_start).setOnClickListener {
+        val startButton = view.findViewById<MaterialButton>(R.id.btn_quality_start)
+        if (GenerationProgressManager.state.value.isGenerating || GenerationAgentClient.hasPendingJob(activity)) {
+            startButton.setText(R.string.generate_next_insert)
+        }
+        startButton.setOnClickListener {
             prefs.edit()
                 .putString(ThumbnailQualityPolicy.PREF_QUALITY, quality.name)
                 .putInt(ThumbnailQualityPolicy.PREF_STEPS, steps)

@@ -74,6 +74,25 @@ class GenerationService:
             self._wake.set()
         return self.public_job(job)
 
+    def insert_next(self, job_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        request_id = str(body.get("client_request_id", "")).strip()
+        if not request_id or len(request_id) > 200:
+            raise ValueError("client_request_id is required (max 200 characters)")
+        raw = body.get("tasks")
+        if not isinstance(raw, list) or not 1 <= len(raw) <= 1000:
+            raise ValueError("tasks must contain 1 to 1000 entries")
+        tasks = [self._validate_task(task) for task in raw]
+        fingerprint = hashlib.sha256(json.dumps(tasks, sort_keys=True).encode()).hexdigest()
+        stamp = uuid.uuid4().hex
+        date = datetime.now().astimezone().strftime("%Y-%m-%d")
+        for index, task in enumerate(tasks):
+            prefix = "THUMB" if task["_agent_collection"] == "thumbnail" else "GEN"
+            task["_agent_output_date"] = date
+            task["_agent_output_base"] = f"{prefix}_{stamp}_{index + 1:04d}"
+        job = self.database.insert_next(job_id, request_id, fingerprint, tasks)
+        self._wake.set()
+        return self.public_job(job)
+
     def get_job(self, job_id: str, with_progress: bool = True) -> dict[str, Any] | None:
         job = self.database.get_job(job_id)
         if not job:
@@ -390,13 +409,22 @@ class GenerationService:
         terminal = job["status"] in {"completed", "partial_failed", "failed", "canceled"}
         progress = (int(job["completed"]) + int(job["failed"])) / total if terminal else int(job["completed"]) / total
         images = []
-        for output_path in self.database.completed_outputs(str(job["id"])):
+        for task in self.database.completed_tasks(str(job["id"])):
+            output_path = task["output_path"]
+            if not output_path:
+                continue
             url = self.output_url(output_path)
             if url:
-                item = {"url": url, "output_path": output_path}
+                item = {
+                    "url": url, "output_path": output_path, "task_index": task["task_index"],
+                    "purpose": task["payload"].get("_agent_collection", "image"),
+                    "binding": task["payload"].get("_agent_binding"),
+                    "priority": task["priority"],
+                }
                 date_name = self._date_name(output_path)
                 if date_name is not None:
                     item["thumbnail_url"] = self.mobile_thumbnail_url(*date_name)
+                    item["metadata"] = self._read_image_metadata(*date_name)
                 images.append(item)
         return {
             "id": job["id"],
@@ -407,11 +435,17 @@ class GenerationService:
             "completed": int(job["completed"]),
             "failed": int(job["failed"]),
             "pending": self.database.pending_count(str(job["id"])),
+            "task_results_version": 1,
+            "refreshable_task_indices": [task["task_index"] for task in self._refreshable_tasks(str(job["id"]))],
             "progress": min(1.0, progress),
             "cancel_requested": bool(job["cancel_requested"]),
             "error": job["error"],
             "images": images,
         }
+
+    def _refreshable_tasks(self, job_id: str) -> list[dict[str, Any]]:
+        return [task for task in self.database.pending_tasks(job_id)
+                if task["priority"] == 0 and task["payload"].get("_agent_collection", "image") == "image"]
 
     def refresh_pending(self, job_id: str, body: dict[str, Any]) -> dict[str, Any] | None:
         job = self.database.get_job(job_id)
@@ -424,10 +458,11 @@ class GenerationService:
             raise ValueError("tasks must be a non-empty array")
         if len(raw_tasks) > 1000:
             raise ValueError("a job may contain at most 1000 images")
-        pending = self.database.pending_tasks(job_id)
+        pending = self._refreshable_tasks(job_id)
         if not pending:
             return self.get_job(job_id) or self.public_job(job)
         validated = [self._validate_task(task) for task in raw_tasks]
+        refreshed = []
         for old, new in zip(pending, validated):
             old_payload = old["payload"] if isinstance(old.get("payload"), dict) else {}
             if old_payload.get("_agent_output_date"):
@@ -435,8 +470,11 @@ class GenerationService:
             if old_payload.get("_agent_output_base"):
                 new["_agent_output_base"] = old_payload["_agent_output_base"]
             new["_agent_collection"] = old_payload.get("_agent_collection", new.get("_agent_collection", "image"))
-            self.database.update_task_payload(job_id, int(old["task_index"]), new)
-        return self.get_job(job_id) or self.public_job(self.database.get_job(job_id) or job)
+            if self.database.update_task_payload(job_id, int(old["task_index"]), new):
+                refreshed.append(int(old["task_index"]))
+        result = self.get_job(job_id) or self.public_job(self.database.get_job(job_id) or job)
+        result["refreshed_task_indices"] = refreshed
+        return result
 
     def _worker_loop(self) -> None:
         while not self._stop.is_set():
@@ -464,12 +502,10 @@ class GenerationService:
             if not job or job["cancel_requested"]:
                 self.database.finish_job(job_id)
                 return
-            task = self.database.next_task(job_id)
+            task = self.database.claim_next_task(job_id)
             if not task:
-                self.database.finish_job(job_id)
                 return
             index = int(task["task_index"])
-            self.database.start_task(job_id, index)
             try:
                 existing = self._existing_output(task["payload"])
                 if existing is not None:
@@ -574,7 +610,15 @@ class GenerationService:
         purpose = str(task.get("purpose", "image")).strip().lower()
         if purpose not in {"image", "thumbnail"}:
             raise ValueError("purpose must be image or thumbnail")
-        result = dict(task)
+        result = {key: value for key, value in task.items() if not key.startswith("_agent_")}
+        binding = result.pop("binding", None)
+        if binding is not None:
+            if (purpose != "thumbnail" or not isinstance(binding, dict)
+                    or binding.get("kind") not in {"card", "preset"}
+                    or not isinstance(binding.get("id"), str) or not binding["id"].strip()
+                    or len(binding["id"]) > 200):
+                raise ValueError("binding must identify a thumbnail card or preset")
+            result["_agent_binding"] = {"kind": binding["kind"], "id": binding["id"].strip()}
         result.pop("purpose", None)
         result["_agent_collection"] = purpose
         result.update({

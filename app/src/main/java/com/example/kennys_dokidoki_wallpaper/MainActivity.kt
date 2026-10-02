@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.progressindicator.LinearProgressIndicator
@@ -636,8 +637,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             GenerationProgressManager.state.collect { state ->
                 runOnUiThread {
                 if (state.isGenerating) {
-                    // 中断ボタン化：テキストと背景色だけ変える（アイコン・文字色など既存デザインは保持）
-                    btnGenerateConcatenatedTop.text = "中断"
+                    // 生成中は割り込み・停止メニューを開く。
+                    btnGenerateConcatenatedTop.text = "生成操作"
                     btnGenerateConcatenatedTop.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3366"))
 
                     // 通常画像だけでなく、プロンプトカード／プリセットカードの
@@ -1328,18 +1329,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         btnGenerateConcatenatedTop.isEnabled = PromptCardManager.randomEnabledCategories.isNotEmpty() || promptCardAdapter.getSelectedCardsWithLevels().isNotEmpty()
         btnGenerateConcatenatedTop.alpha = if (btnGenerateConcatenatedTop.isEnabled) 1.0f else 0.5f
         btnGenerateConcatenatedTop.setOnClickListener {
-            if (GenerationProgressManager.state.value.isGenerating) {
-                // すでに生成中なら、中断の処理をするわよ！
-                if (!GenerationProgressManager.shouldStopGracefully) {
-                    // 1回目：キリの良いところで止める（現在の画像が終わったら終了）
-                    GenerationProgressManager.shouldStopGracefully = true
-                    btnGenerateConcatenatedTop.text = "強制中断"
-                    Toast.makeText(this, "現在の画像生成が完了次第、終了します。", Toast.LENGTH_SHORT).show()
-                } else {
-                    // 2回目：今すぐ止める（強制終了）
-                    GenerationProgressManager.shouldInterrupt = true
-                    Toast.makeText(this, "直ちに強制終了します。", Toast.LENGTH_SHORT).show()
-                }
+            if (GenerationProgressManager.state.value.isGenerating || GenerationAgentClient.hasPendingJob(this) ||
+                GenerationAgentClient.hasPendingInsertion(this)
+            ) {
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("生成中の操作")
+                    .setItems(arrayOf("現在の設定で1枚を次に生成", "この1枚で終了", "今すぐ中断")) { _, action ->
+                        when (action) {
+                            0 -> queueBuilderNext()
+                            1 -> GenerationProgressManager.shouldStopGracefully = true
+                            2 -> GenerationProgressManager.shouldInterrupt = true
+                        }
+                    }
+                    .show()
                 return@setOnClickListener
             }
 
@@ -1410,9 +1412,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         notifyLiveBatchBuilderChanged()
                         val completed = GenerationAgentClient.monitor(this@MainActivity, accepted)
                         val preparedForUrls = LiveBatchCoordinator.currentPrepared().ifEmpty { preparedImages }
-                        val tagsByUrl = GeneratedImageTagBinding.tagsForCompletedUrls(completed.imageUrls, preparedForUrls).toMap()
-                        val cardsByUrl = GeneratedImageTagBinding.cardStatesForCompletedUrls(completed.imageUrls, preparedForUrls).toMap()
-                        completed.imageUrls.forEachIndexed { order, url ->
+                        val tagsByUrl = GeneratedImageTagBinding.tagsForCompletedUrls(completed.legacyImageUrls, preparedForUrls).toMap()
+                        val cardsByUrl = GeneratedImageTagBinding.cardStatesForCompletedUrls(completed.legacyImageUrls, preparedForUrls).toMap()
+                        completed.legacyImageUrls.forEachIndexed { order, url ->
                             val prepared = GeneratedImageTagBinding.taskIndexFromUrl(url)
                                 ?.let { preparedForUrls.getOrNull(it - 1) }
                                 ?: preparedForUrls.getOrNull(order)
@@ -1477,6 +1479,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
                 .show()
         }
+    }
+
+    private fun queueBuilderNext() {
+        val snapshot = GeneratedImageTagBinding.snapshotAtStart(
+            selected = promptCardAdapter.getSelectedCardsWithLevels(),
+            roster = PromptCardManager.promptCards.toList(),
+            randomEnabledCategories = PromptCardManager.randomEnabledCategories.toSet(),
+            randomizerIncludedIds = PromptCardManager.randomizerIncludedIds.toSet(),
+            width = genWidth, height = genHeight, steps = genSteps,
+            sampler = genSampler, batchCount = 1
+        )
+        val prepared = GeneratedImageTagBinding.buildPreparedImages(
+            snapshot, chance = { Random.nextInt(100) }, pickIndex = { Random.nextInt(it) }
+        )
+        ImageGenerationCoordinator.start(this, LiveBatchCoordinator.requestsFromPrepared(prepared))
     }
 
     private fun updateFabVisibility(itemId: Int) {

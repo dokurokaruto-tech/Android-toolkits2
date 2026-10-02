@@ -32,10 +32,6 @@ object ThumbnailGenerationCoordinator {
             Toast.makeText(activity, "サムネイルを作る対象が無い。", Toast.LENGTH_SHORT).show()
             return false
         }
-        if (isBusy()) {
-            ThumbnailQualityDialog.busyToast(activity)
-            return false
-        }
         // 単体も一括もここを通る。画質とステップ数はアスペクト比を
         // 崩さずにここで決めてから錬成へ渡す。
         ThumbnailQualityDialog.show(activity, valid) { adjusted ->
@@ -45,13 +41,15 @@ object ThumbnailGenerationCoordinator {
     }
 
     private fun launch(activity: Activity, valid: List<ThumbnailBindPolicy.Item>) {
-        if (isBusy()) {
-            ThumbnailQualityDialog.busyToast(activity)
-            return
-        }
         val app = activity.applicationContext
         val requests = valid.map { it.request.copy(purpose = "thumbnail") }
         val targets = valid.map { it.target }
+        if (isBusy() || GenerationAgentClient.hasPendingJob(app) ||
+            GenerationAgentClient.hasPendingInsertion(app)
+        ) {
+            GenerationInsertionCoordinator.offer(activity, requests, targets)
+            return
+        }
         GenerationProgressManager.startGeneration(
             batchMode = requests.size > 1,
             total = requests.size,
@@ -76,7 +74,12 @@ object ThumbnailGenerationCoordinator {
                     thumbnailTargets = targets
                 )
                 val completed = GenerationAgentClient.monitor(app, accepted, silent = false)
-                val outcomes = ThumbnailBinder.applyCompleted(app, completed.imageUrls, targets)
+                val outcomes = if (completed.taskResultsSupported) {
+                    completed.taskResults.filter { it.purpose == "thumbnail" && it.target in targets }
+                        .map { ThumbnailBindPolicy.BindOutcome.ALREADY }
+                } else {
+                    ThumbnailBinder.applyCompleted(app, completed.imageUrls, targets)
+                }
                 Toast.makeText(
                     app,
                     ThumbnailBindPolicy.completionMessage(outcomes, completed.error),

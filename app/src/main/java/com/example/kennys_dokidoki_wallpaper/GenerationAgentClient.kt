@@ -7,6 +7,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -90,6 +92,14 @@ data class CheckpointInfo(
     val modified: String
 )
 
+data class AgentTaskResult(
+    val index: Int,
+    val purpose: String,
+    val url: String,
+    val target: ThumbnailBindPolicy.Target?,
+    val metadata: JSONObject
+)
+
 data class AgentJobState(
     val id: String,
     val status: String,
@@ -101,8 +111,12 @@ data class AgentJobState(
     val currentImageProgress: Float = 0f,
     val previewUrl: String?,
     val imageUrls: List<String>,
-    val error: String?
+    val error: String?,
+    val taskResults: List<AgentTaskResult> = emptyList(),
+    val taskResultsSupported: Boolean = false,
+    val refreshableIndices: List<Int>? = null
 ) {
+    val legacyImageUrls: List<String> get() = if (taskResultsSupported) emptyList() else imageUrls
     val isTerminal: Boolean
         get() = status in setOf("completed", "partial_failed", "failed", "canceled")
 }
@@ -112,6 +126,8 @@ data class AgentJobState(
  * never cancels the requested image count. The last job id is persisted for reconnect.
  */
 object GenerationAgentClient {
+    private val insertionMutex = Mutex()
+    private const val INSERTION_KEY = "generation_agent_pending_insertion"
     private const val ACTIVE_JOB_KEY = "generation_agent_active_job_id"
     private const val ACTIVE_JOB_TAGS_KEY = "generation_agent_active_job_tags"
     private const val ACTIVE_JOB_CARDS_KEY = "generation_agent_active_job_cards"
@@ -284,7 +300,7 @@ object GenerationAgentClient {
         require(requests.isNotEmpty()) { "生成リクエストが空です" }
         val body = JSONObject().apply {
             put("client_request_id", UUID.randomUUID().toString())
-            put("tasks", encodeTasks(requests))
+            put("tasks", encodeTasks(requests, thumbnailTargets))
         }
         val state = parseJob(context, requestJson(context, "/api/v1/jobs", "POST", body))
         if (persistForReconnect) {
@@ -309,7 +325,7 @@ object GenerationAgentClient {
             }
             editor.commit()
         }
-        seedCompletedUrls(context, state.imageUrls)
+        seedCompletedResults(context, state)
         state
     }
 
@@ -410,6 +426,44 @@ object GenerationAgentClient {
         parseJob(context, requestJson(context, "/api/v1/jobs/$jobId/refresh-pending", "POST", body))
     }
 
+    fun hasPendingInsertion(context: Context): Boolean = settings(context).contains(INSERTION_KEY)
+
+    fun discardInsertion(context: Context) {
+        settings(context).edit().remove(INSERTION_KEY).commit()
+    }
+
+    suspend fun insertNext(
+        context: Context,
+        requests: List<AgentGenerationRequest>,
+        targets: List<ThumbnailBindPolicy.Target> = emptyList()
+    ): AgentJobState = withContext(Dispatchers.IO) {
+        insertionMutex.withLock {
+            check(!hasPendingInsertion(context)) { "未確認の割り込みを先に再送してください" }
+            require(requests.isNotEmpty())
+            val id = activeJobId(context) ?: error("生成ジョブの受理待ちです。少し待って再試行してください")
+            val body = JSONObject().put("client_request_id", UUID.randomUUID().toString())
+                .put("tasks", encodeTasks(requests, targets))
+            val envelope = JSONObject().put("job_id", id).put("body", body)
+            check(settings(context).edit().putString(INSERTION_KEY, envelope.toString()).commit()) {
+                "割り込み要求を端末へ保存できませんでした"
+            }
+            sendPendingInsertion(context) ?: error("割り込み要求がありません")
+        }
+    }
+
+    suspend fun retryInsertion(context: Context): AgentJobState? = withContext(Dispatchers.IO) {
+        insertionMutex.withLock { sendPendingInsertion(context) }
+    }
+
+    private fun sendPendingInsertion(context: Context): AgentJobState? {
+        val raw = settings(context).getString(INSERTION_KEY, null) ?: return null
+        val saved = JSONObject(raw)
+        val id = saved.getString("job_id")
+        val state = parseJob(context, requestJson(context, "/api/v1/jobs/$id/insert-next", "POST", saved.getJSONObject("body")))
+        discardInsertion(context)
+        return state
+    }
+
     /** Monitors only while Android is alive. PC execution itself is independent of this loop. */
     suspend fun monitor(
         context: Context,
@@ -420,7 +474,7 @@ object GenerationAgentClient {
         val jobId = initial?.id ?: settings(context).getString(ACTIVE_JOB_KEY, null)
             ?: throw IllegalStateException("再接続する生成ジョブがありません")
         var state = initial ?: getJob(context, jobId)
-        seedCompletedUrls(context, state.imageUrls)
+        seedCompletedResults(context, state)
         GenerationProgressManager.startGeneration(
             batchMode = !silent,
             total = state.total,
@@ -431,7 +485,7 @@ object GenerationAgentClient {
         try {
             while (!state.isTerminal) {
                 GenerationProgressManager.updateBatchProgress(
-                    (state.completed + 1).coerceAtMost(state.total), state.total
+                    (state.completed + state.failed + 1).coerceAtMost(state.total), state.total, state.completed
                 )
                 val preview = if (!state.previewUrl.isNullOrBlank()) {
                     downloadPreview(context, state.previewUrl)
@@ -460,7 +514,7 @@ object GenerationAgentClient {
                     }
                     delay(1500)
                     state = getJob(context, jobId)
-                    seedCompletedUrls(context, state.imageUrls)
+                    seedCompletedResults(context, state)
                     connectionFailures = 0
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
@@ -480,7 +534,10 @@ object GenerationAgentClient {
                     delay(2000)
                 }
             }
-            seedCompletedUrls(context, state.imageUrls)
+            seedCompletedResults(context, state)
+            GenerationProgressManager.updateBatchProgress(
+                state.completed + state.failed, state.total, state.completed
+            )
             if (clearReconnectState) {
                 clearReconnectState(context)
             }
@@ -523,9 +580,15 @@ object GenerationAgentClient {
     suspend fun resumePendingJob(context: Context): AgentJobState? {
         val id = settings(context).getString(ACTIVE_JOB_KEY, null) ?: return null
         return try {
+            try {
+                retryInsertion(context)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                Log.w(TAG, "Pending insertion still unconfirmed", error)
+            }
             val state = getJob(context, id)
             if (state.isTerminal) {
-                seedCompletedUrls(context, state.imageUrls)
+                seedCompletedResults(context, state)
                 clearReconnectState(context)
                 GenerationProgressManager.endGeneration(force = true)
                 null
@@ -540,9 +603,13 @@ object GenerationAgentClient {
         }
     }
 
-    private fun encodeTasks(requests: List<AgentGenerationRequest>): JSONArray {
+    private fun encodeTasks(
+        requests: List<AgentGenerationRequest>,
+        targets: List<ThumbnailBindPolicy.Target> = emptyList()
+    ): JSONArray {
+        require(targets.isEmpty() || targets.size == requests.size) { "サムネイルの対象数が一致しません" }
         val tasks = JSONArray()
-        requests.forEach { request ->
+        requests.forEachIndexed { index, request ->
             tasks.put(JSONObject().apply {
                 put("prompt", request.prompt)
                 put("negative_prompt", request.negativePrompt)
@@ -552,6 +619,10 @@ object GenerationAgentClient {
                 put("cfg_scale", 7)
                 put("sampler_name", request.samplerName)
                 put("purpose", request.purpose)
+                targets.getOrNull(index)?.let { target ->
+                    require(request.purpose == "thumbnail" && target.isValid)
+                    put("binding", JSONObject().put("kind", target.kind).put("id", target.id))
+                }
                 request.seed?.takeIf { it >= 0L }?.let { put("seed", it) }
                 val tags = JSONArray()
                 request.tags.forEach { tag ->
@@ -568,6 +639,38 @@ object GenerationAgentClient {
             })
         }
         return tasks
+    }
+
+    private fun seedCompletedResults(context: Context, state: AgentJobState) {
+        if (!state.taskResultsSupported) {
+            seedCompletedUrls(context, state.imageUrls)
+            return
+        }
+        // 配列の順番ではなく、各タスクが保持する用途・対象・実際の生成条件で処理する。
+        val thumbnailResults = GenerationTaskResultPolicy.thumbnails(state.taskResults, pendingThumbnailTargets(context))
+        thumbnailResults.forEach { (target, result) ->
+            val thumbnail = ThumbnailLocalCachePolicy.toMobileThumbnailUrl(result.url) ?: result.url
+            val local = ThumbnailLocalCache.existingLocal(context, target, thumbnail)
+            ThumbnailBinder.applyOne(context, target, local ?: android.net.Uri.parse(thumbnail))
+        }
+        GenerationTaskResultPolicy.images(state.taskResults).forEach { result ->
+            val metadata = result.metadata
+            val params = metadata.optJSONObject("parameters") ?: JSONObject()
+            GeneratedImageDraftStore.seedGeneratedSource(
+                context, android.net.Uri.parse(result.url),
+                GeneratedImageTagBinding.parseStringSet(metadata.optJSONArray("tags")).toList(),
+                GeneratedImageTagBinding.parseCardStates(metadata.optJSONObject("card_states")),
+                params.optInt("width").takeIf { it > 0 },
+                params.optInt("height").takeIf { it > 0 },
+                params.optInt("steps").takeIf { it > 0 },
+                params.optString("sampler_name").takeIf { it.isNotBlank() },
+                params.optString("prompt").takeIf { it.isNotBlank() },
+                GeneratedImageTagBinding.parseStringSet(metadata.optJSONArray("random_picked_ids")),
+                GeneratedImageTagBinding.parseStringSet(metadata.optJSONArray("random_categories")),
+                GeneratedImageReplayPolicy.parseSeed(params.opt("seed")),
+                params.optString("negative_prompt")
+            )
+        }
     }
 
     private fun seedCompletedUrls(context: Context, urls: List<String>) {
@@ -616,6 +719,24 @@ object GenerationAgentClient {
                 if (path.isNotBlank()) add(absoluteUrl(context, path))
             }
         }
+        val taskResults = buildList {
+            for (index in 0 until images.length()) {
+                val item = images.optJSONObject(index) ?: continue
+                if (!item.has("task_index") || item.optString("url").isBlank()) {
+                    continue
+                }
+                val binding = item.optJSONObject("binding")
+                add(AgentTaskResult(
+                    item.getInt("task_index"), item.optString("purpose", "image"),
+                    absoluteUrl(context, item.getString("url")),
+                    ThumbnailBindPolicy.parseTarget(binding?.optString("kind"), binding?.optString("id")),
+                    item.optJSONObject("metadata") ?: JSONObject()
+                ))
+            }
+        }
+        val refreshable = json.optJSONArray("refreshable_task_indices")?.let { array ->
+            List(array.length()) { array.getInt(it) }
+        }
         val total = json.optInt("total", 1)
         val completed = json.optInt("completed")
         val failed = json.optInt("failed")
@@ -646,6 +767,9 @@ object GenerationAgentClient {
             ),
             previewUrl = json.optString("preview_url").takeIf { it.isNotBlank() },
             imageUrls = imageUrls,
+            taskResults = taskResults,
+            taskResultsSupported = json.optInt("task_results_version") >= 1,
+            refreshableIndices = refreshable,
             error = json.optString("error").takeIf { it.isNotBlank() && it != "null" }
         )
     }

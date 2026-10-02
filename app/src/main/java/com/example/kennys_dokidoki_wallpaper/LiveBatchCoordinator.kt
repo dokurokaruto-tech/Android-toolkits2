@@ -86,8 +86,9 @@ object LiveBatchCoordinator {
             clear(id)
             return
         }
-        if (!LiveBatchPromptPolicy.shouldSendRefresh(previous, nextFingerprint, job.pending)) return
-        val snapshot = snapshotForPending(job.pending)
+        val pendingCount = job.refreshableIndices?.size ?: job.pending
+        if (!LiveBatchPromptPolicy.shouldSendRefresh(previous, nextFingerprint, pendingCount)) return
+        val snapshot = snapshotForPending(pendingCount)
         val replacement = GeneratedImageTagBinding.buildPreparedImages(
             snapshot,
             chance = { Random.nextInt(100) },
@@ -101,6 +102,11 @@ object LiveBatchCoordinator {
         } catch (error: Exception) {
             if (error is CancellationException) throw error
             Log.w(TAG, "pending refresh failed", error)
+            return
+        }
+        if (job.refreshableIndices != null) {
+            // 新エージェントは実際のタスク条件を返す。割り込みを含む配列を位置で継ぎ足さない。
+            synchronized(lock) { fingerprint = nextFingerprint }
             return
         }
         val spliced = synchronized(lock) {

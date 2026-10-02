@@ -343,7 +343,11 @@ class FullScreenImageActivity : AppCompatActivity() {
             com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog
         ).setView(view).create()
         view.findViewById<View>(R.id.btn_replay_cancel).setOnClickListener { dialog.dismiss() }
-        view.findViewById<View>(R.id.btn_replay_generate).setOnClickListener {
+        val generateButton = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_replay_generate)
+        if (GenerationProgressManager.state.value.isGenerating || GenerationAgentClient.hasPendingJob(this)) {
+            generateButton.setText(R.string.generate_next_insert)
+        }
+        generateButton.setOnClickListener {
             val steps = GeneratedImageReplayPolicy.clampSteps(stepsField.text?.toString()?.toIntOrNull())
             dialog.dismiss()
             startReplayGeneration(recipe, steps)

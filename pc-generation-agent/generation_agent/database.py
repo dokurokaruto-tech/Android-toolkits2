@@ -12,6 +12,10 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
+_MAX_EXPANDED_TASKS = 10000
+_INSERT_PRIORITY = 1
+
+
 class JobDatabase:
     """Small SQLite queue. Every mutation commits before an HTTP response is returned."""
 
@@ -50,6 +54,13 @@ class JobDatabase:
                 );
                 CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(status, created_at);
                 """
+            )
+            columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(tasks)")}
+            if "priority" not in columns:
+                self._connection.execute("ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0")
+            self._connection.execute(
+                "CREATE TABLE IF NOT EXISTS insertions (job_id TEXT NOT NULL, request_id TEXT NOT NULL, "
+                "fingerprint TEXT NOT NULL, PRIMARY KEY(job_id, request_id))"
             )
             # A process may have stopped while SD was generating. Requeue that unit.
             self._connection.execute(
@@ -93,10 +104,63 @@ class JobDatabase:
     def next_task(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._connection.execute(
-                "SELECT * FROM tasks WHERE job_id=? AND status='pending' ORDER BY task_index LIMIT 1",
+                "SELECT * FROM tasks WHERE job_id=? AND status='pending' ORDER BY priority DESC, task_index LIMIT 1",
                 (job_id,),
             ).fetchone()
             return self._task_from_row(row)
+
+    def insert_next(self, job_id: str, request_id: str, fingerprint: str,
+                    tasks: list[dict[str, Any]]) -> dict[str, Any]:
+        with self._lock, self._connection:
+            job = self.get_job(job_id)
+            if not job:
+                raise ValueError("job not found")
+            existing = self._connection.execute(
+                "SELECT fingerprint FROM insertions WHERE job_id=? AND request_id=?", (job_id, request_id)
+            ).fetchone()
+            if existing:
+                if existing["fingerprint"] != fingerprint:
+                    raise ValueError("request_id was already used with different tasks")
+                return job
+            if job["status"] not in {"queued", "running"} or job["cancel_requested"]:
+                raise ValueError("job no longer accepts insertions")
+            if int(job["total"]) + len(tasks) > _MAX_EXPANDED_TASKS:
+                raise ValueError(f"expanded job may contain at most {_MAX_EXPANDED_TASKS} tasks")
+            start = int(job["total"])
+            self._connection.executemany(
+                "INSERT INTO tasks(job_id,task_index,status,payload,priority) VALUES(?,?,?,?,?)",
+                [(job_id, start + offset, "pending", json.dumps(task, ensure_ascii=False), _INSERT_PRIORITY)
+                 for offset, task in enumerate(tasks)],
+            )
+            self._connection.execute(
+                "INSERT INTO insertions(job_id,request_id,fingerprint) VALUES(?,?,?)",
+                (job_id, request_id, fingerprint),
+            )
+            self._connection.execute(
+                "UPDATE jobs SET total=total+?,updated_at=? WHERE id=?", (len(tasks), utc_now(), job_id)
+            )
+            return self.get_job(job_id)
+
+    def claim_next_task(self, job_id: str) -> dict[str, Any] | None:
+        # Claim/finish and insertion share the lock; a final-image insertion cannot be lost.
+        with self._lock, self._connection:
+            job = self.get_job(job_id)
+            if not job or job["cancel_requested"]:
+                self.finish_job(job_id)
+                return None
+            task = self.next_task(job_id)
+            if task is None:
+                self.finish_job(job_id)
+                return None
+            self.start_task(job_id, int(task["task_index"]))
+            return task
+
+    def completed_tasks(self, job_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM tasks WHERE job_id=? AND status='completed' ORDER BY task_index", (job_id,)
+            ).fetchall()
+            return [self._task_from_row(row) for row in rows]
 
     def pending_tasks(self, job_id: str) -> list[dict[str, Any]]:
         with self._lock:
