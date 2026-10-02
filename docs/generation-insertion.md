@@ -34,3 +34,21 @@ Gradle配布先とのTLS接続エラーにより、Androidのビルド・実機�
 4. ビルダーを編集しても割り込みの条件が変わらないこと。
 5. 送信中の通信断・アプリ終了後の再接続で二重登録されないこと。
 6. 「この1枚で終了」「今すぐ中断」の従来操作を確認。
+
+## 全画面から割り込み確認を開く際のクラッシュ修正
+
+`FullScreenImageActivity` は `Theme.AppCompat.NoActionBar` を使用している。
+割り込み確認と未確認依頼の再送ダイアログが、そのActivityをMaterialテーマで包まず
+`MaterialAlertDialogBuilder` へ渡していた。送信前のテーマ検証で例外になる経路を修正。
+既存の再生成画面と同じ `Md3PopupDialog.wrap` を、新規確認・再送・エラー表示に適用した。
+Activity終了後はダイアログを開かない。送信エラーは消えるToastだけでなく、閉じるまで
+残るダイアログにも表示し、未確認依頼の再送方法を案内する。
+
+検証:
+- `python -m unittest discover -s tools -p test_insertion_dialog_theme.py -v`
+  修正前はテーマ契約テストが失敗、修正後は3件成功。
+- PC側の20テスト成功（100→101、優先実行、再送、混在処理を含む）。
+- 実際の全画面Activityで確認／再送ダイアログを開き、キャンセル後も
+  生成状態・総枚数・ジョブIDを維持するAndroidテスト2件を追加。
+- Gradle配布先のTLS接続エラーによりAndroidテスト・実機での黒画面/PiPの再確認は未実施。
+  端末のクラッシュログは取得していない。

@@ -19,12 +19,15 @@ object GenerationInsertionCoordinator {
         requests: List<AgentGenerationRequest>,
         targets: List<ThumbnailBindPolicy.Target> = emptyList()
     ): Boolean {
+        if (activity.isFinishing || activity.isDestroyed) {
+            return false
+        }
         if (sending) {
             Toast.makeText(activity, "割り込みを送信中です。", Toast.LENGTH_SHORT).show()
             return false
         }
         if (GenerationAgentClient.hasPendingInsertion(activity)) {
-            MaterialAlertDialogBuilder(activity)
+            MaterialAlertDialogBuilder(Md3PopupDialog.wrap(activity))
                 .setTitle("未確認の割り込みがあります")
                 .setMessage("前回の依頼を同じIDで再送します。今回の新しい設定は送信しません。記録を破棄しても、PCで受理済みの生成は取り消されません。")
                 .setPositiveButton("前回分を再送") { _, _ -> send(activity, null, emptyList()) }
@@ -37,7 +40,7 @@ object GenerationInsertionCoordinator {
             Toast.makeText(activity, "PCの受理待ちです。少し待って再試行してください。", Toast.LENGTH_LONG).show()
             return false
         }
-        MaterialAlertDialogBuilder(activity)
+        MaterialAlertDialogBuilder(Md3PopupDialog.wrap(activity))
             .setTitle("次の生成に割り込み")
             .setMessage("生成中の1枚はそのまま完成させ、通常の待機分より先に${requests.size}枚を生成します。総枚数は${requests.size}枚増えます。先に受理された割り込みがある場合は、その後に続きます。")
             .setPositiveButton("割り込みを追加") { _, _ -> send(activity, requests, targets) }
@@ -79,7 +82,17 @@ object GenerationInsertionCoordinator {
                 if (error is CancellationException) {
                     throw error
                 }
-                Toast.makeText(app, "割り込みを確認できませんでした。PCエージェントの更新・接続を確認し、再送してください。\n${error.message}", Toast.LENGTH_LONG).show()
+                val message = "割り込みの受理を確認できませんでした。この操作では元の生成を停止しません。" +
+                    "\nPCエージェント1.1.0以降への更新・接続を確認し、同じ依頼を再送してください。\n${error.message}"
+                if (!activity.isFinishing && !activity.isDestroyed) {
+                    MaterialAlertDialogBuilder(Md3PopupDialog.wrap(activity))
+                        .setTitle("割り込みを確認できません")
+                        .setMessage(message)
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                } else {
+                    Toast.makeText(app, message, Toast.LENGTH_LONG).show()
+                }
             } finally {
                 sending = false
             }
