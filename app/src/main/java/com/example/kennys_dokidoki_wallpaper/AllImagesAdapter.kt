@@ -10,8 +10,6 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import kotlin.math.max
-import kotlin.math.min
 
 class AllImagesAdapter(
     private var images: List<ImageEntry>, // 表示用のリストとして扱うわ
@@ -29,8 +27,12 @@ class AllImagesAdapter(
     var homeImageUri: String? = null
     var chatImageUri: String? = null
 
-    val selectedPositions = mutableSetOf<Int>()
-    private var lastLongPressedPosition = -1
+    private val selection = ImageSelection()
+    private var reportedSelectionCount = 0
+
+    init {
+        registerAdapterDataObserver(ImageSelectionObserver(::onImagesChanged))
+    }
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val imageView: ImageView = view.findViewById(R.id.image_view)
@@ -49,37 +51,58 @@ class AllImagesAdapter(
     // フィルタリングなどでリストを差し替える時に使うわ
     fun updateList(newList: List<ImageEntry>) {
         images = newList
-        selectedPositions.clear()
-        lastLongPressedPosition = -1
         notifyDataSetChanged()
     }
 
+    private fun imageKeys(): List<String> = images.map { ImageSelection.key(it.uri.toString()) }
+
+    private fun positionOf(key: String): Int = images.indexOfFirst {
+        ImageSelection.key(it.uri.toString()) == key
+    }
+
+    private fun onImagesChanged() {
+        val wasSelecting = isSelectionMode
+        syncSelection()
+        if (wasSelecting != isSelectionMode) {
+            // 部分更新で最後の選択が消えた場合も、全行の操作表示を戻す。
+            notifyDataSetChanged()
+        }
+    }
+
+    private fun syncSelection() {
+        selection.reconcile(imageKeys())
+        val active = selection.size > 0
+        if (active != isSelectionMode) {
+            isSelectionMode = active
+            onSelectionModeChanged(active)
+        }
+        if (reportedSelectionCount != selection.size) {
+            reportedSelectionCount = selection.size
+            onSelectionCountChanged(selection.size)
+        }
+    }
+
     fun startSelectionMode(position: Int) {
-        isSelectionMode = true
-        selectedPositions.add(position)
-        lastLongPressedPosition = position
-        onSelectionModeChanged(true)
-        onSelectionCountChanged(selectedPositions.size)
+        selection.start(imageKeys(), position)
+        syncSelection()
         notifyDataSetChanged()
     }
 
     fun stopSelectionMode() {
-        isSelectionMode = false
-        selectedPositions.clear()
-        lastLongPressedPosition = -1
-        onSelectionModeChanged(false)
+        selection.clear()
+        syncSelection()
         notifyDataSetChanged()
     }
 
     fun selectAll() {
-        selectedPositions.clear()
-        selectedPositions.addAll(images.indices)
-        onSelectionCountChanged(selectedPositions.size)
+        selection.all(imageKeys())
+        syncSelection()
         notifyDataSetChanged()
     }
 
     fun getSelectedEntries(): List<ImageEntry> {
-        return selectedPositions.mapNotNull { if (it in images.indices) images[it] else null }
+        return selection.indices(imageKeys()).map { images[it] }
+            .distinctBy { ImageSelection.key(it.uri.toString()) }
     }
 
     fun getActiveImageIndex(): Int? {
@@ -96,6 +119,7 @@ class AllImagesAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val entry = images[position]
+        val boundKey = ImageSelection.key(entry.uri.toString())
         val context = holder.itemView.context
         
         val gridUri = entry.thumbnailUri ?: entry.uri
@@ -150,7 +174,7 @@ class AllImagesAdapter(
         // 複数選択モードの描画
         if (isSelectionMode) {
             holder.btnMore.visibility = View.GONE // メニューは隠す
-            if (selectedPositions.contains(position)) {
+            if (selection.contains(boundKey)) {
                 holder.selectionOverlay.visibility = View.VISIBLE
                 holder.selectionCheck.visibility = View.VISIBLE
             } else {
@@ -177,8 +201,9 @@ class AllImagesAdapter(
 
         // 3点メニューボタンの処理
         holder.btnMore.setOnClickListener { view ->
-            val currentPos = holder.adapterPosition
-            if (currentPos == RecyclerView.NO_POSITION || isSelectionMode) return@setOnClickListener
+            if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION || isSelectionMode) {
+                return@setOnClickListener
+            }
             
             val popup = PopupMenu(view.context, view)
             popup.menu.add("画像属性の編集")
@@ -188,11 +213,13 @@ class AllImagesAdapter(
             popup.menu.add("ソフトウェアから削除")
             
             popup.setOnMenuItemClickListener { item ->
+                val currentPos = positionOf(boundKey)
+                val currentEntry = images.getOrNull(currentPos) ?: return@setOnMenuItemClickListener true
                 when (item.title) {
-                    "画像属性の編集" -> onEditTagsClick(entry)
+                    "画像属性の編集" -> onEditTagsClick(currentEntry)
                     "クロップデータを削除" -> {
-                        entry.cropRect = null
-                        entry.croppedUri = null
+                        currentEntry.cropRect = null
+                        currentEntry.croppedUri = null
                         DataManager.saveData(view.context)
                         // 壁紙サービスにも通知を送るわよ！
                         view.context.sendBroadcast(android.content.Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED").apply {
@@ -200,7 +227,7 @@ class AllImagesAdapter(
                         })
                         notifyItemChanged(currentPos)
                     }
-                    "ソフトウェアから削除" -> onDeleteClick(entry, currentPos)
+                    "ソフトウェアから削除" -> onDeleteClick(currentEntry, currentPos)
                 }
                 true
             }
@@ -208,62 +235,45 @@ class AllImagesAdapter(
         }
 
         holder.checkActive.setOnClickListener {
-            val currentPos = holder.adapterPosition
-            if (currentPos == RecyclerView.NO_POSITION || isSelectionMode) return@setOnClickListener
-            
-            entry.isActive = !entry.isActive
+            if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION || isSelectionMode) {
+                return@setOnClickListener
+            }
+            val currentPos = positionOf(boundKey)
+            val currentEntry = images.getOrNull(currentPos) ?: return@setOnClickListener
+            currentEntry.isActive = !currentEntry.isActive
             DataManager.saveData(it.context)
             notifyItemChanged(currentPos)
         }
-        
-        holder.itemView.setOnClickListener {
-            val currentPos = holder.adapterPosition
-            if (currentPos == RecyclerView.NO_POSITION) return@setOnClickListener
 
+        holder.itemView.setOnClickListener {
+            if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION) {
+                return@setOnClickListener
+            }
+            val currentPos = positionOf(boundKey)
+            val currentEntry = images.getOrNull(currentPos) ?: return@setOnClickListener
             if (isSelectionMode) {
-                if (selectedPositions.contains(currentPos)) {
-                    selectedPositions.remove(currentPos)
-                } else {
-                    selectedPositions.add(currentPos)
-                    lastLongPressedPosition = currentPos // トグルで最後に触ったものを更新
-                }
-                
-                if (selectedPositions.isEmpty()) {
-                    stopSelectionMode()
-                } else {
-                    onSelectionCountChanged(selectedPositions.size)
-                    notifyItemChanged(currentPos)
-                }
+                selection.toggle(imageKeys(), currentPos)
+                syncSelection()
+                notifyDataSetChanged()
             } else {
-                // コールバックを叩くわよ！
-                onImageClick(entry, currentPos)
+                onImageClick(currentEntry, currentPos)
             }
         }
 
-        // 長押し（複数選択モードのトリガー ＆ 範囲選択）
         holder.itemView.setOnLongClickListener {
-            val currentPos = holder.adapterPosition
-            if (currentPos == RecyclerView.NO_POSITION) return@setOnLongClickListener true
-
+            if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION) {
+                return@setOnLongClickListener true
+            }
+            val currentPos = positionOf(boundKey)
+            if (currentPos < 0) {
+                return@setOnLongClickListener true
+            }
             if (!isSelectionMode) {
                 startSelectionMode(currentPos)
             } else {
-                // すでに選択モードなら、前回長押しした場所から今回長押しした場所までを「範囲選択」
-                if (lastLongPressedPosition != -1) {
-                    val start = min(lastLongPressedPosition, currentPos)
-                    val end = max(lastLongPressedPosition, currentPos)
-                    for (i in start..end) {
-                        selectedPositions.add(i)
-                    }
-                    lastLongPressedPosition = currentPos
-                    onSelectionCountChanged(selectedPositions.size)
-                    notifyItemRangeChanged(start, end - start + 1)
-                } else {
-                    lastLongPressedPosition = currentPos
-                    selectedPositions.add(currentPos)
-                    onSelectionCountChanged(selectedPositions.size)
-                    notifyItemChanged(currentPos)
-                }
+                selection.range(imageKeys(), currentPos)
+                syncSelection()
+                notifyDataSetChanged()
             }
             true
         }

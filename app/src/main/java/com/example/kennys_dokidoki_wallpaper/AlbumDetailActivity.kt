@@ -265,14 +265,14 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         if (item.itemId == 101) {
             // 全画像に入れる：選択中があればその分、なければフォルダ内すべて
             val selected = imageAdapter.getSelectedEntries()
-            val targets = if (imageAdapter.isSelectionMode && selected.isNotEmpty()) selected else images.toList()
+            val targets = if (imageAdapter.isSelectionMode) selected else images.toList()
             confirmAddToAllImages(targets)
             return true
         }
         if (item.itemId == 102) {
             val selected = imageAdapter.getSelectedEntries()
             val target = when {
-                imageAdapter.isSelectionMode && selected.isNotEmpty() -> selected.first()
+                imageAdapter.isSelectionMode -> selected.firstOrNull()
                 else -> images.firstOrNull()
             }
             if (target == null) {
