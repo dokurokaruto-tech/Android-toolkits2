@@ -31,6 +31,15 @@ class ImageAdapter(
 
     val selectedPositions = mutableSetOf<Int>()
     private var lastLongPressedPosition = -1
+    private var savedGeneratedKeys: Set<String> = emptySet()
+
+    fun setSavedGenerated(keys: Set<String>) {
+        if (savedGeneratedKeys == keys) {
+            return
+        }
+        savedGeneratedKeys = keys.toSet()
+        notifyDataSetChanged()
+    }
 
     class ImageViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val imageView: ImageView = view.findViewById(R.id.image_view)
@@ -43,6 +52,8 @@ class ImageAdapter(
         val activeIndicator: View = view.findViewById(R.id.active_indicator)
         val tvActiveLabel: TextView = view.findViewById(R.id.tv_active_label)
         val selectionOverlay: View = view.findViewById(R.id.selection_overlay)
+        val savedBorder: View = view.findViewById(R.id.saved_image_border)
+        val savedLabel: TextView = view.findViewById(R.id.saved_image_label)
         val selectionCheck: ImageView = view.findViewById(R.id.selection_check)
     }
 
@@ -148,6 +159,12 @@ class ImageAdapter(
             holder.activeIndicator.visibility = View.GONE
             holder.tvActiveLabel.visibility = View.GONE
         }
+
+        // 選択状態と保存状態は別表示。リサイクル時にも必ず解除する。
+        val saved = isGeneratedViewerMode &&
+            GeneratedSavedPolicy.isSaved(entry.uri.toString(), savedGeneratedKeys)
+        holder.savedBorder.visibility = if (saved && !isSelectionMode) View.VISIBLE else View.GONE
+        holder.savedLabel.visibility = if (saved) View.VISIBLE else View.GONE
 
         // 複数選択モードの描画
         if (isSelectionMode) {

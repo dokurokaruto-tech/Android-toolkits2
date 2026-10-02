@@ -20,6 +20,7 @@ import androidx.appcompat.widget.Toolbar
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -42,6 +43,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     private var isRemoteGenerated: Boolean = false
     private var remoteDate: String = "downloaded"
     private val virtualImages = mutableListOf<ImageEntry>()
+    private var savedImagesJob: Job? = null
 
     private val previewLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -488,6 +490,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                                 }
                             }
                         }
+                        refreshSavedImages()
                         if (added > 0) DataManager.saveData(this@AlbumDetailActivity)
                         if (imageAdapter.isSelectionMode) imageAdapter.stopSelectionMode()
                         val result = if (downloaded > 0) "${downloaded}件を端末へ保存（全画像へ新規追加: ${added}件）"
@@ -664,8 +667,19 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         }
     }
 
+    private fun refreshSavedImages() {
+        if (!isRemoteGenerated) {
+            return
+        }
+        savedImagesJob?.cancel()
+        savedImagesJob = lifecycleScope.launch {
+            imageAdapter.setSavedGenerated(GeneratedSavedImages.keys(this@AlbumDetailActivity, remoteDate))
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        refreshSavedImages()
         loadImages()
         updateActiveImageHighlight()
         imageAdapter.notifyDataSetChanged()
