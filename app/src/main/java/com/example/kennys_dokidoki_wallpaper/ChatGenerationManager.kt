@@ -41,6 +41,11 @@ object ChatGenerationManager {
         )
     }
     private val listeners = mutableListOf<Listener>()
+    private var activeTree: ChatTree? = null
+
+    fun currentTree(sessionId: String): ChatTree? =
+        activeTree.takeIf { isGenerating && activeSessionId == sessionId }
+
 
     fun registerListener(listener: Listener) {
         if (!listeners.contains(listener)) {
@@ -57,6 +62,7 @@ object ChatGenerationManager {
      * 表示の最終確定は実行側の中断処理に任せ、ここでは確実に通信を切る。
      */
     fun cancelActiveGeneration(context: Context) {
+        ChatReplyNotifications.abandon()
         activeConnection?.disconnectQuietly()
         val job = activeJob
         if (job != null) {
@@ -79,7 +85,8 @@ object ChatGenerationManager {
         systemPrompt: String,
         chatTree: ChatTree,
         userNode: ChatNode,
-        aiNode: ChatNode
+        aiNode: ChatNode,
+        imageUri: String? = null
     ) {
         // すでに動いていたら一度安全にキャンセル
         cancelActiveGeneration(context)
@@ -87,16 +94,19 @@ object ChatGenerationManager {
         isGenerating = true
         activeSessionId = sessionId
         activeAiNodeId = aiNode.id
+        activeTree = chatTree
+        ChatReplyNotifications.begin(sessionId, aiNode.id, imageUri)
 
         // サービスを開始して、OSによるプロセスkillを防ぐのよ！
         LlmForegroundService.start(context)
 
+        val app = context.applicationContext
         val epoch = ++generationEpoch
         activeJob = scope.launch {
             if (engine == "LOCAL") {
-                runLocalResponse(context, epoch, sessionId, systemPrompt, chatTree, userNode, aiNode)
+                runLocalResponse(app, epoch, sessionId, systemPrompt, chatTree, userNode, aiNode)
             } else {
-                runCloudResponse(context, epoch, sessionId, systemPrompt, chatTree, userNode, aiNode)
+                runCloudResponse(app, epoch, sessionId, systemPrompt, chatTree, userNode, aiNode)
             }
         }
     }
@@ -180,12 +190,15 @@ object ChatGenerationManager {
                     prompt = prompt,
                     onToken = { token ->
                         scope.launch(Dispatchers.Main) {
-                            if (epoch != generationEpoch) return@launch
+                            if (epoch != generationEpoch || epoch in interruptedEpochs) {
+                                return@launch
+                            }
                             if (tokenCount == 0) {
                                 thinkingJob.cancel()
                                 aiNode.text = ""
                             }
                             aiNode.text += token
+                            ChatReplyNotifications.content(context, aiNode.id, token)
                             tokenCount++
                             notifyProgress(epoch, aiNode.text, false)
 
@@ -199,7 +212,9 @@ object ChatGenerationManager {
                     },
                     onComplete = {
                         scope.launch(Dispatchers.Main) {
-                            if (epoch != generationEpoch) return@launch
+                            if (epoch != generationEpoch || epoch in interruptedEpochs) {
+                                return@launch
+                            }
                             thinkingJob.cancel()
                             aiNode.modelName = LlmInferenceEngine.loadedModelName
                             saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true)
@@ -212,7 +227,9 @@ object ChatGenerationManager {
                     },
                     onError = { errorMsg ->
                         scope.launch(Dispatchers.Main) {
-                            if (epoch != generationEpoch) return@launch
+                            if (epoch != generationEpoch || epoch in interruptedEpochs) {
+                                return@launch
+                            }
                             thinkingJob.cancel()
                             if (ChatInterruptPolicy.isPendingPlaceholder(aiNode.text)) {
                                 aiNode.text = "【エラー】推論プロセスで不具合が発生しました: $errorMsg"
@@ -229,7 +246,7 @@ object ChatGenerationManager {
         } catch (e: Exception) {
             thinkingJob.cancel()
             aiNode.text = "【エラー】推論実行中に例外が発生しました: ${e.message}"
-            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = e.message)
+            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = e.message ?: "返信処理に失敗しました")
         }
     }
 
@@ -308,6 +325,7 @@ object ChatGenerationManager {
                 }
             }
 
+            val stream = ChatReplyStreamState()
             val fullReply = withContext(Dispatchers.IO) {
                 var reply = ""
                 try {
@@ -337,15 +355,22 @@ object ChatGenerationManager {
                                 if (!isActive) return@useLines
                                 if (line.startsWith("data: ")) {
                                     val data = line.substring(6).trim()
-                                    if (data == "[DONE]") return@forEach
+                                    if (data == "[DONE]") {
+                                        stream.done()
+                                        return@forEach
+                                    }
                                     
                                     try {
                                         val json = JSONObject(data)
-                                        val delta = json.getJSONArray("choices")
-                                            .getJSONObject(0)
-                                            .getJSONObject("delta")
+                                        if (!json.isNull("error")) {
+                                            stream.fail()
+                                            return@forEach
+                                        }
+                                        val choice = json.optJSONArray("choices")?.optJSONObject(0) ?: return@forEach
+                                        stream.finishReason(if (choice.isNull("finish_reason")) { null } else { choice.optString("finish_reason") })
+                                        val delta = choice.optJSONObject("delta") ?: return@forEach
                                         
-                                        if (delta.has("content")) {
+                                        if (delta.has("content") && !delta.isNull("content")) {
                                             val content = delta.getString("content")
                                             if (content.isEmpty()) return@forEach
                                             reply += content
@@ -359,7 +384,11 @@ object ChatGenerationManager {
                                             }
                                             
                                             withContext(Dispatchers.Main) {
+                                                if (epoch != generationEpoch || epoch in interruptedEpochs) {
+                                                    return@withContext
+                                                }
                                                 aiNode.text = reply
+                                                ChatReplyNotifications.content(context, aiNode.id, content)
                                                 notifyProgress(epoch, reply, false)
                                             }
                                         }
@@ -389,7 +418,7 @@ object ChatGenerationManager {
                     withContext(Dispatchers.Main) {
                         thinkingJob.cancel()
                         aiNode.text = "【エラー】通信エラー: ${e.message}"
-                        saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = e.message)
+                        saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = e.message ?: "返信処理に失敗しました")
                     }
                     return@withContext null
                 }
@@ -399,10 +428,11 @@ object ChatGenerationManager {
             thinkingJob.cancel()
             if (fullReply != null) {
                 aiNode.modelName = modelName
-                if (fullReply.isEmpty()) {
-                    aiNode.text = "【エラー】AIからの応答が空でした。別のモデルを試すか、もう一度実行してみてね。"
+                val error = if (stream.completed(fullReply)) { null } else { "返信が空か、正常終了を確認できませんでした。" }
+                if (error != null) {
+                    aiNode.text = fullReply + "\n【エラー】$error"
                 }
-                saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true)
+                saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = error)
             }
 
         } catch (cancel: CancellationException) {
@@ -412,7 +442,7 @@ object ChatGenerationManager {
         } catch (e: Exception) {
             thinkingJob.cancel()
             aiNode.text = "【エラー】システムエラーが発生しました: ${e.message}"
-            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = e.message)
+            saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true, error = e.message ?: "返信処理に失敗しました")
         } finally {
             if (activeConnection !== null) {
                 activeConnection?.disconnectQuietly()
@@ -491,6 +521,12 @@ object ChatGenerationManager {
             // リスナーが停止アイコンや発光を戻せるよう、通知前に生成中フラグを落とす
             val finishedNodeId = activeAiNodeId
             if (isComplete) {
+                if (error == null) {
+                    ChatReplyNotifications.complete(context, aiNode.id)
+                } else {
+                    ChatReplyNotifications.abandon()
+                }
+                activeTree = null
                 isGenerating = false
                 activeSessionId = null
                 activeAiNodeId = null

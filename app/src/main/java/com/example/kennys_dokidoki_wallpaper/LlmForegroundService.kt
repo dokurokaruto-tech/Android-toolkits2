@@ -45,7 +45,7 @@ class LlmForegroundService : Service() {
 
             val pendingIntent = PendingIntent.getActivity(
                 context, 0,
-                Intent(context, ChatOverlayActivity::class.java),
+                ChatReplyNotifications.destination(context),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 

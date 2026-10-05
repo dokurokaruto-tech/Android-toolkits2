@@ -559,7 +559,26 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private lateinit var adapter: ChatAdapter
     
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
+    private val replyNoticeOwner = Any()
+    private var replyChatResumed = false
+    private var replySessionPinned: String? = null
     private var currentChatId: String? = null
+        set(value) {
+            field = value
+            if (replyChatResumed) {
+                ChatReplyNotifications.viewing(this, replyNoticeOwner, value)
+            }
+        }
+
+    private val replyPermission = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        ChatReplyNotifications.configure(this, if (granted) { ChatReplyNoticePolicy.Setting.ON } else { ChatReplyNoticePolicy.Setting.OFF })
+        if (!granted) {
+            Toast.makeText(this, "通知はOFFです。Androidの設定から通知を許可できます。", Toast.LENGTH_LONG).show()
+        }
+    }
+
     /** 直近の読み込みで閲覧位置の復元まで済ませたか。壁紙変更時の末尾スクロール抑止用 */
     private var lastLoadScheduledViewportRestore = false
     private var currentImageEntry: ImageEntry? = null
@@ -1045,6 +1064,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        replySessionPinned = savedInstanceState?.getString(ChatReplyNotifications.EXTRA_SESSION)
+            ?: intent.getStringExtra(ChatReplyNotifications.EXTRA_SESSION)
         applyPinnedChatWindowCover()
         setContentView(R.layout.activity_chat_overlay)
         applyPinnedChatWindowCover()
@@ -1468,6 +1489,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        replySessionPinned = intent.getStringExtra(ChatReplyNotifications.EXTRA_SESSION)
         applyPinnedChatWindowCover()
         try {
             TagManager.loadTags(this)
@@ -2356,7 +2378,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         var systemPrompt = ChatInstructionPolicy.roleText(prefs.getString(ChatInstructionPolicy.ROLE_KEY, null)) + "\n" + getUserPersonaPrompt() + getActiveImageTagsPrompt() + getMemoriesPrompt()
         val sessionId = currentChatId ?: ""
         
-        ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, newAiNode)
+        ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, newAiNode, currentImageEntry?.uri?.toString())
         updateSendButtonForGeneration()
     }
 
@@ -2429,6 +2451,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     override fun onResume() {
         super.onResume()
+        replyChatResumed = true
+        ChatReplyNotifications.viewing(this, replyNoticeOwner, currentChatId)
 
         updateSendButtonForGeneration()
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -2449,7 +2473,14 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         ChatGenerationManager.registerListener(this)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(ChatReplyNotifications.EXTRA_SESSION, replySessionPinned)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onPause() {
+        replyChatResumed = false
+        ChatReplyNotifications.leave(replyNoticeOwner)
         super.onPause()
         persistCurrentChatLink()
         saveChatViewport()
@@ -2460,6 +2491,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     override fun onDestroy() {
+        ChatReplyNotifications.leave(replyNoticeOwner)
         super.onDestroy()
         ChatGenerationManager.unregisterListener(this)
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -2571,6 +2603,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun bindChatToImage(entry: ImageEntry?, chatId: String?) {
+        if (chatId != currentChatId) {
+            replySessionPinned = null
+        }
         entry?.linkedChatId = chatId
         val uri = entry?.uri ?: return
         val key = GeneratedImageIdentity.canonicalKey(uri.toString())
@@ -2615,10 +2650,43 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private var lastLoadedImageUri: String? = null
 
     private fun loadCurrentSession() {
+        val notifiedSession = replySessionPinned
         lastLoadScheduledViewportRestore = false
         persistCurrentChatLink()
         saveChatViewport()
         currentChatId?.let { ChatSessionManager.saveSessionData(this, it, chatTree) }
+
+        replySessionPinned = notifiedSession
+        intent.removeExtra(ChatReplyNotifications.EXTRA_SESSION)
+        if (notifiedSession != null) {
+            if (ChatSessionManager.getSessionName(this, notifiedSession) == null) {
+                replySessionPinned = null
+                Toast.makeText(this, "このチャットは削除されています。", Toast.LENGTH_LONG).show()
+                return
+            }
+            val imageUri = intent.getStringExtra("IMAGE_URI")
+            val image = DataManager.allImages.find { it.uri.toString() == imageUri }
+                ?: imageUri?.let { GeneratedImageDraftStore.entryFor(this, android.net.Uri.parse(it)) }
+            // 結びつけが変わった画像へ古い会話を再保存しない。
+            currentImageEntry = image?.takeIf {
+                val link = it.linkedChatId
+                    ?: ChatSessionManager.getLinkedChatId(this, GeneratedImageIdentity.canonicalKey(it.uri.toString()))
+                    ?: ChatSessionManager.getLinkedChatId(this, it.uri.toString())
+                link == notifiedSession
+            }
+            lastLoadedImageUri = currentImageEntry?.uri?.toString()
+            currentChatId = notifiedSession
+            chatTree = ChatGenerationManager.currentTree(notifiedSession)
+                ?: ChatSessionManager.loadSessionData(this, notifiedSession)
+            val background = findViewById<ImageView>(R.id.chat_background_image)
+            background.setImageDrawable(null)
+            background.visibility = if (currentImageEntry == null) { View.GONE } else { View.VISIBLE }
+            currentImageEntry?.let { Glide.with(this).load(it.uri).into(background) }
+            buildDisplayList()
+            restoreSavedChatViewport(notifiedSession)
+            updateIntegrityWarnings()
+            return
+        }
 
         val intentUri = intent.getStringExtra("IMAGE_URI")
         
@@ -2692,7 +2760,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     val sessionId = decision.sessionId
                     if (!sessionId.isNullOrBlank()) {
                         currentChatId = sessionId
-                        chatTree = ChatSessionManager.loadSessionData(this, sessionId)
+                        chatTree = ChatGenerationManager.currentTree(sessionId)
+                            ?: ChatSessionManager.loadSessionData(this, sessionId)
                         checkAndInitializeGreeting()
                         buildDisplayList()
                         restoreSavedChatViewport(sessionId)
@@ -2941,11 +3010,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun showOptionsMenu(view: View) {
-        val items = arrayOf("ビジュアル設定", "チャットの結びつけ", "性格を選択", "新しいチャットを開始")
+        val items = arrayOf("ビジュアル設定", "チャットの結びつけ", "性格を選択", "新しいチャットを開始", "返信通知のON / OFF")
         MaterialAlertDialogBuilder(md3Context)
             .setTitle("チャットオプション")
             .setItems(items) { _, which ->
                 when (which) {
+                    4 -> showReplyNoticeOptions()
                     0 -> showVisualConfigDialog()
                     1 -> showSessionSelectionDialog()
                     2 -> {
@@ -2966,6 +3036,29 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     }
                 }
             }
+            .show()
+    }
+
+    private fun showReplyNoticeOptions() {
+        MaterialAlertDialogBuilder(md3Context)
+            .setTitle("返信通知（開始・完了）")
+            .setSingleChoiceItems(arrayOf("OFF", "ON"), if (ChatReplyNotifications.enabled(this)) { 1 } else { 0 }) { dialog, which ->
+                dialog.dismiss()
+                if (which == 0) {
+                    ChatReplyNotifications.configure(this, ChatReplyNoticePolicy.Setting.OFF)
+                } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                    androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    replyPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    ChatReplyNotifications.configure(this, ChatReplyNoticePolicy.Setting.ON)
+                }
+            }
+            .setNeutralButton("Androidの通知設定") { _, _ ->
+                startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName))
+            }
+            .setNegativeButton("閉じる", null)
             .show()
     }
 
@@ -3374,6 +3467,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun linkSessionToSet(sessionId: String) {
+        replySessionPinned = null
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val activeSetName = settingsPrefs.getString("active_album_name_chat", null)
             ?: settingsPrefs.getString("active_album_name", null)
@@ -3507,7 +3601,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
 
         val sessionId = currentChatId ?: ""
-        ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, aiNode)
+        ChatGenerationManager.startGeneration(this, engine, sessionId, systemPrompt, chatTree, userNode, aiNode, currentImageEntry?.uri?.toString())
         updateSendButtonForGeneration()
     }
 

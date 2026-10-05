@@ -201,6 +201,19 @@ class TagPromptEditorActivity : AppCompatActivity() {
         val btnSave = findViewById<Button>(R.id.btn_save)
 
         toolbar.setNavigationOnClickListener { finish() }
+        toolbar.menu.add("コンシェルジュ").setOnMenuItemClickListener {
+            if (currentVariants.size <= 1) {
+                showVariantEditorDialog(0, currentVariants.isEmpty(), VariantEntry.CONCIERGE)
+            } else {
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(Md3PopupDialog.wrap(this))
+                    .setTitle("相談する文章を選択")
+                    .setItems(currentVariants.map { it.name }.toTypedArray()) { _, index ->
+                        showVariantEditorDialog(index, false, VariantEntry.CONCIERGE)
+                    }
+                    .show()
+            }
+            true
+        }
         tvTitle.text = "タグの編集"
         etTagName.setText(originalTag)
         
@@ -385,7 +398,9 @@ class TagPromptEditorActivity : AppCompatActivity() {
     /**
      * 1つの文章（性格）を閲覧・編集するダイアログ。新規登録にも使う。
      */
-    private fun showVariantEditorDialog(index: Int, isNew: Boolean) {
+    private enum class VariantEntry { EDIT, CONCIERGE }
+
+    private fun showVariantEditorDialog(index: Int, isNew: Boolean, entry: VariantEntry = VariantEntry.EDIT) {
         if (generateJob?.isActive == true) {
             Toast.makeText(this, "AIの置き換え中は他の文章を開けないわよ！", Toast.LENGTH_SHORT).show()
             return
@@ -442,6 +457,23 @@ class TagPromptEditorActivity : AppCompatActivity() {
         aiMotionTarget = btnAi
 
         val dialog = Md3PopupDialog.show(this, view)
+        val editorKey = java.util.UUID.randomUUID().toString()
+        val concierge = view.findViewById<View>(R.id.btn_variant_concierge)
+        concierge.setOnClickListener {
+            ConciergeEditorDialog.show(this, read = {
+                if (dialog.isShowing) {
+                    ConciergeEditorPolicy.Draft(
+                        editorKey, ConciergeEditorPolicy.Kind.TAG,
+                        "タグ：${etTagName.text} / 文章：${etName.text}", etText.text.toString()
+                    )
+                } else {
+                    null
+                }
+            }, apply = { draft -> etText.setText(draft.main) })
+        }
+        if (entry == VariantEntry.CONCIERGE) {
+            concierge.performClick()
+        }
 
         fun closeEditor() {
             aiMotionTarget = null

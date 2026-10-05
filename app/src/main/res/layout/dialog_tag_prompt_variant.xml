@@ -95,6 +95,13 @@
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="156 文字 | 約 45 トークン" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_variant_concierge"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="この文章をコンシェルジュに相談" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

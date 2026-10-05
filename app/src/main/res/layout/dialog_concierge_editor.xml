@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:padding="24dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="編集コンシェルジュ" android:textAppearance="?attr/textAppearanceHeadlineSmall" />
+    <TextView android:id="@+id/tv_editor_target" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="8dp"
+        android:textAppearance="?attr/textAppearanceTitleMedium" />
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:minHeight="160dp" android:layout_marginTop="12dp">
+        <TextView android:id="@+id/tv_editor_conversation" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textIsSelectable="true"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+    </ScrollView>
+    <ProgressBar android:id="@+id/progress_editor_concierge" style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:indeterminate="true" android:visibility="gone" />
+    <EditText android:id="@+id/et_editor_request" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:hint="この内容をどう変えますか？"
+        android:inputType="textMultiLine" android:maxLines="4" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/btn_editor_request"
+        android:layout_width="match_parent" android:layout_height="wrap_content" android:text="変更案を相談" />
+</LinearLayout>

@@ -177,6 +177,15 @@
                         tools:ignore="HardcodedText" />
 
                     <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_card_concierge"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="相談"
+                        android:contentDescription="編集中のカードをコンシェルジュに相談"
+                        android:visibility="gone" />
+
+                    <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_ai_convert_prompt_card"
                         style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
                         android:layout_width="48dp"

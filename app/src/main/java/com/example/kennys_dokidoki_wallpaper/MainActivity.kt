@@ -2466,6 +2466,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val dialog = Md3PopupDialog.show(this, dialogView)
+        val editorKey = card?.id ?: UUID.randomUUID().toString()
+        dialogView.findViewById<View>(R.id.btn_card_concierge).apply {
+            visibility = View.VISIBLE
+            setOnClickListener {
+                ConciergeEditorDialog.show(this@MainActivity, read = {
+                    if (dialog.isShowing) {
+                        ConciergeEditorPolicy.Draft(
+                            editorKey, ConciergeEditorPolicy.Kind.CARD,
+                            "${etCategory.text} / ${etLabel.text}",
+                            etMainPrompt.text.toString(), etNegativePrompt.text.toString()
+                        )
+                    } else {
+                        null
+                    }
+                }, apply = { draft ->
+                    etMainPrompt.setText(draft.main)
+                    etNegativePrompt.setText(draft.negative)
+                })
+            }
+        }
+
         dialog.setOnDismissListener { ThumbnailBinder.removeListener(previewListener) }
 
         btnPickThumbnail.setOnClickListener {
