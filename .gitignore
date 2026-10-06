@@ -13,3 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# 3D character work scratch
+/image-search/
+__pycache__/
+*.blend1
