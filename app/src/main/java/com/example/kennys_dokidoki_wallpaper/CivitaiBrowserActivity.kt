@@ -31,9 +31,9 @@ class CivitaiBrowserActivity : AppCompatActivity() {
     private var currentVersionId: Long? = null
 
     companion object {
-        const val HOME_URL = "https://civitai.com/"
+        const val HOME_URL = "https://civitai.red/"
         private val MODEL_PATTERN = Pattern.compile(
-            "https?://(?:www\\.)?civitai\\.com/models/(\\d+)",
+            "^https?://(?:www\\.)?civitai\\.(?:com|red)/models/(\\d+)(?:[/?#]|$)",
             Pattern.CASE_INSENSITIVE
         )
         private val VERSION_PATTERN = Pattern.compile("[?&]modelVersionId=(\\d+)")
