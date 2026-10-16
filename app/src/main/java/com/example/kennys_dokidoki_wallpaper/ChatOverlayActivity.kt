@@ -2713,15 +2713,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             if (intentUri != null) {
                 bgView.visibility = View.VISIBLE
                 bgView.setBackgroundColor(Color.BLACK)
-                val cached = OriginalImageMemoryCache.getIfPresent(entry.uri)
+                val cached = OriginalImageMemoryCache.getFileIfPresent(entry.uri)
                 val thumbnail = ChatPinnedBackgroundPolicy.thumbnailUri(
                     intent.getStringExtra("THUMBNAIL_URI"),
                     entry.thumbnailUri?.toString()
                 )
                 val request = Glide.with(this)
-                    .load(ChatPinnedBackgroundPolicy.loadModel(cached, entryUri))
+                    .load(cached ?: entryUri)
                     .diskCacheStrategy(
-                        if (cached != null) DiskCacheStrategy.NONE
+                        if (cached != null) DiskCacheStrategy.RESOURCE
                         else ImageStoragePolicy.glideDiskCache(entry.uri)
                     )
                     .placeholder(ColorDrawable(Color.BLACK))

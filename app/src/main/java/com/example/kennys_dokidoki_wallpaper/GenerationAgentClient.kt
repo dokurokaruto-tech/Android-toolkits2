@@ -126,6 +126,7 @@ data class AgentJobState(
  * never cancels the requested image count. The last job id is persisted for reconnect.
  */
 object GenerationAgentClient {
+    internal const val LIBRARY_PAGE_SIZE = 60
     private val insertionMutex = Mutex()
     private const val INSERTION_KEY = "generation_agent_pending_insertion"
     private const val ACTIVE_JOB_KEY = "generation_agent_active_job_id"
@@ -363,6 +364,23 @@ object GenerationAgentClient {
     suspend fun fetchImages(context: Context, date: String): List<AgentGeneratedImage> = withContext(Dispatchers.IO) {
         val encodedDate = URLEncoder.encode(date, "UTF-8")
         val array = requestJson(context, "/api/v1/library/images?date=$encodedDate").optJSONArray("images") ?: JSONArray()
+        parseLibraryImages(context, array)
+    }
+
+    data class ImagePage(val images: List<AgentGeneratedImage>, val nextCursor: String?, val indexing: Boolean)
+
+    suspend fun fetchImagePage(context: Context, date: String, cursor: String? = null): ImagePage = withContext(Dispatchers.IO) {
+        val query = "date=${URLEncoder.encode(date, "UTF-8")}&limit=$LIBRARY_PAGE_SIZE" +
+            (cursor?.let { "&cursor=${URLEncoder.encode(it, "UTF-8")}" } ?: "")
+        val response = requestJson(context, "/api/v1/library/page?$query")
+        ImagePage(
+            parseLibraryImages(context, response.optJSONArray("images") ?: JSONArray()),
+            response.optString("next_cursor").takeIf { !response.isNull("next_cursor") && it.isNotBlank() },
+            response.optBoolean("indexing", false)
+        )
+    }
+
+    private fun parseLibraryImages(context: Context, array: JSONArray): List<AgentGeneratedImage> =
         buildList {
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
@@ -400,7 +418,7 @@ object GenerationAgentClient {
                 )
             }
         }
-    }
+
 
     suspend fun cancel(context: Context, jobId: String) {
         withContext(Dispatchers.IO) { requestJson(context, "/api/v1/jobs/$jobId/cancel", "POST", JSONObject()) }

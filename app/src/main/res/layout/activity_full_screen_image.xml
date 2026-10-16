@@ -26,6 +26,19 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintDimensionRatio="1:1" />
 
+    <ProgressBar
+        android:id="@+id/original_loading"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:indeterminate="true"
+        android:visibility="gone"
+        android:elevation="16dp"
+        android:contentDescription="原寸画像を読み込み中"
+        app:layout_constraintTop_toTopOf="@id/full_screen_image"
+        app:layout_constraintBottom_toBottomOf="@id/full_screen_image"
+        app:layout_constraintStart_toStartOf="@id/full_screen_image"
+        app:layout_constraintEnd_toEndOf="@id/full_screen_image" />
+
     <!-- ナビゲーション用のエリア。backgroundを@nullにすることでエフェクトを消すわ -->
     <LinearLayout
         android:id="@+id/image_nav_container"

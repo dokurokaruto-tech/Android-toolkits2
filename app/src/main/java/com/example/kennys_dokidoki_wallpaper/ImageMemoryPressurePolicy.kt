@@ -26,7 +26,7 @@ object ImageMemoryPressurePolicy {
 
     const val GLIDE_MEMORY_MAX_BYTES = 24L * 1024 * 1024
     const val GLIDE_BITMAP_POOL_MAX_BYTES = 12L * 1024 * 1024
-    const val GLIDE_DISK_MAX_BYTES = 64L * 1024 * 1024
+    const val GLIDE_DISK_MAX_BYTES = 512L * 1024 * 1024
     const val THUMB_DISK_MAX_BYTES = 80L * 1024 * 1024
 
     const val TRIM_RUNNING_MODERATE = 5
@@ -90,7 +90,7 @@ object ImageMemoryPressurePolicy {
         }
     }
 
-    fun shouldCancelDownloads(band: Band): Boolean = band == Band.CRITICAL
+    fun shouldCancelDownloads(@Suppress("UNUSED_PARAMETER") band: Band): Boolean = false
 
     fun shouldRunPeriodicCycle(bindsSinceLast: Int, elapsedMs: Long): Boolean {
         if (bindsSinceLast >= GRID_BINDS_PER_CYCLE) return true
@@ -101,7 +101,7 @@ object ImageMemoryPressurePolicy {
 
     fun shouldSweepDisk(band: Band): Boolean = band == Band.HOT || band == Band.CRITICAL
 
-    fun shouldClearGlideDisk(band: Band): Boolean = band == Band.CRITICAL
+    fun shouldClearGlideDisk(@Suppress("UNUSED_PARAMETER") band: Band): Boolean = false
 
     fun glideMemoryBytes(calculatorBytes: Long): Long =
         calculatorBytes.coerceAtMost(GLIDE_MEMORY_MAX_BYTES).coerceAtLeast(8L * 1024 * 1024)

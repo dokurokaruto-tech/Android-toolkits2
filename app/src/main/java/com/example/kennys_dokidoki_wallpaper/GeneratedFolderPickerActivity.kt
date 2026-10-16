@@ -225,65 +225,18 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         allowEmpty: Boolean = false,
         thenShowLivePreview: Boolean = false
     ) {
-        setLoading(true)
-        lifecycleScope.launch {
-            try {
-                val images = GenerationAgentClient.fetchImages(this@GeneratedFolderPickerActivity, date)
-                if (images.isEmpty() && !allowEmpty) {
-                    setLoading(false)
-                    Toast.makeText(this@GeneratedFolderPickerActivity, "この日付の画像はありません。", Toast.LENGTH_SHORT).show()
-                    return@launch
-                }
-                images.forEach { image ->
-                    GeneratedImageDraftStore.seedGeneratedSource(
-                        this@GeneratedFolderPickerActivity,
-                        Uri.parse(image.url),
-                        image.tags,
-                        image.cardStates,
-                        image.width,
-                        image.height,
-                        image.steps,
-                        image.sampler,
-                        image.prompt,
-                        image.randomPickedIds,
-                        image.randomEnabledCategories,
-                        image.seed,
-                        image.negativePrompt
-                    )
-                }
-                openAlbum(
-                    albumName = "生成: $date",
-                    uris = images.map { it.url },
-                    thumbnailUris = images.map { it.thumbnailUrl },
-                    tagLists = images.map { GeneratedImageTagBinding.encodeTagList(it.tags) },
-                    remoteDate = date,
-                    thenShowLivePreview = thenShowLivePreview
-                )
-            } catch (error: Exception) {
-                if (allowEmpty) {
-                    openAlbum(
-                        albumName = "生成: $date",
-                        uris = emptyList(),
-                        remoteDate = date,
-                        thenShowLivePreview = thenShowLivePreview
-                    )
-                    return@launch
-                }
-                setLoading(false)
-                AgentConnectionUi.showDiagnosis(
-                    this@GeneratedFolderPickerActivity,
-                    AgentConnectionLog.last ?: AgentConnectionClassifier.fromException(error),
-                    "PC画像一覧を取得できない"
-                )
-            }
-        }
+        openAlbum(
+            albumName = "生成: $date",
+            uris = emptyList(),
+            remoteDate = date,
+            thenShowLivePreview = thenShowLivePreview
+        )
     }
 
     private fun openLocalFolder(folder: DocumentFile) {
-        val files = folder.listFiles().filter(::isGeneratedImageFile)
         openAlbum(
             albumName = "生成: ${folder.name ?: "Unknown"}",
-            uris = files.map { it.uri.toString() },
+            uris = emptyList(),
             folderUri = folder.uri.toString()
         )
     }
@@ -303,6 +256,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
             putExtra("ALBUM_NAME", albumName)
             putExtra("FROM_GENERATED_FOLDER_PICKER", true)
             putExtra("REMOTE_GENERATED", remoteDate != null)
+            putExtra("PAGED_GENERATED", remoteDate != null)
             remoteDate?.let { putExtra("REMOTE_DATE", it) }
             folderUri?.let { putExtra("FOLDER_URI", it) }
             putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(uris))
@@ -327,15 +281,14 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
             .filter { it.isDirectory }
             .sortedByDescending { it.name }
             .map { folder ->
-                val images = folder.listFiles().filter(::isGeneratedImageFile)
                 FolderItem(
                     name = folder.name ?: "Unknown",
-                    count = images.size,
-                    thumbnail = images.firstOrNull()?.uri,
+                    count = -1,
+                    thumbnail = null,
                     localFolder = folder
                 )
             }
-            .filter { it.count > 0 }
+
     }
 
     private fun isGeneratedImageFile(file: DocumentFile): Boolean =
@@ -370,7 +323,7 @@ class GeneratedFolderPickerActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val folder = folders[position]
             holder.name.text = GeneratedFolderPickerPolicy.formatFolderLabel(folder.name)
-            holder.count.text = GeneratedFolderPickerPolicy.countLabel(folder.count)
+            holder.count.text = if (folder.count < 0) { "開いて読み込む" } else { GeneratedFolderPickerPolicy.countLabel(folder.count) }
             if (folder.thumbnail != null) {
                 val context = holder.thumbnail.context
                 val remoteThumb = folder.thumbnail.toString()

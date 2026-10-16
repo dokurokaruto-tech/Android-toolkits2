@@ -162,6 +162,29 @@ class AgentIntegrationTest(unittest.TestCase):
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status, json.loads(response.read())
 
+    def test_library_page_http(self) -> None:
+        date = "2026-10-16"
+        folder = self.config.output_dir / date
+        folder.mkdir(exist_ok=True)
+        for index in range(65):
+            (folder / f"image_{index:03d}.png").write_bytes(PNG)
+        deadline = time.monotonic() + 5
+        while True:
+            _, page = self.request(f"/api/v1/library/page?date={date}&limit=60")
+            if not page["indexing"]:
+                break
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.01)
+        self.assertEqual(len(page["images"]), 60)
+        self.assertTrue(page["next_cursor"])
+        from urllib.parse import quote
+        _, second = self.request(f"/api/v1/library/page?date={date}&limit=60&cursor={quote(page['next_cursor'])}")
+        self.assertEqual(len(second["images"]), 5)
+        self.assertIsNone(second["next_cursor"])
+        self.assertFalse({i["name"] for i in page["images"]} & {i["name"] for i in second["images"]})
+        self.assertIn("parameters", page["images"][0])
+        self.assertIn("thumbnail_url", page["images"][0])
+
     def test_persistent_batch_and_library(self) -> None:
         status, job = self.request(
             "/api/v1/jobs",

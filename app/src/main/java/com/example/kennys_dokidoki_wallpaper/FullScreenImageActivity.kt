@@ -25,7 +25,6 @@ import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.target.CustomTarget
-import com.bumptech.glide.request.target.Target
 import com.bumptech.glide.request.transition.Transition
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -48,6 +47,11 @@ class FullScreenImageActivity : AppCompatActivity() {
     private var requestSerial = 0L
     private var activeTarget: CustomTarget<Drawable>? = null
     private var progressiveJob: Job? = null
+    private var thumbnailTarget: CustomTarget<Drawable>? = null
+    private lateinit var originalLoading: View
+    private var completedSerial = -1L
+    private var viewerPageJob: Job? = null
+    private var viewerCursor: String? = null
     private var prefetchJob: Job? = null
     private var isClosing = false
     private var isGeneratedViewer = false
@@ -90,6 +94,7 @@ class FullScreenImageActivity : AppCompatActivity() {
 
         rootLayout = findViewById(R.id.full_screen_root)
         imageView = findViewById(R.id.full_screen_image)
+        originalLoading = findViewById(R.id.original_loading)
         tvCounter = findViewById(R.id.tv_image_counter)
         viewerChromeBar = findViewById(R.id.viewer_chrome_bar)
         btnStartTempChat = findViewById(R.id.btn_start_temp_chat)
@@ -110,6 +115,7 @@ class FullScreenImageActivity : AppCompatActivity() {
         isRemoteGenerated = intent.getBooleanExtra("REMOTE_GENERATED", false)
         remoteDate = intent.getStringExtra("REMOTE_DATE").orEmpty()
 
+        viewerCursor = intent.getStringExtra("VIEWER_NEXT_CURSOR")
         loadImages()
         showImage()
         setupViewerActions()
@@ -208,15 +214,20 @@ class FullScreenImageActivity : AppCompatActivity() {
         if (merged == existing) return
         val added = merged.size - existing.size
         val byUrl = incoming.associateBy { it.url }
+        val previous = currentEntries.associateBy { it.uri.toString() }
         currentEntries.clear()
         merged.forEach { url ->
             val image = byUrl[url]
+            if (image == null) {
+                previous[url]?.let { currentEntries.add(it) }
+                return@forEach
+            }
             currentEntries.add(
                 GeneratedImageDraftStore.entryFor(
                     this,
                     Uri.parse(url),
-                    image?.thumbnailUrl?.let(Uri::parse),
-                    image?.tags.orEmpty()
+                    Uri.parse(image.thumbnailUrl),
+                    image.tags
                 )
             )
         }
@@ -226,7 +237,7 @@ class FullScreenImageActivity : AppCompatActivity() {
             added
         ).coerceAtMost(currentEntries.lastIndex.coerceAtLeast(0))
         if (!isClosing) {
-            tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}"
+            tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}${if (viewerCursor != null) { "+" } else { "" }}"
         }
     }
 
@@ -242,6 +253,14 @@ class FullScreenImageActivity : AppCompatActivity() {
 
     private fun turnPage(goLeft: Boolean) {
         if (currentEntries.isEmpty()) return
+        if (goLeft && currentIndex == 0 && viewerCursor != null) {
+            return
+        }
+        if (!goLeft && currentIndex == currentEntries.lastIndex && viewerCursor != null) {
+            loadViewerPage()
+            Toast.makeText(this, "次の一覧を読み込み中です。", Toast.LENGTH_SHORT).show()
+            return
+        }
         currentIndex = if (goLeft) {
             if (currentIndex > 0) currentIndex - 1 else currentEntries.lastIndex
         } else {
@@ -598,6 +617,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     private fun closeViewerImmediately() {
         if (isClosing) return
         isClosing = true
+        viewerPageJob?.cancel()
         cancelDeleteHold()
         requestSerial++
         progressiveJob?.cancel()
@@ -607,7 +627,13 @@ class FullScreenImageActivity : AppCompatActivity() {
         activeTarget?.let { Glide.with(this).clear(it) }
         activeTarget = null
         imageView.prepareForLoad()
+        val albumKey = intent.getStringExtra("VIEWER_ALBUM_KEY")
+        if (albumKey != null) {
+            ViewerImageHandoff.replace(albumKey, currentEntries)
+        }
         setResult(RESULT_OK, Intent().apply {
+            putExtra("VIEWER_ALBUM_KEY", albumKey)
+            putExtra("VIEWER_NEXT_CURSOR", viewerCursor)
             putExtra("FINAL_INDEX", currentIndex)
             if (deletedUris.isNotEmpty()) {
                 putStringArrayListExtra("DELETED_URIS", ArrayList(deletedUris))
@@ -624,15 +650,33 @@ class FullScreenImageActivity : AppCompatActivity() {
         progressiveJob?.cancel()
         prefetchJob?.cancel()
         savedCheck?.cancel()
+        thumbnailTarget?.let { Glide.with(this).clear(it) }
         activeTarget?.let { Glide.with(this).clear(it) }
         super.onDestroy()
     }
 
     private fun loadImages() {
+        val handoffKey = intent.getStringExtra("VIEWER_ALBUM_KEY")
+        if (handoffKey != null) {
+            val album = ViewerImageHandoff.entries(handoffKey)
+            currentEntries.clear()
+            if (album != null) {
+                currentEntries.addAll(album)
+            } else {
+                intent.getStringExtra("VIEWER_CURRENT_URI")?.let {
+                    currentEntries.add(ImageEntry(Uri.parse(it), thumbnailUri = intent.getStringExtra("THUMBNAIL_URI")?.let(Uri::parse)))
+                }
+                currentIndex = 0
+            }
+            return
+        }
         val virtualUris = intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS")
         if (virtualUris != null) {
             currentEntries.clear()
-            virtualUris.forEach { currentEntries.add(ImageEntry(Uri.parse(it))) }
+            val thumbnails = intent.getStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS")
+            virtualUris.forEachIndexed { index, uri ->
+                currentEntries.add(ImageEntry(Uri.parse(uri), thumbnailUri = thumbnails?.getOrNull(index)?.let(Uri::parse)))
+            }
             return
         }
 
@@ -653,6 +697,9 @@ class FullScreenImageActivity : AppCompatActivity() {
     private fun showImage() {
         if (isClosing || currentIndex !in currentEntries.indices) return
         val entry = currentEntries[currentIndex]
+        if (currentIndex >= currentEntries.size - 12) {
+            loadViewerPage()
+        }
         refreshSavedState()
         val viewedIndex = currentIndex
         val serial = ++requestSerial
@@ -662,50 +709,32 @@ class FullScreenImageActivity : AppCompatActivity() {
         prefetchJob = null
         activeTarget?.let { Glide.with(this).clear(it) }
         activeTarget = null
-        tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}"
+        tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}${if (viewerCursor != null) { "+" } else { "" }}"
         imageView.prepareForLoad()
 
+        originalLoading.visibility = View.VISIBLE
+        thumbnailTarget?.let { Glide.with(this).clear(it) }
+        thumbnailTarget = null
+        val preview = ViewerImageHandoff.preview(entry.uri.toString(), resources)
+        if (preview != null) {
+            applyImageRatio(preview.intrinsicWidth, preview.intrinsicHeight)
+            imageView.showCompleteDrawable(preview)
+        } else {
+            showThumbnail(entry, serial)
+        }
         if (ImageStoragePolicy.isRemote(entry.uri)) {
-            val cached = OriginalImageMemoryCache.getIfPresent(entry.uri)
-            if (cached != null) {
-                // A prefetched/cached original is already complete and can be shown immediately.
-                displayOriginal(cached, entry.uri, serial)
-            } else {
-                progressiveJob = lifecycleScope.launch {
-                    try {
-                        ProgressiveOriginalLoader.load(
-                            originalUri = entry.uri,
-                            onDimensions = { width, height ->
-                                if (serial == requestSerial) {
-                                    applyImageRatio(width, height)
-                                    imageView.beginProgressiveLoad(width, height)
-                                }
-                            },
-                            onTile = { bitmap, top ->
-                                if (serial == requestSerial) {
-                                    imageView.appendDecodedTile(bitmap, top)
-                                } else {
-                                    bitmap.recycle()
-                                }
-                            }
-                        )
-                    } catch (progressiveError: Exception) {
-                        if (progressiveError is CancellationException) throw progressiveError
-                        // Older agents do not expose tile endpoints. Fall back to the complete
-                        // original without manufacturing a reveal animation.
-                        try {
-                            val bytes = OriginalImageMemoryCache.getOrDownload(entry.uri)
-                            if (serial == requestSerial) displayOriginal(bytes, entry.uri, serial)
-                        } catch (error: Exception) {
-                            if (error is CancellationException) throw error
-                            if (serial == requestSerial) {
-                                Toast.makeText(
-                                    this@FullScreenImageActivity,
-                                    "オリジナル画像を読み込めません: ${error.message ?: progressiveError.message}",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
+            progressiveJob = lifecycleScope.launch {
+                try {
+                    val file = OriginalImageMemoryCache.getFile(entry.uri)
+                    if (serial == requestSerial) {
+                        displayOriginal(file, entry.uri, serial)
+                    }
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (error: Exception) {
+                    if (serial == requestSerial) {
+                        originalLoading.visibility = View.GONE
+                        Toast.makeText(this@FullScreenImageActivity, "原寸画像の取得に失敗しました。開き直して再試行してください。", Toast.LENGTH_LONG).show()
                     }
                 }
             }
@@ -714,6 +743,44 @@ class FullScreenImageActivity : AppCompatActivity() {
             displayOriginal(entry.uri, entry.uri, serial)
         }
         ImageMemoryGovernor.onViewerWorkingSet(this, workingSetKeys(viewedIndex))
+    }
+
+    private fun loadViewerPage() {
+        val cursor = viewerCursor ?: return
+        if (viewerPageJob?.isActive == true || !isRemoteGenerated) {
+            return
+        }
+        viewerPageJob = lifecycleScope.launch {
+            try {
+                val page = GeneratedFolderRepository.page(this@FullScreenImageActivity, remoteDate, cursor)
+                if (!page.indexing) {
+                    val keys = currentEntries.map { GeneratedImageIdentity.canonicalKey(it.uri.toString()) }.toHashSet()
+                    currentEntries.addAll(page.entries.filter { keys.add(GeneratedImageIdentity.canonicalKey(it.uri.toString())) })
+                    viewerCursor = page.next
+                    tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}${if (viewerCursor != null) { "+" } else { "" }}"
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                Toast.makeText(this@FullScreenImageActivity, "次の一覧を取得できません。次の画像へ進む操作で再試行します。", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun showThumbnail(entry: ImageEntry, serial: Long) {
+        val uri = entry.thumbnailUri ?: return
+        val model = ThumbnailLocalCache.existingLibrary(this, uri.toString()) ?: uri
+        val target = object : CustomTarget<Drawable>(ImageMemoryPressurePolicy.GRID_THUMB_WIDTH, ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT) {
+            override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
+                if (serial == requestSerial && completedSerial != serial) {
+                    applyImageRatio(resource.intrinsicWidth, resource.intrinsicHeight)
+                    imageView.showCompleteDrawable(resource)
+                }
+            }
+            override fun onLoadCleared(placeholder: Drawable?) { }
+        }
+        thumbnailTarget = target
+        Glide.with(this).load(model).diskCacheStrategy(DiskCacheStrategy.ALL).dontAnimate().into(target)
     }
 
     private fun workingSetKeys(center: Int): Set<String> {
@@ -733,9 +800,9 @@ class FullScreenImageActivity : AppCompatActivity() {
         if (!ImageStoragePolicy.isRemote(currentUri)) return
         prefetchJob = lifecycleScope.launch {
             // Never start surrounding originals until the viewed original itself is complete.
-            if (OriginalImageMemoryCache.getIfPresent(currentUri) == null) {
+            if (OriginalImageMemoryCache.getFileIfPresent(currentUri) == null) {
                 try {
-                    OriginalImageMemoryCache.getOrDownload(currentUri)
+                    OriginalImageMemoryCache.getFile(currentUri)
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
                     return@launch
@@ -757,8 +824,12 @@ class FullScreenImageActivity : AppCompatActivity() {
     }
 
     private fun surroundingUris(center: Int, distance: Int): List<Uri> {
-        return CircularPrefetchPlanner.ring(center, currentEntries.size, distance)
-            .map { currentEntries[it].uri }
+        val indices = if (viewerCursor != null) {
+            listOf(center - distance, center + distance).filter { it in currentEntries.indices }
+        } else {
+            CircularPrefetchPlanner.ring(center, currentEntries.size, distance)
+        }
+        return indices.map { currentEntries[it].uri }
             .filter { ImageStoragePolicy.isRemote(it) }
     }
 
@@ -771,23 +842,32 @@ class FullScreenImageActivity : AppCompatActivity() {
 
     private fun displayOriginal(model: Any, sourceUri: Uri, serial: Long) {
         activeTarget?.let { Glide.with(this).clear(it) }
-        val target = object : CustomTarget<Drawable>(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL) {
+        val target = object : CustomTarget<Drawable>(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels) {
             override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
                 if (serial != requestSerial) return
+                completedSerial = serial
+                originalLoading.visibility = View.GONE
                 val width = resource.intrinsicWidth
                 val height = resource.intrinsicHeight
                 if (width > 0 && height > 0) applyImageRatio(width, height)
                 imageView.showCompleteDrawable(resource)
             }
 
-            override fun onLoadCleared(placeholder: Drawable?) {
-                if (serial == requestSerial) imageView.showCompleteDrawable(placeholder)
+            override fun onLoadCleared(placeholder: Drawable?) { }
+
+            override fun onLoadFailed(errorDrawable: Drawable?) {
+                if (serial == requestSerial) {
+                    originalLoading.visibility = View.GONE
+                    Toast.makeText(this@FullScreenImageActivity, "画像を表示できません。開き直して再試行してください。", Toast.LENGTH_LONG).show()
+                }
             }
         }
         activeTarget = target
         Glide.with(this)
             .load(model)
-            .override(Target.SIZE_ORIGINAL)
+            .override(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+            .fitCenter()
+            .dontAnimate()
             .diskCacheStrategy(
                 if (model is ByteArray) DiskCacheStrategy.NONE
                 else ImageStoragePolicy.glideDiskCache(sourceUri, DiskCacheStrategy.RESOURCE)

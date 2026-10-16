@@ -11,7 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * 画像キャッシュを、見ている枚＋隣だけ残す周期で捨てる。
+ * RAM上の画像だけを、見ている枚＋隣に絞る。ディスクは保持する。
  * グリッドを触っていなくても心拍で回す。
  */
 object ImageMemoryGovernor {
@@ -112,7 +112,7 @@ object ImageMemoryGovernor {
             maxKept = ImageMemoryPressurePolicy.originalLimit(band),
             budgetBytes = budget
         )
-        if (ImageMemoryPressurePolicy.shouldCancelDownloads(band)) {
+        if (ImageMemoryPressurePolicy.shouldClearGlideMemory(band)) {
             OriginalImageMemoryCache.clear()
         }
         val app = context.applicationContext
@@ -128,9 +128,6 @@ object ImageMemoryGovernor {
         if (sweepDisk) {
             io.launch {
                 ThumbnailLocalCache.prune(app)
-                if (ImageMemoryPressurePolicy.shouldClearGlideDisk(band)) {
-                    runCatching { Glide.get(app).clearDiskCache() }
-                }
             }
         }
     }

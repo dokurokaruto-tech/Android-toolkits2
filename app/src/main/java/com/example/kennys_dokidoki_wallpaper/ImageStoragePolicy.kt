@@ -3,11 +3,7 @@ package com.example.kennys_dokidoki_wallpaper
 import android.net.Uri
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 
-/**
- * Remote PC images are view-only until the user explicitly imports them.
- * Memory caching is allowed for smooth scrolling, but no encoded/decoded image is
- * persisted in Glide's disk cache.
- */
+/** リモート画像もディスクに保持し、表示時にRAMへ展開する。 */
 object ImageStoragePolicy {
     fun isRemote(uri: Uri?): Boolean {
         val scheme = uri?.scheme?.lowercase()
@@ -18,5 +14,5 @@ object ImageStoragePolicy {
     fun canDisplayWithoutNetwork(uri: Uri?): Boolean = uri != null && !isRemote(uri)
 
     fun glideDiskCache(uri: Uri?, localStrategy: DiskCacheStrategy = DiskCacheStrategy.ALL): DiskCacheStrategy =
-        if (isRemote(uri)) DiskCacheStrategy.NONE else localStrategy
+        if (isRemote(uri)) { DiskCacheStrategy.ALL } else { localStrategy }
 }

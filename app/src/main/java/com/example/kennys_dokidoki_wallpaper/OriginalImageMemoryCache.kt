@@ -1,6 +1,10 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.net.Uri
+import android.content.Context
+import java.io.File
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -8,29 +12,32 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.LinkedHashMap
-import kotlin.coroutines.coroutineContext
 
-/**
- * Session-only encoded original image cache. It keeps the current working set and never writes
- * them to disk. Downloads are owned by this cache, not by a viewer Activity: turning a
- * page or closing the viewer stops waiting but the transfer finishes in the background.
- */
+/** 原寸はディスクを正本にする。画面を離れても取得を継続し、RAMだけを解放する。 */
 object OriginalImageMemoryCache {
-    private const val MAX_SINGLE_IMAGE_BYTES = 128 * 1024 * 1024
+    private lateinit var disk: OriginalDiskCache
+    private val transfers = Semaphore(2)
+
+    fun initialize(context: Context) {
+        disk = OriginalDiskCache(File(context.applicationContext.cacheDir, "original_images"))
+    }
+
+    fun getFileIfPresent(uri: Uri): File? = disk.existing(uri.toString())
+
+    suspend fun getFile(uri: Uri): File = requestOwnedDownload(uri, OriginalDiskCache.key(uri.toString())).await()
+
     private val maxEntries: Int = ImageMemoryPressurePolicy.MAX_ORIGINALS_CALM
     private val maxBytes: Long = ImageMemoryPressurePolicy.originalBudgetBytes(Runtime.getRuntime().maxMemory())
 
     private val lock = Any()
     private val entries = LinkedHashMap<String, ByteArray>(maxEntries, 0.75f, true)
-    private val inFlight = mutableMapOf<String, CompletableDeferred<ByteArray>>()
+    private val inFlight = mutableMapOf<String, CompletableDeferred<File>>()
     private val downloadJobs = mutableMapOf<String, Job>()
     private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var totalBytes = 0L
@@ -41,28 +48,30 @@ object OriginalImageMemoryCache {
     suspend fun getOrDownload(uri: Uri): ByteArray {
         val key = uri.toString()
         synchronized(lock) { entries[key] }?.let { return it }
-        return requestOwnedDownload(uri, key).await()
+        val epoch = synchronized(lock) { generation }
+        val file = getFile(uri)
+        val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+        synchronized(lock) {
+            if (epoch == generation) {
+                putLocked(key, bytes)
+            }
+        }
+        return bytes
     }
 
     /** Starts or joins a cache-owned transfer which survives cancellation of this caller. */
-    private fun requestOwnedDownload(uri: Uri, key: String): CompletableDeferred<ByteArray> = synchronized(lock) {
-        entries[key]?.let { cached ->
-            return@synchronized CompletableDeferred<ByteArray>().also { it.complete(cached) }
-        }
+    private fun requestOwnedDownload(uri: Uri, key: String): CompletableDeferred<File> = synchronized(lock) {
         inFlight[key]?.let { return@synchronized it }
 
-        val deferred = CompletableDeferred<ByteArray>()
-        val requestGeneration = generation
+        val deferred = CompletableDeferred<File>()
         inFlight[key] = deferred
         lateinit var job: Job
         job = downloadScope.launch(start = CoroutineStart.LAZY) {
             try {
-                val bytes = download(uri)
-                synchronized(lock) {
-                    // Minimize/low-memory clear is the only event allowed to discard a running transfer.
-                    if (requestGeneration == generation) putLocked(key, bytes)
+                val file = transfers.withPermit {
+                    disk.existing(uri.toString()) ?: download(uri)
                 }
-                deferred.complete(bytes)
+                deferred.complete(file)
             } catch (error: Throwable) {
                 deferred.completeExceptionally(error)
             } finally {
@@ -80,7 +89,7 @@ object OriginalImageMemoryCache {
     suspend fun prefetch(uri: Uri) {
         if (!ImageStoragePolicy.isRemote(uri)) return
         try {
-            getOrDownload(uri)
+            getFile(uri)
         } catch (error: CancellationException) {
             // The awaiting page plan was canceled, but the cache-owned transfer continues.
             throw error
@@ -94,12 +103,6 @@ object OriginalImageMemoryCache {
             entries.clear()
             totalBytes = 0L
             generation++
-            // App minimization/low-memory is an explicit session boundary, so unlike a page
-            // change it is allowed to stop transfers and discard partial bytes.
-            downloadJobs.values.toList().forEach { it.cancel() }
-            downloadJobs.clear()
-            inFlight.values.toList().forEach { it.cancel() }
-            inFlight.clear()
         }
     }
 
@@ -134,35 +137,19 @@ object OriginalImageMemoryCache {
         if (totalBytes < 0L) totalBytes = 0L
     }
 
-    private suspend fun download(uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+    private suspend fun download(uri: Uri): File = withContext(Dispatchers.IO) {
         val connection = (URL(uri.toString()).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 10_000
             readTimeout = 120_000
-            useCaches = false
-            setRequestProperty("Cache-Control", "no-store")
         }
         try {
-            if (connection.responseCode !in 200..299) {
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw IOException("Original image HTTP ${connection.responseCode}")
             }
-            val declared = connection.contentLengthLong
-            if (declared > MAX_SINGLE_IMAGE_BYTES) throw IOException("画像が大きすぎます")
-            val initialSize = if (declared >= 1L && declared <= Int.MAX_VALUE.toLong()) declared.toInt() else 64 * 1024
-            val output = ByteArrayOutputStream(initialSize)
             connection.inputStream.use { input ->
-                val buffer = ByteArray(64 * 1024)
-                var total = 0
-                while (true) {
-                    coroutineContext.ensureActive()
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    total += read
-                    if (total > MAX_SINGLE_IMAGE_BYTES) throw IOException("画像が大きすぎます")
-                    output.write(buffer, 0, read)
-                }
+                disk.store(uri.toString(), input, connection.contentLengthLong)
             }
-            output.toByteArray()
         } finally {
             connection.disconnect()
         }

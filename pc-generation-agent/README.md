@@ -8,12 +8,12 @@ Android Toolkits から生成依頼を受け取り、Stable Diffusion WebUI / Fo
 - Androidの既存の「閲覧」ボタンから日付フォルダ・画像を表示できます。
 - 閲覧一覧にはPCで480×854以内へ圧縮したモバイル用JPEGサムネイルを配信します。
 - サムネイルを開いた全画面表示だけオリジナル解像度の画像を配信します。
-- 初回表示はアニメーションではなく、可逆PNGストリップの実データを上から順に受信・描画します。
+- 全画面は直前のサムネイルを先に表示し、中央の読み込み表示とともに原寸を取得します。完了後に一括で切り替え、段階描画しません。
 - 全画面では現在画像の完了後、前後1枚の組、次に前後2枚の組を順番に先読みして停止します。ページをめくるたび同じ範囲だけ追加します。
-- 原寸キャッシュは最大約50枚をメモリだけに保持し、アプリ最小化時に破棄します。
+- 原寸はAndroidのキャッシュフォルダに最大2GiB保持。RAM不足ではディスクを消さず、表示用Bitmapだけを解放します。
 - ページを変えたり全画面を閉じても、開始済みの原寸ダウンロードはバックグラウンドで完了してからキャッシュへ入ります。
-- 閲覧・全画面表示・生成途中プレビューだけではAndroidへ画像を永続保存しません。
-- 「全画像に入れる」を実行した画像だけAndroid端末へダウンロードします。
+- 閲覧した画像はAndroidの非公開キャッシュに残ります。キャッシュは保存済み画像・ギャラリー登録とは別です。
+- 「全画像に入れる」または全画面の保存を実行した画像を、指定保存先・ギャラリーへ登録します。取得済みの原寸キャッシュを再利用します。
 - 生成時に選んだプロンプトカードのタグは完成画像のメタデータへ保存され、閲覧と仮チャットで使えます。
 - 閲覧画面の削除はPC上の完成画像も消します。紐づいた仮チャットも一緒に消えます。
 - カード用サムネイルもPCの `thumbnails/YYYY-MM-DD/` に保存します。
@@ -88,7 +88,7 @@ PCごとにルーターから割り当てられるIPは異なるため、`192.16
 | `output_dir` | 完成画像の保存先。絶対パスも使用可能 |
 | `thumbnail_dir` | プロンプト／プリセットカード用サムネイルのPC保存先 |
 | `mobile_thumbnail_dir` | 閲覧一覧向け圧縮サムネイルのPCキャッシュ先 |
-| `progressive_tile_dir` | 原寸閲覧を上から実データ順に表示する可逆タイルのPCキャッシュ先 |
+| `progressive_tile_dir` | 旧クライアント向け可逆タイルのPCキャッシュ先（自動作成は廃止） |
 | `database_path` | 永続ジョブキューと状態の保存先 |
 | `api_key` | 任意の接続キー。設定した場合はAndroidにも同じ値を入力 |
 | `request_timeout_seconds` | 1枚に許可する最大通信時間 |
@@ -128,10 +128,11 @@ pc-generation-agent/
 - `POST /api/v1/jobs/{id}/cancel` — 強制中断
 - `POST /api/v1/jobs/{id}/skip` — 現在の画像をスキップ
 - `GET /api/v1/library/dates` — 日付フォルダ一覧
-- `GET /api/v1/library/images?date=YYYY-MM-DD` — 画像一覧（各画像の tags を含む）
+- `GET /api/v1/library/page?date=YYYY-MM-DD&limit=60&cursor=...` — 索引から最大60件ずつ取得。`images`・`next_cursor`・`indexing`を返す（limitは1〜200）。初回索引作成はバックグラウンドで行う。
+- `GET /api/v1/library/images?date=YYYY-MM-DD` — 旧版向け全件一覧。新版Androidの閲覧では使用しない。
 - `GET /api/v1/files/{date}/{name}` — オリジナル完成画像
 - `GET /api/v1/mobile-thumbnails/{date}/{name}` — 閲覧一覧用の圧縮JPEG
-- `GET /api/v1/progressive/{date}/{name}/manifest` — 原寸画像の可逆ストリップ情報
+- `GET /api/v1/progressive/{date}/{name}/manifest` — 旧版向け可逆ストリップ情報（新版Androidは呼び出さない）
 - `GET /api/v1/progressive/{date}/{name}/{index}` — 上から順に読む原寸PNGストリップ
 - `GET /api/v1/thumbnail-files/{date}/{name}` — カード用サムネイル
 - `POST /api/v1/model-imports` — CivitaiモデルのPCダウンロードを開始（`download_url`・`filename`・`kind: checkpoint|lora`・任意で `thumbnail_url` / `thumbnail_base64` / `trigger_words` 等）
@@ -192,3 +193,12 @@ Android側とPCエージェントを両方更新し、PCエージェントを再
 Androidは送信前に要求ID・本文を保存し、再接続時は同じ要求を再送します。
 未確認の要求が残る場合、新しい割り込み操作で「前回分を再送」または「記録を破棄」を選べます。
 記録破棄はPCで受理済みの生成を取り消しません。古いエージェントでは割り込みAPIを利用できません。
+
+## 1.2.0の閲覧方式
+
+AndroidとPCエージェントを両方更新して再起動してください。
+日付フォルダは全件取得を待たず開き、スクロールでページを追加します。
+`data/library.sqlite3` はファイル名・更新日時の再作成可能な索引です。
+初回だけ背景で走査し、以後は索引を再利用します。生成・削除時に更新し、
+外部で追加・削除されたファイルは、フォルダを開いた際の背景再走査で反映します（最短30秒間隔）。
+キャッシュの上限・検証結果は [閲覧設計](../docs/image-loading.md) を参照してください。

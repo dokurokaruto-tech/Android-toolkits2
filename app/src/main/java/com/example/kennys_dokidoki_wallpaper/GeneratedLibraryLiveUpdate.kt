@@ -78,25 +78,9 @@ object GeneratedLibraryLiveUpdate {
             val images = if (date.isNullOrBlank()) {
                 emptyList()
             } else {
-                GenerationAgentClient.fetchImages(context, date)
+                GenerationAgentClient.fetchImagePage(context, date).images
             }
-            images.forEach { image ->
-                GeneratedImageDraftStore.seedGeneratedSource(
-                    context,
-                    Uri.parse(image.url),
-                    image.tags,
-                    image.cardStates,
-                    image.width,
-                    image.height,
-                    image.steps,
-                    image.sampler,
-                    image.prompt,
-                    image.randomPickedIds,
-                    image.randomEnabledCategories,
-                    image.seed,
-                    image.negativePrompt
-                )
-            }
+            GeneratedImageDraftStore.seedPage(context, images)
             _snapshot.value = Snapshot(
                 date = date,
                 folders = folders,

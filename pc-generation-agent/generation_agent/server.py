@@ -68,6 +68,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 "checkpoint_dir": str(self.server.config.checkpoint_dir),
                 "lora_dir": str(self.server.config.lora_dir),
                 "mobile_thumbnails": True,
+                "library_paging": True,
                 "progressive_tiles": True,
             })
             return
@@ -117,6 +118,17 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/v1/library/dates":
             self._json(HTTPStatus.OK, {"dates": self.server.service.library_dates()})
+            return
+        if path == "/api/v1/library/page":
+            try:
+                page = self.server.service.library_page(
+                    query.get("date", [""])[0],
+                    int(query.get("limit", ["60"])[0]),
+                    query.get("cursor", [""])[0],
+                )
+                self._json(HTTPStatus.OK, page)
+            except ValueError as error:
+                self._error(HTTPStatus.BAD_REQUEST, str(error))
             return
         if path == "/api/v1/library/images":
             date = query.get("date", [""])[0]

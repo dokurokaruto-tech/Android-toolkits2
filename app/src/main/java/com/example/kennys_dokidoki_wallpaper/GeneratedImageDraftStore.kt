@@ -13,7 +13,28 @@ object GeneratedImageDraftStore {
     private const val DIR_NAME = "generated_drafts"
     private const val FILE_NAME = "drafts.json"
     private val lock = Any()
+    private var batching = false
+    private var batchChanged = false
     private var cache: MutableMap<String, GeneratedImageLifecycle.Draft>? = null
+
+    fun seedPage(context: Context, images: List<AgentGeneratedImage>) {
+        synchronized(lock) {
+            batching = true
+            try {
+                images.forEach { image ->
+                    seedGeneratedSource(context, Uri.parse(image.url), image.tags, image.cardStates,
+                        image.width, image.height, image.steps, image.sampler, image.prompt,
+                        image.randomPickedIds, image.randomEnabledCategories, image.seed, image.negativePrompt)
+                }
+            } finally {
+                batching = false
+                if (batchChanged) {
+                    persistLocked(context, loadLocked(context))
+                    batchChanged = false
+                }
+            }
+        }
+    }
 
     fun keyFor(uri: Uri): String = GeneratedImageIdentity.canonicalKey(uri.toString())
 
@@ -124,7 +145,11 @@ object GeneratedImageDraftStore {
         synchronized(lock) {
             val map = loadLocked(context)
             map[key] = draft
-            persistLocked(context, map)
+            if (batching) {
+                batchChanged = true
+            } else {
+                persistLocked(context, map)
+            }
         }
     }
 

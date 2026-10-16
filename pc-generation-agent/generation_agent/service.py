@@ -14,6 +14,7 @@ from typing import Any
 from .config import AgentConfig
 from .database import JobDatabase
 from .model_import import ModelImportService
+from .library_index import LibraryIndex
 from .sd_client import StableDiffusionClient
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -28,6 +29,7 @@ class GenerationService:
         self.config.mobile_thumbnail_dir.mkdir(parents=True, exist_ok=True)
         self.config.progressive_tile_dir.mkdir(parents=True, exist_ok=True)
         self.database = JobDatabase(config.database_path)
+        self.library_index = LibraryIndex(config.database_path.parent / "library.sqlite3", config.output_dir)
         self.sd = StableDiffusionClient(config.sd_base_url, config.request_timeout_seconds)
         self.model_imports = ModelImportService(config, self.sd)
         self._wake = threading.Event()
@@ -45,6 +47,7 @@ class GenerationService:
         self._stop.set()
         self._wake.set()
         self._worker.join(timeout=5)
+        self.library_index.close()
         self.database.close()
 
     def submit(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -162,13 +165,12 @@ class GenerationService:
         for folder in self.config.output_dir.iterdir():
             if not folder.is_dir() or not _DATE.fullmatch(folder.name):
                 continue
-            images = self._folder_images(folder)
-            if images:
-                folders.append({
-                    "date": folder.name,
-                    "count": len(images),
-                    "thumbnail_url": self.mobile_thumbnail_url(folder.name, images[0].name),
-                })
+            count, first = self.library_index.summary(folder.name)
+            folders.append({
+                "date": folder.name,
+                "count": count,
+                "thumbnail_url": self.mobile_thumbnail_url(folder.name, first) if first else "",
+            })
         return sorted(folders, key=lambda item: item["date"], reverse=True)
 
     def library_images(self, date: str) -> list[dict[str, Any]]:
@@ -182,11 +184,26 @@ class GenerationService:
             for image in self._folder_images(folder)
         ]
 
+    def library_page(self, date: str, limit: int, cursor: str = "") -> dict[str, Any]:
+        page = self.library_index.page(date, limit, cursor)
+        images = []
+        for name in page.pop("names"):
+            image = self.resolve_file(date, name)
+            if image is None:
+                self.library_index.remove(date, name)
+                continue
+            try:
+                images.append(self._public_library_image(date, image))
+            except FileNotFoundError:
+                self.library_index.remove(date, name)
+        return {**page, "images": images}
+
     def delete_library_image(self, date: str, name: str) -> bool:
         source = self.resolve_file(date, name)
         if source is None:
             return False
         source.unlink(missing_ok=True)
+        self.library_index.remove(date, name)
         metadata = self.config.database_path.parent / "metadata" / date / f"{name}.json"
         metadata.unlink(missing_ok=True)
         folder = self.config.output_dir / date
@@ -572,12 +589,7 @@ class GenerationService:
         os.replace(temporary, destination)
         self._write_metadata(job_id, index, f"{collection}/{date}/{filename}", stored_payload, sd_payload)
         if collection == "image":
-            # Prepare lossless top-down strips while the PC is already processing the result,
-            # so mobile viewing can start with the first real rows immediately.
-            try:
-                self._ensure_progressive_tiles(date, filename)
-            except Exception as error:
-                print(f"Progressive tile preparation failed for {filename}: {error}")
+            self.library_index.upsert(date, destination)
         return f"{collection}/{date}/{filename}"
 
     @staticmethod

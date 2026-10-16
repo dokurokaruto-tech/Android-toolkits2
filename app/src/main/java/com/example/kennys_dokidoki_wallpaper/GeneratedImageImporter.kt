@@ -6,8 +6,6 @@ import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
 
 /** Downloads an agent-hosted image before registering it in the local wallpaper library. */
 object GeneratedImageImporter {
@@ -33,22 +31,11 @@ object GeneratedImageImporter {
         }
         val file = dateFolder.createFile(mime, originalName) ?: return@withContext null
         try {
-            val connection = (URL(remoteUri.toString()).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 10000
-                readTimeout = 120000
-            }
-            try {
-                if (connection.responseCode !in 200..299) {
-                    throw IOException("PC image download failed: HTTP ${connection.responseCode}")
-                }
-                val output = context.contentResolver.openOutputStream(file.uri)
-                    ?: throw IOException("device save folder is not writable")
-                output.use { destination -> connection.inputStream.use { source -> source.copyTo(destination) } }
-                file.uri
-            } finally {
-                connection.disconnect()
-            }
+            val cached = OriginalImageMemoryCache.getFile(remoteUri)
+            val output = context.contentResolver.openOutputStream(file.uri)
+                ?: throw IOException("device save folder is not writable")
+            output.use { destination -> cached.inputStream().use { source -> source.copyTo(destination) } }
+            file.uri
         } catch (_: Exception) {
             file.delete()
             null

@@ -21,6 +21,10 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -44,9 +48,29 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     private var remoteDate: String = "downloaded"
     private val virtualImages = mutableListOf<ImageEntry>()
     private var savedImagesJob: Job? = null
+    private var pageJob: Job? = null
+    private var localLoadJob: Job? = null
+    private var nextCursor: String? = null
+    private var hasMore = true
+    private val loadedKeys = mutableSetOf<String>()
+    private val pagedRemote: Boolean get() = intent.getBooleanExtra("PAGED_GENERATED", false)
+
 
     private val previewLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
+            if (pagedRemote) {
+                val restored = ViewerImageHandoff.entries(result.data?.getStringExtra("VIEWER_ALBUM_KEY"))
+                if (restored != null) {
+                    images.clear()
+                    images.addAll(restored)
+                    loadedKeys.clear()
+                    loadedKeys.addAll(images.map { GeneratedImageIdentity.canonicalKey(it.uri.toString()) })
+                    nextCursor = result.data?.getStringExtra("VIEWER_NEXT_CURSOR")
+                    hasMore = nextCursor != null
+                    imageAdapter.notifyDataSetChanged()
+                }
+            }
+
             val deleted = result.data?.getStringArrayListExtra("DELETED_URIS").orEmpty()
             if (deleted.isNotEmpty()) {
                 deleted.forEach(::forgetVirtualUri)
@@ -99,18 +123,22 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         
         imageAdapter = ImageAdapter(
             images = images,
-            onImageClick = { position, entry, _ ->
+            onImageClick = { position, entry, clicked ->
                 if (isGeneratedViewer) {
-                    // 生成画像閲覧モードならカルーセルを飛ばして全画面表示へ！
+                    ViewerImageHandoff.capture(entry.uri.toString(), clicked.findViewById<android.widget.ImageView>(R.id.image_view)?.drawable)
+                    val albumKey = ViewerImageHandoff.album(images)
                     val intent = Intent(this, FullScreenImageActivity::class.java).apply {
                         putExtra("ALBUM_NAME", albumName)
                         putExtra("START_INDEX", position)
                         putExtra("FROM_GENERATED_VIEWER", true)
                         putExtra("REMOTE_GENERATED", isRemoteGenerated)
                         putExtra("REMOTE_DATE", remoteDate)
-                        putStringArrayListExtra("VIRTUAL_ALBUM_URIS", ArrayList(images.map { it.uri.toString() }))
+                        putExtra("VIEWER_ALBUM_KEY", albumKey)
+                        putExtra("VIEWER_NEXT_CURSOR", nextCursor)
+                        putExtra("VIEWER_CURRENT_URI", entry.uri.toString())
+                        putExtra("THUMBNAIL_URI", entry.thumbnailUri?.toString())
                     }
-                    startActivity(intent)
+                    previewLauncher.launch(intent)
                 } else {
                     // 通常モードなら今まで通りカルーセル
                     val intent = Intent(this, ImagePreviewActivity::class.java).apply {
@@ -151,6 +179,26 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         )
         imageAdapter.isGeneratedViewerMode = isGeneratedViewer
         recyclerView.adapter = imageAdapter
+        if (pagedRemote) {
+            findViewById<Button>(R.id.btn_select_all).text = "読込済みを全選択"
+            recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) {
+                    val last = (view.layoutManager as GridLayoutManager).findLastVisibleItemPosition()
+                    if (last >= images.size - 18) {
+                        loadNextPage()
+                    }
+                }
+            })
+            recyclerView.post { loadNextPage() }
+        }
+        findViewById<View>(R.id.folder_load_status).setOnClickListener {
+            if (pagedRemote) {
+                loadNextPage()
+            } else {
+                loadImages()
+            }
+        }
+
         recyclerView.addItemDecoration(CurrentWallpaperIndicatorDecoration(
             getCurrentIndex = { imageAdapter.getActiveImageIndex() },
             getItemCount = { imageAdapter.itemCount }
@@ -210,7 +258,21 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         }
     }
 
-    private fun applyRemoteSnapshot(incoming: List<AgentGeneratedImage>) {
+    private suspend fun applyRemoteSnapshot(incoming: List<AgentGeneratedImage>) {
+        if (pagedRemote) {
+            val fresh = incoming.filter { loadedKeys.add(GeneratedImageIdentity.canonicalKey(it.url)) }
+            if (fresh.isNotEmpty()) {
+                val entries = withContext(Dispatchers.IO) {
+                    fresh.map { image ->
+                        GeneratedImageDraftStore.entryFor(this@AlbumDetailActivity, Uri.parse(image.url), Uri.parse(image.thumbnailUrl))
+                    }
+                }
+                images.addAll(0, entries)
+                imageAdapter.notifyItemRangeInserted(0, fresh.size)
+            }
+            return
+        }
+
         val extras = intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS").orEmpty()
         val merged = GeneratedLibraryMergePolicy.prependNewUrls(extras, incoming.map { it.url })
         if (merged == extras && extras.isNotEmpty()) return
@@ -623,6 +685,14 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     }
 
     private fun loadImages() {
+        if (pagedRemote) {
+            return
+        }
+        if (isGeneratedViewer && !isRemoteGenerated && intent.hasExtra("FOLDER_URI")) {
+            loadLocalFolder()
+            return
+        }
+
         if (isGeneratedViewer) {
             images.clear()
             if (isRemoteGenerated) {
@@ -639,14 +709,6 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
                         )
                     )
                 }
-            } else {
-                val folderUriStr = intent.getStringExtra("FOLDER_URI") ?: return
-                val folder = DocumentFile.fromTreeUri(this, Uri.parse(folderUriStr)) ?: return
-                folder.listFiles()
-                    .filter { it.isFile && (it.type?.startsWith("image/") == true ||
-                        it.name?.lowercase()?.let { name -> name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") } == true) }
-                    .sortedByDescending { it.name }
-                    .forEach { images.add(GeneratedImageDraftStore.entryFor(this, it.uri)) }
             }
         } else {
             val currentSet = DataManager.imageSetList.find { it.name == albumName }
@@ -657,6 +719,74 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             }
             // 現在壁紙にしている画像がこのセットにあれば、列の一番最初に持ってくる
             DataManager.pinCurrentWallpaperFirst(this, images)
+        }
+    }
+
+    private fun loadNextPage() {
+        if (!hasMore || pageJob?.isActive == true) {
+            return
+        }
+        val status = findViewById<TextView>(R.id.folder_load_status)
+        status.visibility = View.VISIBLE
+        status.text = "画像一覧を読み込み中…"
+        pageJob = lifecycleScope.launch {
+            try {
+                var page = GeneratedFolderRepository.page(this@AlbumDetailActivity, remoteDate, nextCursor)
+                while (page.indexing) {
+                    status.text = "PCで初回の索引を作成中…（画面は操作できます）"
+                    delay(1000)
+                    page = GeneratedFolderRepository.page(this@AlbumDetailActivity, remoteDate, nextCursor)
+                }
+                val fresh = page.entries.filter { loadedKeys.add(GeneratedImageIdentity.canonicalKey(it.uri.toString())) }
+                val start = images.size
+                images.addAll(fresh)
+                nextCursor = page.next
+                hasMore = page.next != null
+                imageAdapter.notifyItemRangeInserted(start, fresh.size)
+                status.text = if (hasMore) { "${images.size}枚読み込み済み・続きを読み込む" } else if (images.isEmpty()) { "このフォルダに画像はありません" } else { "" }
+                status.visibility = if (hasMore || images.isEmpty()) { View.VISIBLE } else { View.GONE }
+                refreshSavedImages()
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                status.text = "一覧取得に失敗。タップで再試行（PCエージェント1.2以上が必要）"
+            }
+        }
+    }
+
+    private fun loadLocalFolder() {
+        if (localLoadJob?.isActive == true) {
+            return
+        }
+        val folder = intent.getStringExtra("FOLDER_URI")?.let(Uri::parse) ?: return
+        val status = findViewById<TextView>(R.id.folder_load_status)
+        status.visibility = View.VISIBLE
+        status.text = "端末の画像一覧を読み込み中…"
+        localLoadJob = lifecycleScope.launch {
+            var first = true
+            try {
+                GeneratedFolderRepository.localBatches(this@AlbumDetailActivity, folder) { batch ->
+                    withContext(Dispatchers.Main) {
+                        if (first) {
+                            images.clear()
+                        }
+                        val start = images.size
+                        images.addAll(batch)
+                        if (first) {
+                            imageAdapter.notifyDataSetChanged()
+                        } else {
+                            imageAdapter.notifyItemRangeInserted(start, batch.size)
+                        }
+                        first = false
+                    }
+                }
+                status.text = if (images.isEmpty()) { "このフォルダに画像はありません" } else { "" }
+                status.visibility = if (images.isEmpty()) { View.VISIBLE } else { View.GONE }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                status.text = "フォルダを読み込めません。タップで再試行"
+            }
         }
     }
 
@@ -691,6 +821,10 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     }
 
     private fun forgetVirtualUri(uriStr: String) {
+        if (pagedRemote) {
+            images.removeAll { it.uri.toString() == uriStr }
+            loadedKeys.remove(GeneratedImageIdentity.canonicalKey(uriStr))
+        }
         val uris = intent.getStringArrayListExtra("VIRTUAL_ALBUM_URIS") ?: return
         val thumbnails = intent.getStringArrayListExtra("VIRTUAL_ALBUM_THUMBNAIL_URIS")
         val tagLists = intent.getStringArrayListExtra("VIRTUAL_ALBUM_TAGS")
