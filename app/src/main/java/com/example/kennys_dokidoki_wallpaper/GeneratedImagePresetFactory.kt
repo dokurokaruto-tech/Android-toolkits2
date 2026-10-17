@@ -41,7 +41,12 @@ object GeneratedImagePresetFactory {
             ?: DataManager.allImages.find { it.uri.toString() == uri.toString() }?.tags
             ?: emptySet()
         val roster = PromptCardManager.promptCards.map {
-            GeneratedImagePresetPolicy.InferableCard(it.id, it.appliedTags.toSet(), it.mainPrompt)
+            GeneratedImagePresetPolicy.InferableCard(
+                id = it.id,
+                appliedTags = it.appliedTags.toSet(),
+                mainPrompt = it.mainPrompt,
+                useIndividualRandomizer = it.useIndividualRandomizer
+            )
         }
         return GeneratedImagePresetPolicy.sourceFrom(
             storedCards = draft?.cardStates.orEmpty(),

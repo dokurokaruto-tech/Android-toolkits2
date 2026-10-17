@@ -170,7 +170,14 @@ internal object JevConciergeTools {
         if (solo.isEmpty()) {
             appendLine("・個別ランダマイザー: なし")
         } else {
-            solo.forEach { appendLine("・個別ランダマイザー『${it.label}』: ${it.randomizerProbability}%で追加") }
+            solo.forEach { card ->
+                val detail = if (PromptCardManager.selectionLevels.containsKey(card.id)) {
+                    "選択中。1枚ごとに${card.randomizerProbability}%で含まれる"
+                } else {
+                    "未選択。含まれない（選択すると${card.randomizerProbability}%で抽選）"
+                }
+                appendLine("・個別ランダマイザー『${card.label}』: $detail")
+            }
         }
         appendLine(
             "【生成設定】${state.width}×${state.height} / steps=${state.steps} " +

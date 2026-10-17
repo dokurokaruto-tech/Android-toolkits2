@@ -77,6 +77,42 @@ class GeneratedImagePresetPolicyTest {
     }
 
     @Test
+    fun individualRandomizerPicksStaySelectedForRestores() {
+        val roster = listOf(
+            GeneratedImagePresetPolicy.InferableCard(
+                id = "solo",
+                appliedTags = emptySet(),
+                mainPrompt = "maid",
+                useIndividualRandomizer = true
+            ),
+            GeneratedImagePresetPolicy.InferableCard(
+                id = "hair",
+                appliedTags = emptySet(),
+                mainPrompt = "long hair"
+            )
+        )
+        val source = GeneratedImagePresetPolicy.sourceFrom(
+            storedCards = mapOf("solo" to 2, "hair" to 1),
+            imageTags = emptySet(),
+            roster = roster,
+            width = 720, height = 1280, steps = 20, sampler = "Euler a",
+            thumbnail = "http://pc/a.png",
+            randomPickedIds = setOf("solo", "hair"),
+            randomEnabledCategories = setOf("髪")
+        )!!
+        // 個別ランダマイザーのカードは「当たり」に数えない。
+        // 選択を解除すると二度と出なくなるため、復元では選択状態を保つ。
+        assertEquals(setOf("hair"), source.randomPickedIds)
+        assertEquals(
+            mapOf("solo" to 2),
+            GeneratedImagePresetPolicy.cardsForMode(
+                source,
+                GeneratedImagePresetPolicy.FromImageMode.KEEP_RANDOMIZER
+            )
+        )
+    }
+
+    @Test
     fun randomizerModeDropsPickedCardsAndKeepsCategories() {
         val source = GeneratedImagePresetPolicy.sourceFrom(
             storedCards = mapOf("fixed" to 2, "rolled" to 1),

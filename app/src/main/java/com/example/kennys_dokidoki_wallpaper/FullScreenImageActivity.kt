@@ -509,13 +509,41 @@ class FullScreenImageActivity : AppCompatActivity() {
             Toast.makeText(this, BuilderCardSetApplyPolicy.MISSING_CARDS, Toast.LENGTH_LONG).show()
             return
         }
+
+        // ランダマイザーを使った画像だけ復元方法を選ばせる。それ以外は1タップ。
+        if (!source.hasRandomizerChoice) {
+            requestCardSetApply(source, GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS)
+            return
+        }
+        val modes = listOf(
+            BuilderCardSetApplyPolicy.MODE_AS_IS_LABEL to
+                GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS,
+            BuilderCardSetApplyPolicy.MODE_RANDOMIZER_LABEL to
+                GeneratedImagePresetPolicy.FromImageMode.KEEP_RANDOMIZER
+        )
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            Md3PopupDialog.wrap(this),
+            com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog
+        )
+            .setTitle(BuilderCardSetApplyPolicy.DIALOG_TITLE)
+            .setItems(modes.map { it.first }.toTypedArray()) { _, which ->
+                requestCardSetApply(source, modes[which].second)
+            }
+            .show()
+    }
+
+    private fun requestCardSetApply(
+        source: GeneratedImagePresetPolicy.Source,
+        mode: GeneratedImagePresetPolicy.FromImageMode
+    ) {
         val available = PromptCardManager.promptCards.mapTo(mutableSetOf()) { it.id }
-        val selection = BuilderCardSetApplyPolicy.selectionFor(source, available)
-        if (selection.isEmpty()) {
+        val selection = BuilderCardSetApplyPolicy.selectionFor(source, mode, available)
+        val randomCategories = BuilderCardSetApplyPolicy.randomCategoriesFor(source, mode)
+        if (selection.isEmpty() && randomCategories.isEmpty()) {
             Toast.makeText(this, BuilderCardSetApplyPolicy.EMPTY_CARDS, Toast.LENGTH_LONG).show()
             return
         }
-        BuilderCardSetHandoff.offer(source)
+        BuilderCardSetHandoff.offer(BuilderCardSetHandoff.Request(source, mode))
         Toast.makeText(this, BuilderCardSetApplyPolicy.requestedLabel(selection.size), Toast.LENGTH_LONG).show()
     }
 

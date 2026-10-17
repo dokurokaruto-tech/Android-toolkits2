@@ -1,5 +1,6 @@
 package com.example.kennys_dokidoki_wallpaper
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -20,10 +21,18 @@ class BuilderCardSetHandoffTest {
     @Test
     fun lastOfferWinsAndConsumeClears() {
         assertNull(BuilderCardSetHandoff.consume())
-        BuilderCardSetHandoff.offer(source)
-        val newer = source.copy(cardStates = mapOf("b" to 2))
+        BuilderCardSetHandoff.offer(
+            BuilderCardSetHandoff.Request(
+                source,
+                GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS
+            )
+        )
+        val mode = GeneratedImagePresetPolicy.FromImageMode.KEEP_RANDOMIZER
+        val newer = BuilderCardSetHandoff.Request(source.copy(cardStates = mapOf("b" to 2)), mode)
         BuilderCardSetHandoff.offer(newer)
-        assertSame(newer, BuilderCardSetHandoff.consume())
+        val consumed = BuilderCardSetHandoff.consume()!!
+        assertSame(newer.source, consumed.source)
+        assertEquals(mode, consumed.mode)
         assertNull(BuilderCardSetHandoff.consume())
     }
 }

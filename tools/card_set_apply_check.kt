@@ -1,6 +1,8 @@
 package com.example.kennys_dokidoki_wallpaper
 
 fun main() {
+    val asIs = GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS
+    val keep = GeneratedImagePresetPolicy.FromImageMode.KEEP_RANDOMIZER
     val source = GeneratedImagePresetPolicy.Source(
         cardStates = linkedMapOf("a" to 1, "b" to 2, "gone" to 3),
         randomPickedIds = setOf("b"),
@@ -12,26 +14,30 @@ fun main() {
         thumbnail = "http://pc/x.png"
     )
 
-    // 使われたカードはレベルごと、現存するカードだけ上書き対象になる。
-    val selection = BuilderCardSetApplyPolicy.selectionFor(source, setOf("a", "b", "c"))
+    // そのまま復元: 現存カードだけレベルごと、当たりも固定選択、分類は必ずオフ。
+    val selection = BuilderCardSetApplyPolicy.selectionFor(source, asIs, setOf("a", "b", "c"))
     check(selection == mapOf("a" to 1, "b" to 2)) { "Unknown ids must be dropped, levels kept: $selection" }
+    check(BuilderCardSetApplyPolicy.randomCategoriesFor(source, asIs).isEmpty())
 
-    // ランダマイザーの当たりも固定選択になり、カテゴリは必ずオフへ上書きする。
-    check(selection.containsKey("b")) { "Random picks must become fixed selections" }
-    check(BuilderCardSetApplyPolicy.randomCategoriesFor(source).isEmpty())
+    // ランダマイザー再現: 分類で当たったカードだけ選択を外し、分類はオンのまま。
+    check(BuilderCardSetApplyPolicy.selectionFor(source, keep, setOf("a", "b", "c")) == mapOf("a" to 1))
+    check(BuilderCardSetApplyPolicy.randomCategoriesFor(source, keep) == setOf("背景"))
 
-    // 閲覧画面→ビルダーの受け渡しは最後の1件だけ残し、消費したら消える。
+    // 閲覧画面→ビルダーの受け渡しは最後の1件だけ残し、選んだ方式も一緒に運ぶ。
     check(BuilderCardSetHandoff.consume() == null)
-    BuilderCardSetHandoff.offer(source)
-    val other = source.copy(cardStates = mapOf("c" to 1))
-    BuilderCardSetHandoff.offer(other)
-    check(BuilderCardSetHandoff.consume() === other) { "Last offer wins" }
+    BuilderCardSetHandoff.offer(BuilderCardSetHandoff.Request(source, asIs))
+    val newer = BuilderCardSetHandoff.Request(source.copy(cardStates = mapOf("c" to 1)), keep)
+    BuilderCardSetHandoff.offer(newer)
+    check(BuilderCardSetHandoff.consume() === newer) { "Last offer wins with its mode" }
     check(BuilderCardSetHandoff.consume() == null) { "Consume must clear the pending request" }
 
-    check(BuilderCardSetApplyPolicy.appliedLabel(3).contains("3"))
+    check(BuilderCardSetApplyPolicy.appliedLabel(3, emptySet()).contains("3"))
+    check(BuilderCardSetApplyPolicy.appliedLabel(3, setOf("背景")).contains("1"))
     check(BuilderCardSetApplyPolicy.requestedLabel(3).contains("3"))
+    check(BuilderCardSetApplyPolicy.MODE_AS_IS_LABEL.isNotEmpty())
+    check(BuilderCardSetApplyPolicy.MODE_RANDOMIZER_LABEL.isNotEmpty())
     check(BuilderCardSetApplyPolicy.MISSING_CARDS.isNotEmpty())
     check(BuilderCardSetApplyPolicy.EMPTY_CARDS.isNotEmpty())
 
-    println("PASS: selection filter, randomizer off, handoff last-wins/consume, labels")
+    println("PASS: mode-aware selection/categories, handoff request, labels")
 }

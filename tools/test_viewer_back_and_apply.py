@@ -76,7 +76,7 @@ class ApplyCardSetWiringTest(unittest.TestCase):
 
     def test_viewer_offers_handoff(self):
         self.assertIn('btnApplyCardSet = findViewById(R.id.btn_apply_card_set)', self.viewer)
-        self.assertIn('BuilderCardSetHandoff.offer(', self.viewer)
+        self.assertIn('BuilderCardSetHandoff.offer(BuilderCardSetHandoff.Request(', self.viewer)
         self.assertIn('GeneratedImagePresetFactory.resolveSource(', self.viewer)
         # chromeと共に表示/非表示。生成ビューワー以外では出さない。
         actions = block(self.viewer, 'private fun setupViewerActions()', 'private fun showReplayDialog()')
@@ -84,15 +84,31 @@ class ApplyCardSetWiringTest(unittest.TestCase):
         self.assertIn('btnApplyCardSet.visibility = View.VISIBLE', actions)
         self.assertIn('btnApplyCardSet', block(self.viewer, 'private fun chromeViews()', 'override fun onBackPressed()'))
 
+    def test_viewer_lets_user_pick_restore_mode(self):
+        # ランダマイザーを使った画像だけ復元方法を選ばせ、選んだ方式を渡す。
+        offer = block(self.viewer, 'private fun offerCardSetApply()', 'private fun beginDeleteHold()')
+        self.assertIn('source.hasRandomizerChoice', offer)
+        self.assertIn('BuilderCardSetApplyPolicy.DIALOG_TITLE', offer)
+        self.assertIn('BuilderCardSetApplyPolicy.MODE_AS_IS_LABEL', offer)
+        self.assertIn('BuilderCardSetApplyPolicy.MODE_RANDOMIZER_LABEL', offer)
+        self.assertIn('GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS', offer)
+        self.assertIn('GeneratedImagePresetPolicy.FromImageMode.KEEP_RANDOMIZER', offer)
+        # 空セットの予約はどちらの方式でも止める。
+        self.assertIn('selection.isEmpty() && randomCategories.isEmpty()', offer)
+
     def test_main_activity_consumes_on_resume(self):
         main = read('MainActivity.kt')
         onResume = block(main, 'override fun onResume()', 'private fun applyPendingBuilderCardSet()')
         self.assertIn('applyPendingBuilderCardSet()', onResume)
         apply = block(main, 'private fun applyPendingBuilderCardSet()', 'private fun resumePendingCivitaiImport()')
         self.assertIn('BuilderCardSetHandoff.consume()', apply)
-        self.assertIn('BuilderCardSetApplyPolicy.selectionFor(', apply)
+        # 閲覧画面で選んだ復元方式で選択とランダマイザー分類を上書きする。
+        self.assertIn('BuilderCardSetApplyPolicy.selectionFor(request.source, request.mode, available)', apply)
+        self.assertIn('BuilderCardSetApplyPolicy.randomCategoriesFor(request.source, request.mode)', apply)
         self.assertIn('PromptCardManager.randomEnabledCategories.clear()', apply)
+        self.assertIn('PromptCardManager.randomEnabledCategories.addAll(randomCategories)', apply)
         self.assertIn('PromptCardManager.saveInteractiveState(', apply)
+        self.assertIn('appliedLabel(selection.size, randomCategories)', apply)
         # undo履歴へ載せ、ビルダー画面を見せる。
         self.assertIn('commitBuilderState()', apply)
         self.assertIn('showSection(R.id.nav_builder)', apply)
@@ -153,6 +169,44 @@ class ReplaySeedBatchWiringTest(unittest.TestCase):
         coordinator = read('ImageGenerationCoordinator.kt')
         busy = block(coordinator, 'if (isBusy() || GenerationAgentClient.hasPendingJob(activity)', 'val app = activity.applicationContext')
         self.assertIn('GenerationInsertionCoordinator.offer(activity, valid)', busy)
+
+
+class IndividualRandomizerSemanticsTest(unittest.TestCase):
+    """個別ランダマイザーが選択済みカードだけに働くことの検査。"""
+
+    def setUp(self):
+        self.binding = read('GeneratedImageTagBinding.kt')
+
+    def test_rolls_only_selected_cards(self):
+        prepared = block(self.binding, 'fun buildPreparedImages(', 'fun categoryPool(')
+        # 選択リストだけを確率で絞り、roster全体を roll しない。
+        self.assertIn('snapshot.selected.filter', prepared)
+        self.assertIn('useIndividualRandomizer', prepared)
+        self.assertIn('randomizerProbability', prepared)
+        self.assertNotIn('snapshot.roster.forEach', prepared)
+
+    def test_random_picked_records_category_draws_only(self):
+        prepared = block(self.binding, 'fun buildPreparedImages(', 'fun categoryPool(')
+        self.assertIn('snapshot.randomEnabledCategories.forEach', prepared)
+        self.assertEqual(prepared.count('randomPicked.add('), 1)
+
+    def test_category_pool_still_excludes_missed_individual_cards(self):
+        pool = block(self.binding, 'fun categoryPool(', 'fun tagsFromChosen(')
+        self.assertIn('!card.useIndividualRandomizer || card.id in chosenIds', pool)
+
+    def test_preset_source_keeps_individual_cards_selected(self):
+        # 個別ランダマイザーのカードは「当たり」記録から外し、選択状態を保つ。
+        policy = read('GeneratedImagePresetPolicy.kt')
+        self.assertIn('useIndividualRandomizer: Boolean = false', policy)
+        self.assertIn('it in cards && it !in individualIds', policy)
+        factory = read('GeneratedImagePresetFactory.kt')
+        self.assertIn('useIndividualRandomizer = it.useIndividualRandomizer', factory)
+
+    def test_concierge_wording_matches_selected_gate(self):
+        tools = read('JevConciergeTools.kt')
+        self.assertNotIn('%で追加', tools)
+        self.assertIn('PromptCardManager.selectionLevels.containsKey(card.id)', tools)
+        self.assertIn('未選択。含まれない', tools)
 
 
 if __name__ == '__main__':

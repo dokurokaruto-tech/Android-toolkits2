@@ -67,12 +67,12 @@ class GeneratedImageTagBindingTest {
     }
 
     @Test
-    fun `randomizer cards chosen at start also contribute their auto tags`() {
+    fun `individual randomizer never adds unselected cards`() {
         val base = frozen("c1", "キャラ", "girl", setOf("金髪"))
-        val extra = frozen("c2", "衣装", "maid", setOf("メイド"), individual = true, probability = 80)
+        val solo = frozen("c2", "衣装", "maid", setOf("メイド"), individual = true, probability = 80)
         val snapshot = GeneratedImageTagBinding.Snapshot(
             selected = listOf(base to 1),
-            roster = listOf(base, extra),
+            roster = listOf(base, solo),
             randomEnabledCategories = emptySet(),
             randomizerIncludedIds = emptySet(),
             width = 720,
@@ -81,12 +81,68 @@ class GeneratedImageTagBindingTest {
             sampler = "Euler a",
             batchCount = 1
         )
-        val included = GeneratedImageTagBinding.buildPreparedImages(snapshot, chance = { 10 }, pickIndex = { 0 })
-        assertEquals(listOf("金髪", "メイド"), included.single().tags)
-        val skipped = GeneratedImageTagBinding.buildPreparedImages(snapshot, chance = { 90 }, pickIndex = { 0 })
-        assertEquals(listOf("金髪"), skipped.single().tags)
-        assertEquals(setOf("c2"), included.single().randomPickedIds)
-        assertEquals(emptySet<String>(), skipped.single().randomPickedIds)
+        // 当たりの抽選値でも、選択していないカードはプロンプトに入らない。
+        val prepared = GeneratedImageTagBinding.buildPreparedImages(snapshot, chance = { 0 }, pickIndex = { 0 })
+        assertEquals(listOf("金髪"), prepared.single().tags)
+        assertEquals(mapOf("c1" to 1), prepared.single().cardStates)
+        assertEquals(emptySet<String>(), prepared.single().randomPickedIds)
+        assertTrue(!prepared.single().prompt.contains("maid"))
+    }
+
+    @Test
+    fun `individual randomizer rolls each selected card per image`() {
+        val base = frozen("c1", "キャラ", "girl", setOf("金髪"))
+        val solo = frozen("c2", "衣装", "maid", setOf("メイド"), individual = true, probability = 80)
+        val snapshot = GeneratedImageTagBinding.Snapshot(
+            selected = listOf(base to 1, solo to 2),
+            roster = listOf(base, solo),
+            randomEnabledCategories = emptySet(),
+            randomizerIncludedIds = emptySet(),
+            width = 720,
+            height = 1280,
+            steps = 20,
+            sampler = "Euler a",
+            batchCount = 1
+        )
+        val hit = GeneratedImageTagBinding.buildPreparedImages(snapshot, chance = { 10 }, pickIndex = { 0 })
+        assertEquals(listOf("金髪", "メイド"), hit.single().tags)
+        assertEquals(mapOf("c1" to 1, "c2" to 2), hit.single().cardStates)
+        assertTrue(hit.single().prompt.contains("(maid:1.2)"))
+        // 個別抽選は「ランダマイザーの当たり」に数えない。分類抽選だけ記録する。
+        assertEquals(emptySet<String>(), hit.single().randomPickedIds)
+
+        val miss = GeneratedImageTagBinding.buildPreparedImages(snapshot, chance = { 90 }, pickIndex = { 0 })
+        assertEquals(listOf("金髪"), miss.single().tags)
+        assertEquals(mapOf("c1" to 1), miss.single().cardStates)
+        assertTrue(!miss.single().prompt.contains("maid"))
+    }
+
+    @Test
+    fun `individual randomizer rolls separately for every batch image`() {
+        val base = frozen("c1", "キャラ", "girl", setOf("金髪"))
+        val solo = frozen("c2", "衣装", "maid", setOf("メイド"), individual = true, probability = 50)
+        val snapshot = GeneratedImageTagBinding.Snapshot(
+            selected = listOf(base to 1, solo to 1),
+            roster = listOf(base, solo),
+            randomEnabledCategories = emptySet(),
+            randomizerIncludedIds = emptySet(),
+            width = 720,
+            height = 1280,
+            steps = 20,
+            sampler = "Euler a",
+            batchCount = 3
+        )
+        val chances = ArrayDeque(listOf(10, 90, 49))
+        val prepared = GeneratedImageTagBinding.buildPreparedImages(
+            snapshot,
+            chance = { chances.removeFirst() },
+            pickIndex = { 0 }
+        )
+        assertEquals(3, prepared.size)
+        assertEquals(
+            listOf(true, false, true),
+            prepared.map { it.cardStates.containsKey("c2") }
+        )
     }
 
     @Test

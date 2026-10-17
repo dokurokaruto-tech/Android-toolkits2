@@ -26,7 +26,8 @@ object GeneratedImagePresetPolicy {
     data class InferableCard(
         val id: String,
         val appliedTags: Set<String>,
-        val mainPrompt: String = ""
+        val mainPrompt: String = "",
+        val useIndividualRandomizer: Boolean = false
     )
 
     fun inferCardStates(
@@ -107,7 +108,11 @@ object GeneratedImagePresetPolicy {
     ): Source? {
         val cards = resolveCardStates(storedCards, imageTags, roster, prompt)
         if (cards.isEmpty()) return null
-        val picked = randomPickedIds.filter { it in cards }.toSet()
+
+        // 個別ランダマイザーは選択済みカードだけの抽選になった。
+        // 当たり扱いで選択を解除すると二度と出ないので、抽選記録から外す。
+        val individualIds = roster.filter { it.useIndividualRandomizer }.map { it.id }.toSet()
+        val picked = randomPickedIds.filter { it in cards && it !in individualIds }.toSet()
         return Source(
             cardStates = cards,
             randomPickedIds = picked,
@@ -138,7 +143,7 @@ object GeneratedImagePresetPolicy {
         val categoryLine = if (categories.isNotEmpty()) {
             "オンだったランダマイザー: $categories"
         } else {
-            "個別ランダマイザーで当たったカードがある。"
+            "ランダマイザーで当たったカードがある。"
         }
         return "$cardLine\n$randomLine\n$categoryLine"
     }

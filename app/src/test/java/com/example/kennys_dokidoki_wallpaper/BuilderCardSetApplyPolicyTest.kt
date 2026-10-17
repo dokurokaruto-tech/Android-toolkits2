@@ -18,22 +18,28 @@ class BuilderCardSetApplyPolicyTest {
     )
 
     @Test
-    fun keepsLevelsAndDropsUnknownCards() {
-        val selection = BuilderCardSetApplyPolicy.selectionFor(source, setOf("a", "b", "c"))
+    fun asIsModeKeepsPicksFixedAndCategoriesOff() {
+        val mode = GeneratedImagePresetPolicy.FromImageMode.INDIVIDUAL_CARDS
+        val selection = BuilderCardSetApplyPolicy.selectionFor(source, mode, setOf("a", "b", "c"))
         assertEquals(mapOf("a" to 1, "b" to 2), selection)
+        assertTrue(BuilderCardSetApplyPolicy.randomCategoriesFor(source, mode).isEmpty())
     }
 
     @Test
-    fun randomPicksBecomeFixedAndCategoriesTurnOff() {
-        val selection = BuilderCardSetApplyPolicy.selectionFor(source, setOf("a", "b"))
-        assertTrue(selection.containsKey("b"))
-        assertTrue(BuilderCardSetApplyPolicy.randomCategoriesFor(source).isEmpty())
+    fun randomizerModeDropsPicksAndKeepsCategories() {
+        val mode = GeneratedImagePresetPolicy.FromImageMode.KEEP_RANDOMIZER
+        val selection = BuilderCardSetApplyPolicy.selectionFor(source, mode, setOf("a", "b", "c"))
+        assertEquals(mapOf("a" to 1), selection)
+        assertEquals(setOf("背景"), BuilderCardSetApplyPolicy.randomCategoriesFor(source, mode))
     }
 
     @Test
-    fun labelsCarryCounts() {
+    fun labelsCarryCountsAndMode() {
         assertTrue(BuilderCardSetApplyPolicy.requestedLabel(3).contains("3"))
-        assertTrue(BuilderCardSetApplyPolicy.appliedLabel(3).contains("3"))
+        assertTrue(BuilderCardSetApplyPolicy.appliedLabel(3, emptySet()).contains("3"))
+        assertTrue(BuilderCardSetApplyPolicy.appliedLabel(3, setOf("背景")).contains("1"))
+        assertTrue(BuilderCardSetApplyPolicy.MODE_AS_IS_LABEL.isNotEmpty())
+        assertTrue(BuilderCardSetApplyPolicy.MODE_RANDOMIZER_LABEL.isNotEmpty())
         assertTrue(BuilderCardSetApplyPolicy.MISSING_CARDS.isNotEmpty())
         assertTrue(BuilderCardSetApplyPolicy.EMPTY_CARDS.isNotEmpty())
     }

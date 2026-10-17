@@ -750,10 +750,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     /** 閲覧画面で確定したカード構成を受け取り、今のセットを上書きする。 */
     private fun applyPendingBuilderCardSet() {
-        val source = BuilderCardSetHandoff.consume() ?: return
+        val request = BuilderCardSetHandoff.consume() ?: return
         val available = PromptCardManager.promptCards.mapTo(mutableSetOf()) { it.id }
-        val selection = BuilderCardSetApplyPolicy.selectionFor(source, available)
-        if (selection.isEmpty()) {
+        val selection = BuilderCardSetApplyPolicy.selectionFor(request.source, request.mode, available)
+        val randomCategories = BuilderCardSetApplyPolicy.randomCategoriesFor(request.source, request.mode)
+        if (selection.isEmpty() && randomCategories.isEmpty()) {
             Toast.makeText(this, BuilderCardSetApplyPolicy.EMPTY_CARDS, Toast.LENGTH_LONG).show()
             return
         }
@@ -761,9 +762,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             PromptCardManager.selectionLevels.clear()
             PromptCardManager.selectionLevels.putAll(selection)
-            // ランダマイザーの当たりは固定選択にし、分類はオフにして次回生成をこの画像と同じにする。
+            // そのまま復원은当たりを固定選択にし分類をオフ、ランダマイザー再現は
+            // 分類をオンのまま残し当たったカードだけ次の抽選に任せ直す。
             PromptCardManager.randomEnabledCategories.clear()
-            PromptCardManager.randomEnabledCategories.addAll(BuilderCardSetApplyPolicy.randomCategoriesFor(source))
+            PromptCardManager.randomEnabledCategories.addAll(randomCategories)
             PromptCardManager.saveInteractiveState(this)
             showSection(R.id.nav_builder)
             promptCardAdapter.updateList(PromptCardManager.promptCards)
@@ -773,7 +775,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         commitBuilderState()
         refreshPresetMatchHighlight(forceRebind = true)
-        Toast.makeText(this, BuilderCardSetApplyPolicy.appliedLabel(selection.size), Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            this,
+            BuilderCardSetApplyPolicy.appliedLabel(selection.size, randomCategories),
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     // An import interrupted by app kill completes here: PC kept downloading.

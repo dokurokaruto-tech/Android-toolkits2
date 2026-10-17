@@ -96,16 +96,12 @@ object GeneratedImageTagBinding {
     ): List<PreparedImage> {
         val prepared = mutableListOf<PreparedImage>()
         repeat(snapshot.batchCount.coerceAtLeast(1)) {
-            val chosen = snapshot.selected.toMutableList()
+            // 個別ランダマイザーは「選択された」カードだけに働く。
+            // 未選択のカードは当たりの抽選値でもプロンプトに入れない。
+            val chosen = snapshot.selected.filter { (card, _) ->
+                !card.useIndividualRandomizer || chance() < card.randomizerProbability
+            }.toMutableList()
             val randomPicked = linkedSetOf<String>()
-            snapshot.roster.forEach { card ->
-                if (card.useIndividualRandomizer && chosen.none { it.first.id == card.id }) {
-                    if (chance() < card.randomizerProbability) {
-                        chosen.add(card to 1)
-                        randomPicked.add(card.id)
-                    }
-                }
-            }
             snapshot.randomEnabledCategories.forEach { category ->
                 val pool = categoryPool(snapshot, category, chosen)
                 if (pool.isNotEmpty()) {
