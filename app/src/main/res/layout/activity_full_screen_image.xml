@@ -216,7 +216,7 @@
             android:layout_marginStart="10dp"
             android:background="@drawable/bg_counter_bubble"
             android:clickable="true"
-            android:contentDescription="同じ設定で再生成"
+            android:contentDescription="再生成"
             android:focusable="true"
             android:padding="10dp"
             android:src="@drawable/ic_md3_replay_gen"

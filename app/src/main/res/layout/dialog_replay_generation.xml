@@ -13,7 +13,7 @@
     <com.google.android.material.textview.MaterialTextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="同じ設定で再生成"
+        android:text="再生成"
         android:textAppearance="?attr/textAppearanceHeadlineSmall"
         android:textColor="?attr/colorOnSurface"
         tools:ignore="HardcodedText" />
