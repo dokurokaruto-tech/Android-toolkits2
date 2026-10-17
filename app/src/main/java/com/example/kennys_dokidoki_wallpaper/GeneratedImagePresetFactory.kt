@@ -22,9 +22,20 @@ import com.google.android.material.textview.MaterialTextView
  */
 object GeneratedImagePresetFactory {
     fun saveFromImage(context: Context, uri: Uri, thumbnailUri: Uri? = null): Boolean {
+        PresetManager.loadPresets(context)
+        val source = resolveSource(context, uri, thumbnailUri)
+        if (source == null) {
+            Toast.makeText(context, BuilderCardSetApplyPolicy.MISSING_CARDS, Toast.LENGTH_LONG).show()
+            return false
+        }
+        showSaveDialog(context, source)
+        return true
+    }
+
+    /** 画像に使われたカード構成を解決する。復元できなければ null。 */
+    fun resolveSource(context: Context, uri: Uri, thumbnailUri: Uri? = null): GeneratedImagePresetPolicy.Source? {
         DataManager.loadData(context)
         PromptCardManager.loadCards(context)
-        PresetManager.loadPresets(context)
         val draft = GeneratedImageDraftStore.get(context, GeneratedImageDraftStore.keyFor(uri))
         val imageTags = draft?.tags
             ?: DataManager.allImages.find { it.uri.toString() == uri.toString() }?.tags
@@ -32,7 +43,7 @@ object GeneratedImagePresetFactory {
         val roster = PromptCardManager.promptCards.map {
             GeneratedImagePresetPolicy.InferableCard(it.id, it.appliedTags.toSet(), it.mainPrompt)
         }
-        val source = GeneratedImagePresetPolicy.sourceFrom(
+        return GeneratedImagePresetPolicy.sourceFrom(
             storedCards = draft?.cardStates.orEmpty(),
             imageTags = imageTags,
             roster = roster,
@@ -45,12 +56,6 @@ object GeneratedImagePresetFactory {
             randomPickedIds = draft?.randomPickedIds.orEmpty(),
             randomEnabledCategories = draft?.randomEnabledCategories.orEmpty()
         )
-        if (source == null) {
-            Toast.makeText(context, "この画像に使われたカードが分からない。新しく生成した画像なら残る。", Toast.LENGTH_LONG).show()
-            return false
-        }
-        showSaveDialog(context, source)
-        return true
     }
 
     private fun showSaveDialog(context: Context, source: GeneratedImagePresetPolicy.Source) {

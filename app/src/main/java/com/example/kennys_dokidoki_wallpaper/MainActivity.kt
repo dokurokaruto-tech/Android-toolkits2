@@ -745,6 +745,35 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         updateSelectedCardStrip()
         syncBuilderRestorePipButton()
         resumePendingCivitaiImport()
+        applyPendingBuilderCardSet()
+    }
+
+    /** 閲覧画面で確定したカード構成を受け取り、今のセットを上書きする。 */
+    private fun applyPendingBuilderCardSet() {
+        val source = BuilderCardSetHandoff.consume() ?: return
+        val available = PromptCardManager.promptCards.mapTo(mutableSetOf()) { it.id }
+        val selection = BuilderCardSetApplyPolicy.selectionFor(source, available)
+        if (selection.isEmpty()) {
+            Toast.makeText(this, BuilderCardSetApplyPolicy.EMPTY_CARDS, Toast.LENGTH_LONG).show()
+            return
+        }
+        suspendBuilderHistory = true
+        try {
+            PromptCardManager.selectionLevels.clear()
+            PromptCardManager.selectionLevels.putAll(selection)
+            // ランダマイザーの当たりは固定選択にし、分類はオフにして次回生成をこの画像と同じにする。
+            PromptCardManager.randomEnabledCategories.clear()
+            PromptCardManager.randomEnabledCategories.addAll(BuilderCardSetApplyPolicy.randomCategoriesFor(source))
+            PromptCardManager.saveInteractiveState(this)
+            showSection(R.id.nav_builder)
+            promptCardAdapter.updateList(PromptCardManager.promptCards)
+            updateSelectedCardStrip()
+        } finally {
+            suspendBuilderHistory = false
+        }
+        commitBuilderState()
+        refreshPresetMatchHighlight(forceRebind = true)
+        Toast.makeText(this, BuilderCardSetApplyPolicy.appliedLabel(selection.size), Toast.LENGTH_SHORT).show()
     }
 
     // An import interrupted by app kill completes here: PC kept downloading.

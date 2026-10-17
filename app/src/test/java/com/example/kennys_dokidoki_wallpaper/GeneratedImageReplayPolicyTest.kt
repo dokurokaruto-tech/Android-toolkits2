@@ -1,5 +1,6 @@
 package com.example.kennys_dokidoki_wallpaper
 
+import com.example.kennys_dokidoki_wallpaper.GeneratedImageReplayPolicy.SeedMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -15,6 +16,14 @@ class GeneratedImageReplayPolicyTest {
     }
 
     @Test
+    fun clampsBatchWithBuilderRules() {
+        assertEquals(1, GeneratedImageReplayPolicy.clampBatch(null))
+        assertEquals(1, GeneratedImageReplayPolicy.clampBatch(0))
+        assertEquals(1, GeneratedImageReplayPolicy.clampBatch(-4))
+        assertEquals(12, GeneratedImageReplayPolicy.clampBatch(12))
+    }
+
+    @Test
     fun acceptsZeroSeedButRejectsRandomMinusOne() {
         assertEquals(0L, GeneratedImageReplayPolicy.parseSeed(0))
         assertEquals(4242L, GeneratedImageReplayPolicy.parseSeed("4242"))
@@ -23,18 +32,15 @@ class GeneratedImageReplayPolicyTest {
     }
 
     @Test
-    fun requiresPromptAndSeed() {
+    fun requiresOnlyPrompt() {
         assertEquals(
             GeneratedImageReplayPolicy.MISSING_PROMPT,
             GeneratedImageReplayPolicy.missingReason(GeneratedImageLifecycle.Draft(seed = 1L))
         )
-        assertEquals(
-            GeneratedImageReplayPolicy.MISSING_SEED,
-            GeneratedImageReplayPolicy.missingReason(GeneratedImageLifecycle.Draft(prompt = "1girl"))
-        )
+        // シードが無くても「変える」側で再生成できるので弾かない。
         assertNull(
             GeneratedImageReplayPolicy.missingReason(
-                GeneratedImageLifecycle.Draft(prompt = "1girl", seed = 99L)
+                GeneratedImageLifecycle.Draft(prompt = "1girl")
             )
         )
     }
@@ -65,5 +71,42 @@ class GeneratedImageReplayPolicyTest {
         assertEquals(listOf("金髪"), request.tags)
         assertEquals(mapOf("card-a" to 2), request.cardStates)
         assertTrue(GeneratedImageReplayPolicy.summary(recipe).contains("Seed 777"))
+    }
+
+    @Test
+    fun sameSeedStaysSingleRequest() {
+        val recipe = GeneratedImageReplayPolicy.recipeFrom(
+            GeneratedImageLifecycle.Draft(prompt = "1girl", seed = 777L)
+        )!!
+        val requests = GeneratedImageReplayPolicy.requests(recipe, 20, SeedMode.SAME, 4)
+        assertEquals(1, requests.size)
+        assertEquals(777L, requests.single().seed)
+    }
+
+    @Test
+    fun newSeedFansOutWithoutSeedLikeNormalGeneration() {
+        val recipe = GeneratedImageReplayPolicy.recipeFrom(
+            GeneratedImageLifecycle.Draft(prompt = "1girl", negativePrompt = "blur", seed = 777L)
+        )!!
+        val requests = GeneratedImageReplayPolicy.requests(recipe, 30, SeedMode.NEW, 3)
+        assertEquals(3, requests.size)
+        requests.forEach {
+            assertNull(it.seed)
+            assertEquals("1girl", it.prompt)
+            assertEquals("blur", it.negativePrompt)
+            assertEquals(30, it.steps)
+        }
+        assertTrue(GeneratedImageReplayPolicy.summary(recipe, SeedMode.NEW).contains("ランダム"))
+    }
+
+    @Test
+    fun seedlessRecipeReplaysOnlyWithNewSeed() {
+        val recipe = GeneratedImageReplayPolicy.recipeFrom(
+            GeneratedImageLifecycle.Draft(prompt = "1girl")
+        )!!
+        assertNull(recipe.seed)
+        val requests = GeneratedImageReplayPolicy.requests(recipe, 20, SeedMode.SAME, 2)
+        assertNull(requests.single().seed)
+        assertTrue(GeneratedImageReplayPolicy.summary(recipe).contains("ランダム"))
     }
 }

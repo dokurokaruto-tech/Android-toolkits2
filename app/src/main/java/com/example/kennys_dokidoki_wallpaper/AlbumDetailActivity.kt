@@ -658,7 +658,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         settingsPrefs.unregisterOnSharedPreferenceChangeListener(this)
         
         val dataPrefs = getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE)
-        dataPrefs.registerOnSharedPreferenceChangeListener(this)
+        dataPrefs.unregisterOnSharedPreferenceChangeListener(this)
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {

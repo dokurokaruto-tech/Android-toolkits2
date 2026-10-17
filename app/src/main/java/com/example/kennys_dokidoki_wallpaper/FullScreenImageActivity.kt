@@ -23,6 +23,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
+import com.bumptech.glide.RequestManager
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
@@ -45,6 +46,8 @@ class FullScreenImageActivity : AppCompatActivity() {
     private var currentIndex: Int = 0
     private val currentEntries = mutableListOf<ImageEntry>()
     private var requestSerial = 0L
+    // 生存中に確保しておく。destroy後のGlide取得は例外を投げる（戻る時のクラッシュ源）。
+    private lateinit var glide: RequestManager
     private var activeTarget: CustomTarget<Drawable>? = null
     private var progressiveJob: Job? = null
     private var thumbnailTarget: CustomTarget<Drawable>? = null
@@ -70,6 +73,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     private var savedCheck: Job? = null
     private var saveState = ViewerSavePolicy.State.HIDDEN
     private lateinit var btnReplayGeneration: View
+    private lateinit var btnApplyCardSet: View
     private val deletedUris = arrayListOf<String>()
     private val chromeHandler = Handler(Looper.getMainLooper())
     private var chromeVisible = true
@@ -83,6 +87,7 @@ class FullScreenImageActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        glide = Glide.with(this)
         setContentView(R.layout.activity_full_screen_image)
         DataManager.loadData(this)
 
@@ -108,6 +113,7 @@ class FullScreenImageActivity : AppCompatActivity() {
         savedBorder = findViewById(R.id.viewer_saved_border)
         savedBadge = findViewById(R.id.viewer_saved_badge)
         btnReplayGeneration = findViewById(R.id.btn_replay_generation)
+        btnApplyCardSet = findViewById(R.id.btn_apply_card_set)
         albumName = intent.getStringExtra("ALBUM_NAME") ?: ""
         currentIndex = intent.getIntExtra("START_INDEX", 0)
         isGeneratedViewer = intent.getBooleanExtra("FROM_GENERATED_VIEWER", false) ||
@@ -282,16 +288,19 @@ class FullScreenImageActivity : AppCompatActivity() {
             deleteHoldHost.visibility = View.GONE
             btnCreatePreset.visibility = View.GONE
             btnReplayGeneration.visibility = View.GONE
+            btnApplyCardSet.visibility = View.GONE
             return
         }
         btnStartTempChat.visibility = View.VISIBLE
         deleteHoldHost.visibility = View.VISIBLE
         btnCreatePreset.visibility = View.VISIBLE
         btnReplayGeneration.visibility = View.VISIBLE
+        btnApplyCardSet.visibility = View.VISIBLE
         btnStartTempChat.alpha = 1f
         deleteHoldHost.alpha = 1f
         btnCreatePreset.alpha = 1f
         btnReplayGeneration.alpha = 1f
+        btnApplyCardSet.alpha = 1f
         btnCreatePreset.setOnClickListener {
             if (!chromeVisible) {
                 revealViewerChrome()
@@ -354,6 +363,13 @@ class FullScreenImageActivity : AppCompatActivity() {
             }
             showReplayDialog()
         }
+        btnApplyCardSet.setOnClickListener {
+            if (!chromeVisible) {
+                revealViewerChrome()
+                return@setOnClickListener
+            }
+            offerCardSetApply()
+        }
         revealViewerChrome()
     }
 
@@ -372,9 +388,29 @@ class FullScreenImageActivity : AppCompatActivity() {
         val promptView = view.findViewById<android.widget.TextView>(R.id.tv_replay_prompt)
         val stepsField = view.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_replay_steps)
         val presetRow = view.findViewById<android.widget.LinearLayout>(R.id.ll_replay_step_presets)
-        summary.text = GeneratedImageReplayPolicy.summary(recipe)
+        val seedSwitch = view.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.switch_replay_new_seed)
+        val batchLayout = view.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.til_replay_batch)
+        val batchField = view.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_replay_batch)
         promptView.text = recipe.prompt
         stepsField.setText(recipe.steps.toString())
+        // シードが残っていない画像は「変える」一択。チェック固定にする。
+        val seedKnown = recipe.seed != null
+        seedSwitch.isChecked = !seedKnown
+        seedSwitch.isEnabled = seedKnown
+        batchField.setText(defaultReplayBatch().toString())
+        fun paintSeedMode() {
+            val seedMode = if (seedSwitch.isChecked) {
+                GeneratedImageReplayPolicy.SeedMode.NEW
+            } else {
+                GeneratedImageReplayPolicy.SeedMode.SAME
+            }
+            // バッチ数はシードを変えるときだけその場で入力できる。
+            batchLayout.isEnabled = seedSwitch.isChecked
+            batchField.isEnabled = seedSwitch.isChecked
+            summary.text = GeneratedImageReplayPolicy.summary(recipe, seedMode)
+        }
+        seedSwitch.setOnCheckedChangeListener { _, _ -> paintSeedMode() }
+        paintSeedMode()
         val prefs = getSharedPreferences(ReplayStepPresetPolicy.PREFS_NAME, Context.MODE_PRIVATE)
         var presets = ReplayStepPresetPolicy.parse(prefs.getString(ReplayStepPresetPolicy.KEY, null))
         fun persist() {
@@ -438,14 +474,49 @@ class FullScreenImageActivity : AppCompatActivity() {
         }
         generateButton.setOnClickListener {
             val steps = GeneratedImageReplayPolicy.clampSteps(stepsField.text?.toString()?.toIntOrNull())
+            val seedMode = if (seedSwitch.isChecked) {
+                GeneratedImageReplayPolicy.SeedMode.NEW
+            } else {
+                GeneratedImageReplayPolicy.SeedMode.SAME
+            }
+            val batch = GeneratedImageReplayPolicy.clampBatch(batchField.text?.toString()?.toIntOrNull())
             dialog.dismiss()
-            startReplayGeneration(recipe, steps)
+            startReplayGeneration(recipe, steps, seedMode, batch)
         }
         dialog.show()
     }
 
-    private fun startReplayGeneration(recipe: GeneratedImageReplayPolicy.Recipe, steps: Int) {
-        ImageGenerationCoordinator.start(this, listOf(GeneratedImageReplayPolicy.request(recipe, steps)))
+    /** バッチ数の初期値はビルダーの今のバッチカウントと同じ。 */
+    private fun defaultReplayBatch(): Int =
+        getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getInt("gen_batch_count", BuilderGenSettingPolicy.DEFAULT_BATCH)
+
+    /** 生成中なら ImageGenerationCoordinator がバッチ枚数ぶんをそのまま割り込ませる。 */
+    private fun startReplayGeneration(
+        recipe: GeneratedImageReplayPolicy.Recipe,
+        steps: Int,
+        seedMode: GeneratedImageReplayPolicy.SeedMode,
+        batch: Int
+    ) {
+        ImageGenerationCoordinator.start(this, GeneratedImageReplayPolicy.requests(recipe, steps, seedMode, batch))
+    }
+
+    /** いま見ている画像のカード構成を、ビルダーの今のセットへの予約にする。 */
+    private fun offerCardSetApply() {
+        val entry = currentEntries.getOrNull(currentIndex) ?: return
+        val source = GeneratedImagePresetFactory.resolveSource(this, entry.uri)
+        if (source == null) {
+            Toast.makeText(this, BuilderCardSetApplyPolicy.MISSING_CARDS, Toast.LENGTH_LONG).show()
+            return
+        }
+        val available = PromptCardManager.promptCards.mapTo(mutableSetOf()) { it.id }
+        val selection = BuilderCardSetApplyPolicy.selectionFor(source, available)
+        if (selection.isEmpty()) {
+            Toast.makeText(this, BuilderCardSetApplyPolicy.EMPTY_CARDS, Toast.LENGTH_LONG).show()
+            return
+        }
+        BuilderCardSetHandoff.offer(source)
+        Toast.makeText(this, BuilderCardSetApplyPolicy.requestedLabel(selection.size), Toast.LENGTH_LONG).show()
     }
 
     private fun beginDeleteHold() {
@@ -574,6 +645,8 @@ class FullScreenImageActivity : AppCompatActivity() {
             btnCreatePreset.alpha = 1f
             btnReplayGeneration.visibility = View.VISIBLE
             btnReplayGeneration.alpha = 1f
+            btnApplyCardSet.visibility = View.VISIBLE
+            btnApplyCardSet.alpha = 1f
         }
         if (isGeneratedViewer) {
             chromeHandler.postDelayed(hideChromeRunnable, ViewerChromePolicy.HIDE_AFTER_MS)
@@ -606,6 +679,7 @@ class FullScreenImageActivity : AppCompatActivity() {
             views.add(deleteHoldHost)
             views.add(btnStartTempChat)
             views.add(btnReplayGeneration)
+            views.add(btnApplyCardSet)
         }
         return views
     }
@@ -619,13 +693,17 @@ class FullScreenImageActivity : AppCompatActivity() {
         isClosing = true
         viewerPageJob?.cancel()
         cancelDeleteHold()
+        // finish後にchrome自動非表示タイマーがビューを触らないよう止める。
+        chromeHandler.removeCallbacksAndMessages(null)
         requestSerial++
         progressiveJob?.cancel()
         progressiveJob = null
         prefetchJob?.cancel()
         prefetchJob = null
-        activeTarget?.let { Glide.with(this).clear(it) }
+        activeTarget?.let { glide.clear(it) }
         activeTarget = null
+        thumbnailTarget?.let { glide.clear(it) }
+        thumbnailTarget = null
         imageView.prepareForLoad()
         val albumKey = intent.getStringExtra("VIEWER_ALBUM_KEY")
         if (albumKey != null) {
@@ -647,11 +725,15 @@ class FullScreenImageActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelDeleteHold()
+        chromeHandler.removeCallbacksAndMessages(null)
         progressiveJob?.cancel()
         prefetchJob?.cancel()
         savedCheck?.cancel()
-        thumbnailTarget?.let { Glide.with(this).clear(it) }
-        activeTarget?.let { Glide.with(this).clear(it) }
+        // destroy済みActivityからのGlide取得は例外を投げる。onCreateで確保したマネージャで消す。
+        thumbnailTarget?.let { glide.clear(it) }
+        activeTarget?.let { glide.clear(it) }
+        thumbnailTarget = null
+        activeTarget = null
         super.onDestroy()
     }
 
@@ -707,13 +789,13 @@ class FullScreenImageActivity : AppCompatActivity() {
         progressiveJob = null
         prefetchJob?.cancel()
         prefetchJob = null
-        activeTarget?.let { Glide.with(this).clear(it) }
+        activeTarget?.let { glide.clear(it) }
         activeTarget = null
         tvCounter.text = "${currentIndex + 1} / ${currentEntries.size}${if (viewerCursor != null) { "+" } else { "" }}"
         imageView.prepareForLoad()
 
         originalLoading.visibility = View.VISIBLE
-        thumbnailTarget?.let { Glide.with(this).clear(it) }
+        thumbnailTarget?.let { glide.clear(it) }
         thumbnailTarget = null
         val preview = ViewerImageHandoff.preview(entry.uri.toString(), resources)
         if (preview != null) {
@@ -780,7 +862,7 @@ class FullScreenImageActivity : AppCompatActivity() {
             override fun onLoadCleared(placeholder: Drawable?) { }
         }
         thumbnailTarget = target
-        Glide.with(this).load(model).diskCacheStrategy(DiskCacheStrategy.ALL).dontAnimate().into(target)
+        glide.load(model).diskCacheStrategy(DiskCacheStrategy.ALL).dontAnimate().into(target)
     }
 
     private fun workingSetKeys(center: Int): Set<String> {
@@ -841,7 +923,7 @@ class FullScreenImageActivity : AppCompatActivity() {
     }
 
     private fun displayOriginal(model: Any, sourceUri: Uri, serial: Long) {
-        activeTarget?.let { Glide.with(this).clear(it) }
+        activeTarget?.let { glide.clear(it) }
         val target = object : CustomTarget<Drawable>(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels) {
             override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
                 if (serial != requestSerial) return
@@ -863,7 +945,7 @@ class FullScreenImageActivity : AppCompatActivity() {
             }
         }
         activeTarget = target
-        Glide.with(this)
+        glide
             .load(model)
             .override(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
             .fitCenter()

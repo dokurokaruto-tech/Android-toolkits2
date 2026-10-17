@@ -18,22 +18,6 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.UUID
 
-/** One image request persisted and executed by the PC generation agent. */
-data class AgentGenerationRequest(
-    val prompt: String,
-    val negativePrompt: String,
-    val width: Int,
-    val height: Int,
-    val steps: Int,
-    val samplerName: String,
-    val purpose: String = "image",
-    val seed: Long? = null,
-    val tags: List<String> = emptyList(),
-    val cardStates: Map<String, Int> = emptyMap(),
-    val randomPickedIds: Set<String> = emptySet(),
-    val randomEnabledCategories: Set<String> = emptySet()
-)
-
 data class AgentGeneratedFolder(val date: String, val count: Int, val thumbnailUrl: String?)
 data class AgentGeneratedImage(
     val name: String,
