@@ -42,6 +42,10 @@ class MyWallpaperService : WallpaperService() {
         private val engineScope = CoroutineScope(Dispatchers.Main + engineJob)
         private var isLoading = false
 
+        // 見えていない間は描かない・抱えない。再表示された時に読み直す。
+        private var engineVisible = true
+        private var needsReload = false
+
         private var currentBitmap: Bitmap? = null
         private var previousBitmap: Bitmap? = null
         private var currentEntry: ImageEntry? = null
@@ -114,6 +118,10 @@ class MyWallpaperService : WallpaperService() {
                     }
                     "com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED" -> {
                         Handler(Looper.getMainLooper()).post {
+                            if (!engineVisible) {
+                                needsReload = true
+                                return@post
+                            }
                             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                                 currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
                                 val entry = imageEntries[currentImageIndex]
@@ -158,6 +166,7 @@ class MyWallpaperService : WallpaperService() {
 
         override fun onDestroy() {
             super.onDestroy()
+            goQuiet()
             engineJob.cancel()
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             settingsPrefs.unregisterOnSharedPreferenceChangeListener(this)
@@ -171,6 +180,11 @@ class MyWallpaperService : WallpaperService() {
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
             if (key == "active_album_name" || key == "active_album_name_homescreen" || key == "active_album_name_chat" || key == "is_chat_active" || key == "active_image_index" || key == "all_images" || key == "image_sets" || key == DataManager.KEY_REVISION) {
                 Handler(Looper.getMainLooper()).post {
+                    // 見えていない時の設定変更は次に表示される時まで寝かせる。
+                    if (!engineVisible) {
+                        needsReload = true
+                        return@post
+                    }
                     if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                         currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
                         val entry = imageEntries[currentImageIndex]
@@ -275,6 +289,7 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun showSetNameText() {
+            if (!engineVisible) return
             textHandler.removeCallbacks(textHideRunnable)
             textAnimator?.cancel()
             if (showTextProgress < 1f) {
@@ -422,6 +437,8 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun saveCurrentIndex() {
+            // 非表示時のアニメキャンセルで来た保存はしない。非表示中の循環通知を止める。
+            if (!engineVisible) return
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val activeSetName = getActiveSetName(settingsPrefs) ?: return
             val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
@@ -512,6 +529,11 @@ class MyWallpaperService : WallpaperService() {
                 val bmp = decodeBitmap(entry.displayUri)
                 withContext(Dispatchers.Main) {
                     isLoading = false
+                    // 読み込み中に隠れていたら捨てて、再表示に読み直す。
+                    if (!engineVisible) {
+                        needsReload = true
+                        return@withContext
+                    }
                     if (bmp != null) { currentBitmap = bmp; currentEntry = entry; onReady?.invoke() }
                 }
             }
@@ -523,6 +545,10 @@ class MyWallpaperService : WallpaperService() {
                 val nextBitmap = decodeBitmap(nextEntry.displayUri)
                 withContext(Dispatchers.Main) {
                     isLoading = false
+                    if (!engineVisible) {
+                        needsReload = true
+                        return@withContext
+                    }
                     if (nextBitmap != null) onReady(nextBitmap)
                 }
             }
@@ -597,6 +623,51 @@ class MyWallpaperService : WallpaperService() {
             }
         }
 
+        override fun onVisibilityChanged(visible: Boolean) {
+            super.onVisibilityChanged(visible)
+            engineVisible = visible
+            if (visible) {
+                if (needsReload || currentBitmap == null) {
+                    reloadCurrent()
+                } else {
+                    draw()
+                }
+            } else {
+                goQuiet()
+            }
+        }
+
+        /** 非表示になった。アニメーションとコールバックを止め、ビットマップも手放す。 */
+        private fun goQuiet() {
+            animator?.cancel()
+            animator = null
+            textAnimator?.cancel()
+            textAnimator = null
+            tapHandler.removeCallbacksAndMessages(null)
+            textHandler.removeCallbacksAndMessages(null)
+            isAnimating = false
+            showTextProgress = 0f
+            tapCount = 0
+            previousBitmap = null
+            previousEntry = null
+            currentBitmap = null
+            needsReload = true
+        }
+
+        private fun reloadCurrent() {
+            needsReload = false
+            if (!engineVisible) {
+                needsReload = true
+                return
+            }
+            if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
+                currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
+                val entry = imageEntries[currentImageIndex]
+                currentEntry = entry
+                loadAndSetCurrentBitmap(entry) { draw() }
+            }
+        }
+
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
@@ -607,6 +678,7 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun draw() {
+            if (!engineVisible) return
             val canvas: Canvas = try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) surfaceHolder.lockHardwareCanvas() else surfaceHolder.lockCanvas()
             } catch (e: Exception) { null } ?: return

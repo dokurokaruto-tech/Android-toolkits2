@@ -11,11 +11,12 @@ trap 'rm -rf "$TMP"' EXIT
 "${KOTLINC:-kotlinc}" \
     tools/junit_stubs/Junit.kt tools/junit_stubs/Runner.kt \
     tools/org_json_stubs/Json.kt tools/image_cache_stubs/Uri.kt \
-    "$SOURCE"/{GeneratedImageTagBinding,GeneratedImagePresetPolicy,Preset,PresetSavePolicy,BuilderCardSetApplyPolicy,BuilderCardSetHandoff,PromptCard}.kt \
-    "$TESTS"/{GeneratedImageTagBindingTest,GeneratedImagePresetPolicyTest,BuilderCardSetApplyPolicyTest,BuilderCardSetHandoffTest}.kt \
+    "$SOURCE"/{GeneratedImageTagBinding,GeneratedImagePresetPolicy,Preset,PresetSavePolicy,BuilderCardSetApplyPolicy,BuilderCardSetHandoff,PromptCard,AppPowerModePolicy}.kt \
+    "$TESTS"/{GeneratedImageTagBindingTest,GeneratedImagePresetPolicyTest,BuilderCardSetApplyPolicyTest,BuilderCardSetHandoffTest,AppPowerModePolicyTest}.kt \
     -include-runtime -d "$TMP/junit.jar"
 "${JAVA:-java}" -jar "$TMP/junit.jar" \
     com.example.kennys_dokidoki_wallpaper.GeneratedImageTagBindingTest \
     com.example.kennys_dokidoki_wallpaper.GeneratedImagePresetPolicyTest \
     com.example.kennys_dokidoki_wallpaper.BuilderCardSetApplyPolicyTest \
-    com.example.kennys_dokidoki_wallpaper.BuilderCardSetHandoffTest
+    com.example.kennys_dokidoki_wallpaper.BuilderCardSetHandoffTest \
+    com.example.kennys_dokidoki_wallpaper.AppPowerModePolicyTest

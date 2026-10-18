@@ -30,8 +30,10 @@ class LoadingDesignTest(unittest.TestCase):
         self.assertNotIn('model.delete()', code('FullScreenImageActivity'))
 
     def test_memory_clear_keeps_jobs(self):
-        body = code('OriginalImageMemoryCache').split('fun clear()')[1].split('fun entryCount')[0]
+        # 単なるメモリ圧迫時の clear は転送を止めない。背面遷移だけが cancelTransfers を呼ぶ。
+        body = code('OriginalImageMemoryCache').split('fun clear()')[1].split('fun cancelTransfers()')[0]
         self.assertNotIn('it.cancel()', body)
+        self.assertIn('fun cancelTransfers()', code('OriginalImageMemoryCache'))
 
 if __name__ == '__main__':
     unittest.main()

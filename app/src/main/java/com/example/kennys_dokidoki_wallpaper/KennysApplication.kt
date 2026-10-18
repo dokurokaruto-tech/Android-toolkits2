@@ -23,6 +23,8 @@ class KennysApplication : Application() {
             .apply()
         OriginalImageMemoryCache.initialize(this)
         ImageMemoryGovernor.start(this)
+        // 開いていない間は心拍・監視・RAM画像を全て捨てる省電力思想の入り口。
+        AppPowerGovernor.install(this)
     }
 
     override fun onTrimMemory(level: Int) {

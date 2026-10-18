@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 
 /**
  * 閲覧中にPCで画像が完成したら、フォルダ一覧と日付フォルダの中身をすぐ取り直す。
- * Activity 寿命ではなくプロセス寿命で回す。
+ * 監視はアプリを開いている時だけ。背面へ行くとポーリングごと静止する。
  */
 object GeneratedLibraryLiveUpdate {
     data class Snapshot(
@@ -33,6 +33,7 @@ object GeneratedLibraryLiveUpdate {
     private var watchedDate: String? = null
     private var appContext: Context? = null
     private var pollJob: Job? = null
+    private var sleeping = true
 
     @Synchronized
     fun bind(context: Context, date: String?) {
@@ -43,6 +44,38 @@ object GeneratedLibraryLiveUpdate {
             scope.launch { refreshOnce() }
             return
         }
+        if (!sleeping) {
+            startPolling()
+        }
+    }
+
+    @Synchronized
+    fun unbind() {
+        subscribers = (subscribers - 1).coerceAtLeast(0)
+        if (subscribers == 0) {
+            pollJob?.cancel()
+            pollJob = null
+        }
+    }
+
+    /** アプリが前面へ戻った。購読が残っている時だけ監視を再開する。 */
+    @Synchronized
+    fun onAppWaking() {
+        sleeping = false
+        if (subscribers > 0 && pollJob?.isActive != true) {
+            startPolling()
+        }
+    }
+
+    /** アプリが背面へ行った。購読は残したままポーリングを止める。 */
+    @Synchronized
+    fun onAppSleeping() {
+        sleeping = true
+        pollJob?.cancel()
+        pollJob = null
+    }
+
+    private fun startPolling() {
         pollJob = scope.launch {
             refreshOnce()
             var lastGenerating = GenerationProgressManager.state.value.isGenerating
@@ -58,15 +91,6 @@ object GeneratedLibraryLiveUpdate {
                 lastBatch = state.currentBatch
                 delay(if (state.isGenerating) 2_000L else 8_000L)
             }
-        }
-    }
-
-    @Synchronized
-    fun unbind() {
-        subscribers = (subscribers - 1).coerceAtLeast(0)
-        if (subscribers == 0) {
-            pollJob?.cancel()
-            pollJob = null
         }
     }
 

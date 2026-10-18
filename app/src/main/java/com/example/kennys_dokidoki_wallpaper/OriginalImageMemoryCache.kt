@@ -106,6 +106,15 @@ object OriginalImageMemoryCache {
         }
     }
 
+    /**
+     * 進行中のダウンロードを全部止める。背面で投機転送を続ける理由はない。
+     * job の finally が inFlight/downloadJobs を掃除するので、ここは cancel だけ。
+     */
+    fun cancelTransfers() {
+        val jobs = synchronized(lock) { downloadJobs.values.toList() }
+        jobs.forEach { it.cancel() }
+    }
+
     fun entryCount(): Int = synchronized(lock) { entries.size }
     fun inFlightCount(): Int = synchronized(lock) { inFlight.size }
     fun byteSize(): Long = synchronized(lock) { totalBytes }

@@ -12,13 +12,14 @@ import kotlinx.coroutines.launch
 
 /**
  * RAM上の画像だけを、見ている枚＋隣に絞る。ディスクは保持する。
- * グリッドを触っていなくても心拍で回す。
+ * 心拍はアプリを開いている間だけ回す。閉じている間は何も動かさない。
  */
 object ImageMemoryGovernor {
     private val lock = Any()
     private val handler = Handler(Looper.getMainLooper())
     private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var started = false
+    private var installed = false
+    private var heartbeatActive = false
     private var lastCycleMs = 0L
     private var lastHeartbeatMs = 0L
     private var bindsSinceCycle = 0
@@ -28,6 +29,9 @@ object ImageMemoryGovernor {
     private val heartbeat = object : Runnable {
         override fun run() {
             val context = appContext ?: return
+            if (!heartbeatActive) {
+                return
+            }
             onHeartbeat(context)
             handler.postDelayed(this, ImageMemoryPressurePolicy.HEARTBEAT_MS)
         }
@@ -37,10 +41,37 @@ object ImageMemoryGovernor {
         val app = context.applicationContext
         synchronized(lock) {
             appContext = app
-            if (started) return
-            started = true
+            if (installed) return
+            installed = true
         }
-        handler.post(heartbeat)
+    }
+
+    /** アプリが前面へ戻った。心拍だけ再開し、キャッシュは次に使う時に絞る。 */
+    fun onAppWaking(context: Context) {
+        start(context)
+        val now = SystemClock.uptimeMillis()
+        synchronized(lock) {
+            lastHeartbeatMs = now
+            lastCycleMs = now
+            heartbeatActive = true
+        }
+        handler.removeCallbacks(heartbeat)
+        handler.postDelayed(heartbeat, ImageMemoryPressurePolicy.HEARTBEAT_MS)
+    }
+
+    /** アプリが背面へ行った。心拍を止め、RAM上の画像は全部捨てる。 */
+    fun onAppSleeping(context: Context) {
+        synchronized(lock) {
+            heartbeatActive = false
+        }
+        handler.removeCallbacks(heartbeat)
+        OriginalImageMemoryCache.cancelTransfers()
+        OriginalImageMemoryCache.clear()
+        try {
+            Glide.get(context.applicationContext).clearMemory()
+        } catch (_: Exception) {
+            // Glide がまだ起きていない起動直後は無視する。
+        }
     }
 
     fun noteWorkingSet(keys: Set<String>) {
