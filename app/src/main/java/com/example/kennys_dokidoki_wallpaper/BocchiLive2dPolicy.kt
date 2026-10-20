@@ -29,18 +29,49 @@ import kotlin.math.sin
  *                                    |  - 10x8 Face Sub-Mesh     |
  *                                    +---------------------------+
  */
-enum class BocchiExpression(val assetName: String?) {
+/**
+ * key は assets/live2d/<character>/<character>_face_<key>.webp のファイル名規約。
+ * SHY_BASE はボディ本体の表情なのでパッチを持たない。
+ */
+enum class BocchiExpression(val key: String?) {
     SHY_BASE(null),
-    HALF_BLINK("live2d/bocchi/bocchi_face_half_blink.webp"),
-    BLINK_CLOSED("live2d/bocchi/bocchi_face_blink.webp"),
-    HAPPY_SMILE("live2d/bocchi/bocchi_face_smile.webp"),
-    AWAKENED_GROOVE("live2d/bocchi/bocchi_face_awakened.webp"),
-    BOCCHI_PANIC("live2d/bocchi/bocchi_face_panic.webp")
+    HALF_BLINK("half_blink"),
+    BLINK_CLOSED("blink"),
+    HAPPY_SMILE("smile"),
+    AWAKENED_GROOVE("awakened"),
+    BOCCHI_PANIC("panic"),
+    BRIGHT_LAUGH("laugh"),
+    WINK("wink"),
+    SURPRISE("surprise")
 }
+
+/** ステージ上の演奏形態。ギター系は弦の剛体デフォーマ、ドラムは両手の打撃デフォーマを使う */
+enum class Instrument {
+    GUITAR,
+    DRUMS
+}
+
+/** 頭を撫でたときの反応。陽キャは照れながらウインク、陰キャはパニック */
+enum class HeadReaction {
+    PANIC,
+    CHEER
+}
+
+/**
+ * 1曲の中のドラムヒット強度。150BPM の 8分音符グリッドから導出する。
+ * handSign は 8分音符ごとに反転し、両手が交互に上がり下がりする。
+ */
+data class DrumPattern(
+    val kick: Float,
+    val snare: Float,
+    val hat: Float,
+    val crash: Float,
+    val handSign: Float
+)
 
 enum class BocchiHitZone {
     HEAD_PANIC,
-    GUITAR_STRUM,
+    INSTRUMENT_HIT,
     STAGE_BURST
 }
 
@@ -62,10 +93,15 @@ data class BocchiPose(
     val cubeSwing: Float = 0f,
     val guitarRock: Float = 0f,
     val armStrum: Float = 0f,
+    val armLeft: Float = 0f,
     val skirtSway: Float = 0f,
     val glitchIntensity: Float = 0f,
     val laserTilt: Float = 0f,
-    val expression: BocchiExpression = BocchiExpression.SHY_BASE
+    val expression: BocchiExpression = BocchiExpression.SHY_BASE,
+    val instrument: Instrument = Instrument.GUITAR,
+    val drumKick: Float = 0f,
+    val drumSnare: Float = 0f,
+    val drumHat: Float = 0f
 )
 
 object BocchiLive2dPolicy {
@@ -99,6 +135,32 @@ object BocchiLive2dPolicy {
 
     const val STAGE_BPM = 150f
 
+    // ドラムキットの正規化UVレイアウト（キャラクター矩形基準。画面左が本人の右手側）
+    const val KIT_HAT_U = 0.20f
+    const val KIT_HAT_V = 0.56f
+    const val KIT_HAT_RU = 0.085f
+    const val KIT_HAT_RV = 0.024f
+    const val KIT_SNARE_U = 0.46f
+    const val KIT_SNARE_V = 0.66f
+    const val KIT_SNARE_RU = 0.088f
+    const val KIT_SNARE_RV = 0.058f
+    const val KIT_TOM_U = 0.62f
+    const val KIT_TOM_V = 0.57f
+    const val KIT_TOM_RU = 0.072f
+    const val KIT_TOM_RV = 0.048f
+    const val KIT_FLOOR_U = 0.78f
+    const val KIT_FLOOR_V = 0.66f
+    const val KIT_FLOOR_RU = 0.098f
+    const val KIT_FLOOR_RV = 0.064f
+    const val KIT_BASS_U = 0.52f
+    const val KIT_BASS_V = 0.86f
+    const val KIT_BASS_RU = 0.20f
+    const val KIT_BASS_RV = 0.128f
+    const val KIT_CRASH_U = 0.82f
+    const val KIT_CRASH_V = 0.45f
+    const val KIT_CRASH_RU = 0.105f
+    const val KIT_CRASH_RV = 0.028f
+
     private const val TEX_ASPECT = 592f / 750f
     private const val INV_ASPECT = 750f / 592f
     private const val GUITAR_AX = 0.26f
@@ -114,21 +176,49 @@ object BocchiLive2dPolicy {
     private const val HALF_BLINK_THRESHOLD = 0.68f
     private const val CLOSED_BLINK_THRESHOLD = 0.25f
 
+    // ギターのストローク手と、ドラムの振り上げた両手のデフォーマ中心
+    private val ARM_GUITAR = 0.335f to 0.615f
+    private val ARM_DRUM_RIGHT = 0.60f to 0.44f
+    private val ARM_DRUM_LEFT = 0.26f to 0.46f
+    private const val ARM_REACH_U = 0.055f
+    private const val ARM_REACH_V = 0.048f
+    private const val ARM_STRUM_DU = 0.010f
+    private const val ARM_STRUM_DV = 0.018f
+    private const val ARM_HIT_DU = 0.009f
+    private const val ARM_HIT_DV = 0.017f
+
+    private const val DRUM_DECAY = 10f
+
     /** タップ座標をキャラクターの正規化UVへ変換し、反応部位を判定する */
     fun hitZone(u: Float, v: Float): BocchiHitZone {
         if (u in 0.20f..0.58f && v in 0.04f..0.30f) {
             return BocchiHitZone.HEAD_PANIC
         }
         if (u in 0.12f..0.92f && v in 0.32f..0.76f) {
-            return BocchiHitZone.GUITAR_STRUM
+            return BocchiHitZone.INSTRUMENT_HIT
         }
         return BocchiHitZone.STAGE_BURST
+    }
+
+    /** 150BPM の 8分音符グリッド上での各ドラムのヒット強度（0..1, 立下り指数） */
+    fun drumPattern(timeSec: Float): DrumPattern {
+        val eighth = timeSec * (STAGE_BPM / 60f) * 2f
+        val index = kotlin.math.floor(eighth).toInt()
+        val decay = exp(-(eighth - index) * DRUM_DECAY)
+        return DrumPattern(
+            kick = if (index % 4 == 0 || index % 4 == 2) decay else 0f,
+            snare = if (index % 2 == 1) decay else 0f,
+            hat = decay,
+            crash = if (index % 16 == 0) decay else 0f,
+            handSign = if (index % 2 == 0) 1f else -1f
+        )
     }
 
     /** 機能セクションに応じたベース表情を返す */
     fun sectionExpression(section: HomeSection): BocchiExpression = when (section) {
         HomeSection.BUILDER, HomeSection.TAGS -> BocchiExpression.AWAKENED_GROOVE
-        HomeSection.DIARY, HomeSection.IMAGE_SETS -> BocchiExpression.HAPPY_SMILE
+        HomeSection.IMAGE_SETS -> BocchiExpression.BRIGHT_LAUGH
+        HomeSection.DIARY -> BocchiExpression.HAPPY_SMILE
         HomeSection.ALL_IMAGES, HomeSection.SETTINGS -> BocchiExpression.SHY_BASE
     }
 
@@ -136,6 +226,12 @@ object BocchiLive2dPolicy {
     fun activeExpression(base: BocchiExpression, eyeOpen: Float): BocchiExpression {
         if (base == BocchiExpression.BOCCHI_PANIC) {
             return BocchiExpression.BOCCHI_PANIC
+        }
+        if (base == BocchiExpression.SURPRISE) {
+            return BocchiExpression.SURPRISE
+        }
+        if (base == BocchiExpression.BRIGHT_LAUGH) {
+            return BocchiExpression.BRIGHT_LAUGH
         }
         if (eyeOpen <= CLOSED_BLINK_THRESHOLD) {
             return BocchiExpression.BLINK_CLOSED
@@ -151,7 +247,12 @@ object BocchiLive2dPolicy {
         var du = 0f
         var dv = 0f
 
-        val guitarW = guitarWeight(u, v)
+        // ギター系のみ弦の剛体デフォーマを適用する。ドラムには弦がないので 0。
+        val guitarW = if (pose.instrument == Instrument.GUITAR) {
+            guitarWeight(u, v)
+        } else {
+            0f
+        }
 
         // 1. 上半身の揺れと150BPMビートバウンス
         val upperW = 1f - smoothstep(0.74f, 0.90f, v)
@@ -230,10 +331,14 @@ object BocchiLive2dPolicy {
             dv -= abs(wave) * 0.005f * hairFactor * depth
         }
 
-        // 9. 右手ストロークの往復デフォーマ
-        val strumW = gaussian2d(u, v, 0.335f, 0.615f, 0.055f, 0.048f)
-        du += pose.armStrum * 0.010f * strumW
-        dv += pose.armStrum * 0.018f * strumW
+        // 9. 演奏する手のデフォーマ。ギターは右手のストローク、ドラムは両手の打撃。
+        val armRight = if (pose.instrument == Instrument.DRUMS) ARM_DRUM_RIGHT else ARM_GUITAR
+        val strumW = gaussian2d(u, v, armRight.first, armRight.second, ARM_REACH_U, ARM_REACH_V)
+        du += pose.armStrum * ARM_STRUM_DU * strumW
+        dv += pose.armStrum * ARM_STRUM_DV * strumW
+        val hitW = gaussian2d(u, v, ARM_DRUM_LEFT.first, ARM_DRUM_LEFT.second, ARM_REACH_U, ARM_REACH_V)
+        du += pose.armLeft * ARM_HIT_DU * hitW
+        dv += pose.armLeft * ARM_HIT_DV * hitW
 
         // 10. プリーツスカートの揺れ
         val skirtW = gaussian2d(u, v, 0.42f, 0.74f, 0.18f, 0.06f) * (1f - guitarW)
@@ -323,10 +428,14 @@ class BocchiPhysicsEngine {
     private var scrollImpulse = 0f
     private var strumEnergy = 0f
     private var panicTimer = 0f
+    private var playfulTimer = 0f
+    private var surpriseTimer = 0f
     private var grooveTimer = 0f
     private var targetGazeX = 0f
     private var targetGazeY = 0f
     private var baseExpression = BocchiExpression.SHY_BASE
+    private var headReaction = HeadReaction.PANIC
+    private var instrument = Instrument.GUITAR
 
     // 瞬きタイマー（自然な単発・2連瞬きを交互に発生させる）
     private var nextBlinkSec = FIRST_BLINK_SEC
@@ -358,23 +467,39 @@ class BocchiPhysicsEngine {
         strumEnergy = max(strumEnergy, 0.55f)
     }
 
+    /** キャラクター切替時に、そのキャラの演奏形態と頭タップの反応を適用する */
+    fun onCharacterChange(selected: HomeCharacter) {
+        headReaction = selected.headReaction
+        instrument = selected.instrument
+        panicTimer = 0f
+        playfulTimer = 0f
+        surpriseTimer = 0f
+    }
+
     fun onTapZone(zone: BocchiHitZone, normX: Float, normY: Float) {
         targetGazeX = ((normX - 0.5f) * 2f).coerceIn(-1f, 1f)
         targetGazeY = ((normY - 0.35f) * 2f).coerceIn(-1f, 1f)
         when (zone) {
             BocchiHitZone.HEAD_PANIC -> {
-                panicTimer = PANIC_HOLD_SEC
-                ahogeSpring.addImpulse(2.4f)
-                cubeSpring.addImpulse(-2.0f)
+                if (headReaction == HeadReaction.CHEER) {
+                    playfulTimer = PLAYFUL_HOLD_SEC
+                    ahogeSpring.addImpulse(1.6f)
+                } else {
+                    panicTimer = PANIC_HOLD_SEC
+                    ahogeSpring.addImpulse(2.4f)
+                    cubeSpring.addImpulse(-2.0f)
+                }
             }
 
-            BocchiHitZone.GUITAR_STRUM -> {
+            BocchiHitZone.INSTRUMENT_HIT -> {
                 grooveTimer = GROOVE_HOLD_SEC
                 strumEnergy = 1f
                 hairMidSpring.addImpulse(1.4f)
+                ahogeSpring.addImpulse(0.8f)
             }
 
             BocchiHitZone.STAGE_BURST -> {
+                surpriseTimer = SURPRISE_HOLD_SEC
                 strumEnergy = max(strumEnergy, 0.65f)
                 ahogeSpring.addImpulse(1.1f)
             }
@@ -387,6 +512,8 @@ class BocchiPhysicsEngine {
 
         // タイマー減衰
         panicTimer = max(0f, panicTimer - dt)
+        playfulTimer = max(0f, playfulTimer - dt)
+        surpriseTimer = max(0f, surpriseTimer - dt)
         grooveTimer = max(0f, grooveTimer - dt)
         strumEnergy = max(0f, strumEnergy - dt * STRUM_DECAY)
         scrollImpulse *= exp(-dt * SCROLL_DECAY)
@@ -429,11 +556,26 @@ class BocchiPhysicsEngine {
         val guitarRock = (0.28f * sin(beatPhase * 0.5f + 0.6f) +
             strumEnergy * 0.62f * sin(beatPhase) +
             scrollImpulse * 0.35f).coerceIn(-1f, 1f)
-        val armStrum = ((0.22f + 0.78f * strumEnergy) * sin(beatPhase * 2f)).coerceIn(-1f, 1f)
+
+        // ドラムは 8分音符で両手を交互に振る。キックは足なので腕には出さない。
+        val drum = BocchiLive2dPolicy.drumPattern(timeSec)
+        val drumScale = if (instrument == Instrument.DRUMS) {
+            IDLE_GROOVE + (1f - IDLE_GROOVE) * strumEnergy
+        } else {
+            0f
+        }
+        val armStrum = if (instrument == Instrument.DRUMS) {
+            -drum.snare * drumScale * drum.handSign
+        } else {
+            (0.22f + 0.78f * strumEnergy) * sin(beatPhase * 2f)
+        }.coerceIn(-1f, 1f)
+        val armLeft = drum.hat * drumScale * drum.handSign
 
         val eyeOpen = computeEyeOpen(timeSec)
         val modeExpr = when {
             panicTimer > 0f -> BocchiExpression.BOCCHI_PANIC
+            playfulTimer > 0f -> BocchiExpression.WINK
+            surpriseTimer > 0f -> BocchiExpression.SURPRISE
             grooveTimer > 0f -> BocchiExpression.AWAKENED_GROOVE
             else -> baseExpression
         }
@@ -462,10 +604,15 @@ class BocchiPhysicsEngine {
             cubeSwing = cubeSwing,
             guitarRock = guitarRock,
             armStrum = armStrum,
+            armLeft = armLeft,
             skirtSway = skirtSway,
             glitchIntensity = glitch,
             laserTilt = (-scrollImpulse * 0.75f).coerceIn(-1f, 1f),
-            expression = finalExpr
+            expression = finalExpr,
+            instrument = instrument,
+            drumKick = drum.kick * drumScale,
+            drumSnare = drum.snare * drumScale,
+            drumHat = drum.hat * drumScale
         )
     }
 
@@ -524,9 +671,14 @@ class BocchiPhysicsEngine {
         const val FAST_SCROLL_THRESHOLD = 0.035f
         const val GROOVE_HOLD_SEC = 2.2f
         const val PANIC_HOLD_SEC = 1.8f
+        const val PLAYFUL_HOLD_SEC = 1.4f
+        const val SURPRISE_HOLD_SEC = 0.9f
         const val FIRST_BLINK_SEC = 1.6f
         const val SINGLE_BLINK_DURATION = 0.22f
         const val DOUBLE_BLINK_DURATION = 0.44f
         const val MAX_VEL = 12f
+
+        /** 演奏していない時でもステージなので 8分音符の 3 割は鳴らす */
+        const val IDLE_GROOVE = 0.3f
     }
 }

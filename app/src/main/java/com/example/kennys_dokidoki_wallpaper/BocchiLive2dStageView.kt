@@ -117,6 +117,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
 
     init {
         loadAssets(character)
+        physics.onCharacterChange(character)
     }
 
     fun setCharacter(selected: HomeCharacter): Boolean {
@@ -128,6 +129,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         }
         character = selected
         physics = BocchiPhysicsEngine()
+        physics.onCharacterChange(selected)
         activeSection?.let { physics.onSectionChange(it) }
         currentPose = character.adaptPose(BocchiPose())
         echoPinkPaint.colorFilter = PorterDuffColorFilter(character.accent, PorterDuff.Mode.SRC_ATOP)
@@ -211,7 +213,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val u = (tx - charLeft) / charWidth
         val v = (ty - charTop) / charHeight
         val zone = BocchiLive2dPolicy.hitZone(u, v)
-        physics.onTapZone(character.tapZone(zone), tx / w, ty / h)
+        physics.onTapZone(zone, tx / w, ty / h)
         spawnBurst(tx, ty, zone)
         return true
     }
@@ -242,6 +244,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         drawValkyrieLasers(canvas, w, h, currentPose)
         drawNemsysRings(canvas, w, h, currentPose)
         drawBocchiLive2d(canvas, w, h, currentPose)
+        drawDrumKit(canvas, currentPose)
         drawFloatingPrisms(canvas, w, h)
         drawTouchBursts(canvas)
         drawSdvxHudFrame(canvas, w, h, currentPose)
@@ -542,7 +545,8 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             drawKitaAura(canvas, pose)
         }
 
-        // レスポール・カスタムの弦振動エフェクト
+        // ギター・ベースの弦振動エフェクト
+        if (character.instrument == Instrument.GUITAR) {
         val (gx0, gy0) = screenPoint(BocchiLive2dPolicy.GUITAR_BRIDGE_U, BocchiLive2dPolicy.GUITAR_BRIDGE_V, pose)
         val (gx1, gy1) = screenPoint(BocchiLive2dPolicy.GUITAR_NUT_U, BocchiLive2dPolicy.GUITAR_NUT_V, pose)
         val strumAmp = abs(pose.armStrum) * charWidth * 0.012f
@@ -556,6 +560,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             fxPaint.strokeWidth = 2.4f
             fxPaint.color = withAlpha(COLOR_NEON_CYAN, 175)
             canvas.drawPath(stringPath, fxPaint)
+        }
         }
 
         // ぼっち崩壊時のグリッチ走査線
@@ -585,9 +590,156 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             val v = 0.12f + index * 0.055f
             val (x, y) = screenPoint(u, v, pose)
             val pulse = 0.5f + 0.5f * sin(phase)
-            fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, (210f * energy * pulse).toInt())
+            fxPaint.color = withAlpha(character.accent, (210f * energy * pulse).toInt())
             drawStarSparkle(canvas, x, y, charWidth * (0.012f + pulse * 0.013f), fxPaint)
         }
+    }
+
+    /**
+     * ドラムキット。本人はキットの向こう側に立つので、キャラクターの後に描く。
+     * ヒットでヘッドが膨らみ、スティックは手元からヘッドへ伸びる。
+     *
+     *   クラッシュ            フロアタム
+     *        \                 /
+     *     [ハイハット] [タム] [スネア]
+     *          \         |      /
+     *           +--------+-----+
+     *           |   バスドラム   |
+     *           +---------------+
+     */
+    private fun drawDrumKit(canvas: Canvas, pose: BocchiPose) {
+        if (character.instrument != Instrument.DRUMS) {
+            return
+        }
+        val shell = character.shellColor
+        val rim = withAlpha(shell, 210)
+
+        // スタンドとシンバルはヘッドより奥側なので先に敷く
+        fxPaint.style = Paint.Style.STROKE
+        fxPaint.strokeWidth = charWidth * 0.006f
+        fxPaint.color = withAlpha(COLOR_KIT_STEEL, 235)
+        drawStand(canvas, BocchiLive2dPolicy.KIT_CRASH_U, BocchiLive2dPolicy.KIT_CRASH_V, fxPaint)
+        drawStand(canvas, BocchiLive2dPolicy.KIT_HAT_U, BocchiLive2dPolicy.KIT_HAT_V, fxPaint)
+
+        drawCymbal(canvas, pose, BocchiLive2dPolicy.KIT_CRASH_U, BocchiLive2dPolicy.KIT_CRASH_V,
+            BocchiLive2dPolicy.KIT_CRASH_RU, BocchiLive2dPolicy.KIT_CRASH_RV, pose.drumHat * 0.8f, rim)
+        drawCymbal(canvas, pose, BocchiLive2dPolicy.KIT_HAT_U, BocchiLive2dPolicy.KIT_HAT_V,
+            BocchiLive2dPolicy.KIT_HAT_RU, BocchiLive2dPolicy.KIT_HAT_RV, pose.drumHat, rim)
+        drawShell(canvas, pose, BocchiLive2dPolicy.KIT_TOM_U, BocchiLive2dPolicy.KIT_TOM_V,
+            BocchiLive2dPolicy.KIT_TOM_RU, BocchiLive2dPolicy.KIT_TOM_RV, pose.drumSnare * 0.5f, shell, rim)
+        drawShell(canvas, pose, BocchiLive2dPolicy.KIT_FLOOR_U, BocchiLive2dPolicy.KIT_FLOOR_V,
+            BocchiLive2dPolicy.KIT_FLOOR_RU, BocchiLive2dPolicy.KIT_FLOOR_RV, pose.drumSnare * 0.4f, shell, rim)
+        drawShell(canvas, pose, BocchiLive2dPolicy.KIT_SNARE_U, BocchiLive2dPolicy.KIT_SNARE_V,
+            BocchiLive2dPolicy.KIT_SNARE_RU, BocchiLive2dPolicy.KIT_SNARE_RV, pose.drumSnare, COLOR_SNARE_SHELL, rim)
+        drawShell(canvas, pose, BocchiLive2dPolicy.KIT_BASS_U, BocchiLive2dPolicy.KIT_BASS_V,
+            BocchiLive2dPolicy.KIT_BASS_RU, BocchiLive2dPolicy.KIT_BASS_RV, pose.drumKick, shell, rim)
+
+        drawStick(canvas, pose, character.handLeftU, character.handLeftV,
+            BocchiLive2dPolicy.KIT_HAT_U, BocchiLive2dPolicy.KIT_HAT_V, pose.drumHat)
+        drawStick(canvas, pose, character.handRightU, character.handRightV,
+            BocchiLive2dPolicy.KIT_SNARE_U, BocchiLive2dPolicy.KIT_SNARE_V, pose.drumSnare)
+    }
+
+    /** シンバルを吊るスタンド。楕円の中心から下端まで細い線を引く */
+    private fun drawStand(canvas: Canvas, u: Float, v: Float, paint: Paint) {
+        val (x, y) = screenPoint(u, v, currentPose)
+        canvas.drawLine(x, y, x, y + charHeight * 0.055f, paint)
+    }
+
+    /** シンバル。ヒットで径が膨らみ、ヘッドに衝撃輪が広がる */
+    private fun drawCymbal(
+        canvas: Canvas,
+        pose: BocchiPose,
+        u: Float,
+        v: Float,
+        ru: Float,
+        rv: Float,
+        hit: Float,
+        rimColor: Int
+    ) {
+        val (x, y) = screenPoint(u, v, pose)
+        val rx = charWidth * ru * (1f + hit * 0.10f)
+        val ry = charHeight * rv * (1f + hit * 0.10f)
+        fxPaint.style = Paint.Style.FILL
+        fxPaint.color = withAlpha(COLOR_KIT_BRASS, 235)
+        canvas.drawOval(x - rx, y - ry, x + rx, y + ry, fxPaint)
+        fxPaint.color = withAlpha(COLOR_KIT_BRASS_LIT, 210)
+        canvas.drawOval(x - rx * 0.62f, y - ry * 0.62f, x + rx * 0.62f, y + ry * 0.62f, fxPaint)
+        ringPaint.pathEffect = null
+        ringPaint.strokeWidth = charWidth * 0.005f
+        ringPaint.color = rimColor
+        canvas.drawOval(x - rx, y - ry, x + rx, y + ry, ringPaint)
+        if (hit > 0.05f) {
+            val grow = 1f + 0.5f * (1f - hit)
+            ringPaint.strokeWidth = charWidth * 0.004f * hit
+            ringPaint.color = withAlpha(character.accent, (200f * hit).toInt())
+            canvas.drawOval(x - rx * grow, y - ry * grow, x + rx * grow, y + ry * grow, ringPaint)
+        }
+    }
+
+    /** ドラムシェル。ヒットでヘッドが外へ膨らみ、シェルにハイライトが乗る */
+    private fun drawShell(
+        canvas: Canvas,
+        pose: BocchiPose,
+        u: Float,
+        v: Float,
+        ru: Float,
+        rv: Float,
+        hit: Float,
+        shellColor: Int,
+        rimColor: Int
+    ) {
+        val (x, y) = screenPoint(u, v, pose)
+        val rx = charWidth * ru
+        val ry = charHeight * rv
+        val swell = 1f + hit * 0.13f
+        fxPaint.style = Paint.Style.FILL
+        fxPaint.color = shellColor
+        canvas.drawOval(x - rx, y - ry * 1.22f, x + rx, y + ry * 1.22f, fxPaint)
+        fxPaint.color = withAlpha(Color.WHITE, 26)
+        canvas.drawOval(x - rx * 0.7f, y - ry * 1.16f, x + rx * 0.7f, y - ry * 0.42f, fxPaint)
+        fxPaint.color = COLOR_KIT_HEAD
+        canvas.drawOval(x - rx * swell, y - ry * swell, x + rx * swell, y + ry * swell, fxPaint)
+        ringPaint.pathEffect = null
+        ringPaint.strokeWidth = charWidth * 0.007f
+        ringPaint.color = rimColor
+        canvas.drawOval(x - rx, y - ry, x + rx, y + ry, ringPaint)
+        if (hit > 0.05f) {
+            val grow = 1f + 0.6f * (1f - hit)
+            ringPaint.strokeWidth = charWidth * 0.005f * hit
+            ringPaint.color = withAlpha(character.accent, (210f * hit).toInt())
+            canvas.drawOval(x - rx * grow, y - ry * grow, x + rx * grow, y + ry * grow, ringPaint)
+        }
+    }
+
+    /** スティック。手元からヘッドへ伸び、ヒット瞬間に根元にグロウを乗せる */
+    private fun drawStick(
+        canvas: Canvas,
+        pose: BocchiPose,
+        handU: Float,
+        handV: Float,
+        headU: Float,
+        headV: Float,
+        hit: Float
+    ) {
+        val (hx, hy) = screenPoint(handU, handV, pose)
+        val (tx, ty) = screenPoint(headU, headV, pose)
+        val midX = (hx + tx) * 0.5f
+        val midY = (hy + ty) * 0.5f - charWidth * (0.05f + hit * 0.055f)
+        stringPath.reset()
+        stringPath.moveTo(hx, hy)
+        stringPath.quadTo(midX, midY, tx, ty)
+        fxPaint.style = Paint.Style.STROKE
+        fxPaint.strokeCap = Paint.Cap.ROUND
+        fxPaint.strokeWidth = charWidth * 0.008f
+        fxPaint.color = withAlpha(character.accent, 90)
+        canvas.drawPath(stringPath, fxPaint)
+        fxPaint.strokeWidth = charWidth * 0.0055f
+        fxPaint.color = COLOR_KIT_STICK
+        canvas.drawPath(stringPath, fxPaint)
+        fxPaint.style = Paint.Style.FILL
+        fxPaint.color = withAlpha(character.accent, (230f * hit).toInt())
+        canvas.drawCircle(tx, ty, charWidth * (0.010f + hit * 0.012f), fxPaint)
     }
 
     private fun drawFloatingPrisms(canvas: Canvas, w: Float, h: Float) {
@@ -633,9 +785,17 @@ class BocchiLive2dStageView @JvmOverloads constructor(
 
         // ステータスバッジ表示
         val mode = when (pose.expression) {
-            BocchiExpression.BOCCHI_PANIC -> "PANIC GLITCH!"
-            BocchiExpression.AWAKENED_GROOVE -> if (character == HomeCharacter.KITA) "KITA~N!" else "GUITAR HERO"
+            BocchiExpression.BOCCHI_PANIC -> if (character == HomeCharacter.NIJIKA) "OH NO~!" else "PANIC GLITCH!"
+            BocchiExpression.WINK -> "WINK!"
+            BocchiExpression.SURPRISE -> "EH!?"
+            BocchiExpression.BRIGHT_LAUGH -> "KESSOKU LIVE"
             BocchiExpression.HAPPY_SMILE -> "KESSOKU LIVE"
+            BocchiExpression.AWAKENED_GROOVE -> when (character) {
+                HomeCharacter.KITA -> "KITA~N!"
+                HomeCharacter.NIJIKA -> "NIJIKA BEAT"
+                HomeCharacter.RYO -> "RYO GROOVE"
+                else -> "GUITAR HERO"
+            }
             else -> "2D MESH 150BPM"
         }
         val modeLabel = "CREW: ${character.crewName} // $mode"
@@ -720,7 +880,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         b.elapsed = 0f
         b.color = when (zone) {
             BocchiHitZone.HEAD_PANIC -> character.accent
-            BocchiHitZone.GUITAR_STRUM -> COLOR_CUBE_YELLOW
+            BocchiHitZone.INSTRUMENT_HIT -> COLOR_CUBE_YELLOW
             BocchiHitZone.STAGE_BURST -> COLOR_NEON_CYAN
         }
     }
@@ -790,5 +950,13 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         const val COLOR_BOCCHI_PINK = 0xFFFF3E9D.toInt()
         const val COLOR_CUBE_YELLOW = 0xFFFFD54F.toInt()
         const val COLOR_HUD_TEXT = 0xFFD8F6FF.toInt()
+
+        // ドラムキットの塗り
+        const val COLOR_KIT_STEEL = 0xFF9AA7B4.toInt()
+        const val COLOR_KIT_BRASS = 0xFFC9962F.toInt()
+        const val COLOR_KIT_BRASS_LIT = 0xFFF2CE72.toInt()
+        const val COLOR_KIT_HEAD = 0xFFF3ECDD.toInt()
+        const val COLOR_KIT_STICK = 0xFFE8D9B8.toInt()
+        const val COLOR_SNARE_SHELL = 0xFF23262E.toInt()
     }
 }

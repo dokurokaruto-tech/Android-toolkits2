@@ -72,7 +72,7 @@ class BocchiLive2dPolicyTest {
     @Test
     fun hitZoneClassifiesHeadGuitarAndStage() {
         assertEquals(BocchiHitZone.HEAD_PANIC, BocchiLive2dPolicy.hitZone(0.40f, 0.18f))
-        assertEquals(BocchiHitZone.GUITAR_STRUM, BocchiLive2dPolicy.hitZone(0.45f, 0.55f))
+        assertEquals(BocchiHitZone.INSTRUMENT_HIT, BocchiLive2dPolicy.hitZone(0.45f, 0.55f))
         assertEquals(BocchiHitZone.STAGE_BURST, BocchiLive2dPolicy.hitZone(0.08f, 0.88f))
     }
 

@@ -10,6 +10,24 @@ object Assert {
         }
     }
 
+    fun assertEquals(expected: Double, actual: Double, delta: Double) {
+        if (Math.abs(expected - actual) > delta) {
+            throw AssertionError("expected:<$expected> but was:<$actual> delta:$delta>")
+        }
+    }
+
+    fun assertEquals(expected: Float, actual: Float, delta: Float) {
+        if (Math.abs(expected - actual) > delta) {
+            throw AssertionError("expected:<$expected> but was:<$actual> delta:$delta>")
+        }
+    }
+
+    fun assertNotEquals(unexpected: Any?, actual: Any?) {
+        if (unexpected == actual) {
+            throw AssertionError("expected not:<$unexpected>")
+        }
+    }
+
     fun assertTrue(condition: Boolean) {
         if (!condition) {
             throw AssertionError("expected true")

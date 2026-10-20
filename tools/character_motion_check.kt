@@ -6,10 +6,14 @@ fun main() {
     HomeCharacter.entries.forEach { check(HomeCharacter.fromSaved(it.name) == it) }
     val original = BocchiPose(cubeSwing = 0.5f, glitchIntensity = 1f)
     check(HomeCharacter.HITORI.adaptPose(original) === original)
-    BocchiExpression.entries.forEach { check(HomeCharacter.HITORI.faceAsset(it) == it.assetName) }
+    BocchiExpression.entries.forEach {
+        val expected = it.key?.let { key -> "live2d/bocchi/bocchi_face_$key.webp" }
+        check(HomeCharacter.HITORI.faceAsset(it) == expected)
+    }
     val engine = BocchiPhysicsEngine()
-    engine.onTapZone(HomeCharacter.KITA.tapZone(BocchiHitZone.HEAD_PANIC), 0.4f, 0.2f)
-    check(engine.step(0.016f).expression == BocchiExpression.AWAKENED_GROOVE)
+    engine.onCharacterChange(HomeCharacter.KITA)
+    engine.onTapZone(BocchiHitZone.HEAD_PANIC, 0.4f, 0.2f)
+    check(HomeCharacter.KITA.adaptPose(engine.step(0.016f)).expression == BocchiExpression.WINK)
     var blinks = 0
     var hairMoves = 0
     repeat(3600) {
@@ -18,6 +22,7 @@ fun main() {
         }
         val pose = HomeCharacter.KITA.adaptPose(engine.step(0.016f))
         check(pose.glitchIntensity == 0f && pose.cubeSwing == 0f && pose.ahoge == 0f)
+        check(pose.instrument == Instrument.GUITAR && pose.armLeft == 0f)
         if (pose.expression == BocchiExpression.BLINK_CLOSED) {
             blinks++
         }
