@@ -94,6 +94,45 @@ class BocchiLive2dPolicyTest {
             BocchiExpression.BOCCHI_PANIC,
             BocchiLive2dPolicy.activeExpression(BocchiExpression.BOCCHI_PANIC, eyeOpen = 0.05f)
         )
+        // 待機の仕草（ウィンク等）は瞬きで上書きしない
+        assertEquals(
+            BocchiExpression.IDLE_CHARM,
+            BocchiLive2dPolicy.activeExpression(BocchiExpression.IDLE_CHARM, eyeOpen = 0.05f)
+        )
+    }
+
+    @Test
+    fun surpriseTapAndIdleCycleAppear() {
+        val engine = BocchiPhysicsEngine()
+        engine.onTapZone(BocchiHitZone.STAGE_BURST, normX = 0.5f, normY = 0.5f)
+        assertEquals(BocchiExpression.SURPRISED, engine.step(0.016f).expression)
+
+        var idleSeen = false
+        var singingSeen = false
+        engine.onTapZone(BocchiHitZone.GUITAR_STRUM, normX = 0.5f, normY = 0.5f)
+        for (i in 0 until 900) {
+            val pose = engine.step(0.016f)
+            idleSeen = idleSeen || pose.expression == BocchiExpression.IDLE_CHARM
+            singingSeen = singingSeen || pose.expression == BocchiExpression.SINGING_OPEN
+        }
+        assertTrue(idleSeen)
+        assertTrue(singingSeen)
+    }
+
+    @Test
+    fun drumAndPonytailDeformMoveTheirZones() {
+        val neutralArm = BocchiLive2dPolicy.deformUv(0.775f, 0.19f, BocchiPose(breath = 0f))
+        val hitArm = BocchiLive2dPolicy.deformUv(0.775f, 0.19f, BocchiPose(breath = 0f, drumHitR = 1f))
+        assertTrue(hitArm.second > neutralArm.second)
+
+        val neutralTip = BocchiLive2dPolicy.deformUv(0.82f, 0.40f, BocchiPose(breath = 0f))
+        val swungTip = BocchiLive2dPolicy.deformUv(0.82f, 0.40f, BocchiPose(breath = 0f, ponySwing = 1f))
+        assertTrue(swungTip.first > neutralTip.first)
+
+        // ドラム腕の変形はギター軸（ナット付近）へほぼ漏れない
+        val nutStill = BocchiLive2dPolicy.deformUv(0.855f, 0.395f, BocchiPose(breath = 0f))
+        val nutHit = BocchiLive2dPolicy.deformUv(0.855f, 0.395f, BocchiPose(breath = 0f, drumHitR = 1f))
+        assertEquals(nutStill.second, nutHit.second, 0.001f)
     }
 
     @Test
@@ -101,7 +140,11 @@ class BocchiLive2dPolicyTest {
         val engine = BocchiPhysicsEngine()
         engine.onScroll(deltaPx = 120f, viewWidth = 1000f)
         val grooved = engine.step(0.016f)
-        assertEquals(BocchiExpression.AWAKENED_GROOVE, grooved.expression)
+        // グルーヴ中はビート位相で歌口と決め顔が切り替わる
+        assertTrue(
+            grooved.expression == BocchiExpression.AWAKENED_GROOVE ||
+                grooved.expression == BocchiExpression.SINGING_OPEN
+        )
         assertTrue(abs(grooved.hairSideMid) > 0f)
         assertTrue(abs(grooved.laserTilt) > 0f)
 

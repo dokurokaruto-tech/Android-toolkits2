@@ -39,4 +39,16 @@ object Assert {
             throw AssertionError("expected the same instance")
         }
     }
+
+    fun assertNotEquals(unexpected: Any?, actual: Any?) {
+        if (unexpected == actual) {
+            throw AssertionError("did not expect:<$actual>")
+        }
+    }
+
+    fun assertEquals(expected: Float, actual: Float, delta: Float) {
+        if (kotlin.math.abs(expected - actual) > delta) {
+            throw AssertionError("expected:<$expected> but was:<$actual>")
+        }
+    }
 }

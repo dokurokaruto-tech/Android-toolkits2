@@ -10,7 +10,7 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * 後藤ひとり Live2D 変形・物理演算・表情ステートマシン。
+ * 結束バンド4人の Live2D 風変形・物理演算・表情ステートマシン（リグは全員共通）。
  *
  *   [Scroll / Tap / 150BPM Beat]
  *                |
@@ -29,17 +29,22 @@ import kotlin.math.sin
  *                                    |  - 10x8 Face Sub-Mesh     |
  *                                    +---------------------------+
  */
-enum class BocchiExpression(val assetName: String?) {
+/** 表情スロット。suffix が顔パッチのファイル名末尾になる（キャラ別の絵は HomeCharacter 側）。 */
+enum class BocchiExpression(val suffix: String?) {
     SHY_BASE(null),
-    HALF_BLINK("live2d/bocchi/bocchi_face_half_blink.webp"),
-    BLINK_CLOSED("live2d/bocchi/bocchi_face_blink.webp"),
-    HAPPY_SMILE("live2d/bocchi/bocchi_face_smile.webp"),
-    AWAKENED_GROOVE("live2d/bocchi/bocchi_face_awakened.webp"),
-    BOCCHI_PANIC("live2d/bocchi/bocchi_face_panic.webp")
+    HALF_BLINK("half_blink"),
+    BLINK_CLOSED("blink"),
+    HAPPY_SMILE("smile"),
+    AWAKENED_GROOVE("awakened"),
+    BOCCHI_PANIC("cheer"),
+    SINGING_OPEN("singing"),
+    SURPRISED("surprised"),
+    IDLE_CHARM("idle")
 }
 
 enum class BocchiHitZone {
     HEAD_PANIC,
+    HEAD_REACT,
     GUITAR_STRUM,
     STAGE_BURST
 }
@@ -62,6 +67,9 @@ data class BocchiPose(
     val cubeSwing: Float = 0f,
     val guitarRock: Float = 0f,
     val armStrum: Float = 0f,
+    val drumHitL: Float = 0f,
+    val drumHitR: Float = 0f,
+    val ponySwing: Float = 0f,
     val skirtSway: Float = 0f,
     val glitchIntensity: Float = 0f,
     val laserTilt: Float = 0f,
@@ -83,19 +91,7 @@ object BocchiLive2dPolicy {
     const val FACE_U1 = 316f / 592f
     const val FACE_V1 = 216f / 750f
 
-    // 瞳ハイライト・髪飾り・ギター弦の基準UV座標
-    const val EYE_LEFT_U = 0.352f
-    const val EYE_LEFT_V = 0.203f
-    const val EYE_RIGHT_U = 0.453f
-    const val EYE_RIGHT_V = 0.205f
-    const val CUBE_BLUE_U = 0.250f
-    const val CUBE_BLUE_V = 0.125f
-    const val CUBE_YELLOW_U = 0.248f
-    const val CUBE_YELLOW_V = 0.165f
-    const val GUITAR_BRIDGE_U = 0.310f
-    const val GUITAR_BRIDGE_V = 0.625f
-    const val GUITAR_NUT_U = 0.855f
-    const val GUITAR_NUT_V = 0.395f
+    // 瞳ハイライト・装飾・弦の基準UV座標はキャラごとに違うため HomeCharacter.rig へ移した
 
     const val STAGE_BPM = 150f
 
@@ -134,8 +130,9 @@ object BocchiLive2dPolicy {
 
     /** 瞬き開度と感情モードから、現在描画すべき顔パッチを決める */
     fun activeExpression(base: BocchiExpression, eyeOpen: Float): BocchiExpression {
-        if (base == BocchiExpression.BOCCHI_PANIC) {
-            return BocchiExpression.BOCCHI_PANIC
+        // 閉眼・ウィンク主体の表情は瞬きパッチで上書きしない
+        if (base == BocchiExpression.BOCCHI_PANIC || base == BocchiExpression.IDLE_CHARM) {
+            return base
         }
         if (eyeOpen <= CLOSED_BLINK_THRESHOLD) {
             return BocchiExpression.BLINK_CLOSED
@@ -188,8 +185,11 @@ object BocchiLive2dPolicy {
             dv += pose.angleY * (0.011f * headW + 0.007f * faceCenterW)
         }
 
-        // 4. アホ毛のスプリング揺れ
-        val ahogeW = gaussian2d(u, v, 0.46f, 0.03f, 0.06f, 0.04f) * (1f - smoothstep(0.04f, 0.07f, v))
+        // 4. アホ毛のスプリング揺れ（後藤の毛束＋虹夏の三角アホ毛の2ローブ）
+        val ahogeW = max(
+            gaussian2d(u, v, 0.46f, 0.03f, 0.06f, 0.04f) * (1f - smoothstep(0.04f, 0.07f, v)),
+            gaussian2d(u, v, 0.42f, 0.065f, 0.045f, 0.035f)
+        )
         du += pose.ahoge * 0.028f * ahogeW
         dv += abs(pose.ahoge) * 0.008f * ahogeW
 
@@ -238,6 +238,27 @@ object BocchiLive2dPolicy {
         // 10. プリーツスカートの揺れ
         val skirtW = gaussian2d(u, v, 0.42f, 0.74f, 0.18f, 0.06f) * (1f - guitarW)
         du += pose.skirtSway * 0.020f * skirtW * smoothstep(0.66f, 0.80f, v)
+
+        // 11. サイドポニーテールの波（虹夏のみ ponySwing が入る）
+        if (pose.ponySwing != 0f) {
+            val ponyMidW = gaussian2d(u, v, 0.71f, 0.24f, 0.11f, 0.10f)
+            val ponyTipW = gaussian2d(u, v, 0.82f, 0.40f, 0.10f, 0.10f)
+            du += pose.ponySwing * (0.020f * ponyMidW + 0.034f * ponyTipW)
+            dv -= abs(pose.ponySwing) * 0.008f * ponyTipW
+        }
+
+        // 12. ドラムスティック腕の上下（虹夏のみ drumHitL/R が入る）
+        if (pose.drumHitL != 0f || pose.drumHitR != 0f) {
+            val armLW = gaussian2d(u, v, 0.245f, 0.42f, 0.075f, 0.085f) +
+                gaussian2d(u, v, 0.21f, 0.33f, 0.05f, 0.09f)
+            du += pose.drumHitL * 0.006f * armLW
+            dv += pose.drumHitL * 0.022f * armLW
+
+            val armRW = gaussian2d(u, v, 0.775f, 0.19f, 0.075f, 0.10f) +
+                gaussian2d(u, v, 0.72f, 0.07f, 0.06f, 0.08f)
+            du -= pose.drumHitR * 0.008f * armRW
+            dv += pose.drumHitR * 0.030f * armRW
+        }
 
         return (u + du) to (v + dv)
     }
@@ -323,7 +344,12 @@ class BocchiPhysicsEngine {
     private var scrollImpulse = 0f
     private var strumEnergy = 0f
     private var panicTimer = 0f
+    private var cheerTimer = 0f
+    private var surpriseTimer = 0f
     private var grooveTimer = 0f
+    private var idleTimer = 0f
+    private var nextIdleSec = FIRST_IDLE_SEC
+    private var idleCount = 0
     private var targetGazeX = 0f
     private var targetGazeY = 0f
     private var baseExpression = BocchiExpression.SHY_BASE
@@ -368,6 +394,14 @@ class BocchiPhysicsEngine {
                 cubeSpring.addImpulse(-2.0f)
             }
 
+            BocchiHitZone.HEAD_REACT -> {
+                // 後藤以外はパニックにせず、各キャラの喜び反応（cheer顔）を見せる
+                cheerTimer = CHEER_HOLD_SEC
+                strumEnergy = max(strumEnergy, 0.7f)
+                ahogeSpring.addImpulse(1.6f)
+                cubeSpring.addImpulse(1.2f)
+            }
+
             BocchiHitZone.GUITAR_STRUM -> {
                 grooveTimer = GROOVE_HOLD_SEC
                 strumEnergy = 1f
@@ -375,6 +409,7 @@ class BocchiPhysicsEngine {
             }
 
             BocchiHitZone.STAGE_BURST -> {
+                surpriseTimer = SURPRISE_HOLD_SEC
                 strumEnergy = max(strumEnergy, 0.65f)
                 ahogeSpring.addImpulse(1.1f)
             }
@@ -387,7 +422,25 @@ class BocchiPhysicsEngine {
 
         // タイマー減衰
         panicTimer = max(0f, panicTimer - dt)
+        cheerTimer = max(0f, cheerTimer - dt)
+        surpriseTimer = max(0f, surpriseTimer - dt)
         grooveTimer = max(0f, grooveTimer - dt)
+
+        // 待機中の小さな仕草（各キャラの idle 顔）を周期的に挟む
+        if (idleTimer > 0f) {
+            idleTimer = max(0f, idleTimer - dt)
+        } else {
+            nextIdleSec -= dt
+            if (nextIdleSec <= 0f) {
+                idleTimer = IDLE_HOLD_SEC
+                idleCount++
+                nextIdleSec = if (idleCount % 2 == 0) {
+                    IDLE_INTERVAL_A_SEC
+                } else {
+                    IDLE_INTERVAL_B_SEC
+                }
+            }
+        }
         strumEnergy = max(0f, strumEnergy - dt * STRUM_DECAY)
         scrollImpulse *= exp(-dt * SCROLL_DECAY)
         targetGazeX *= exp(-dt * GAZE_DECAY)
@@ -432,9 +485,18 @@ class BocchiPhysicsEngine {
         val armStrum = ((0.22f + 0.78f * strumEnergy) * sin(beatPhase * 2f)).coerceIn(-1f, 1f)
 
         val eyeOpen = computeEyeOpen(timeSec)
+        // グルーヴ中はビートに合わせて歌口と決め顔を交互に見せる（喜多のボーカル感）
+        val grooveExpr = if (sin(beatPhase * 0.5f) > 0f) {
+            BocchiExpression.SINGING_OPEN
+        } else {
+            BocchiExpression.AWAKENED_GROOVE
+        }
         val modeExpr = when {
             panicTimer > 0f -> BocchiExpression.BOCCHI_PANIC
-            grooveTimer > 0f -> BocchiExpression.AWAKENED_GROOVE
+            cheerTimer > 0f -> BocchiExpression.BOCCHI_PANIC
+            surpriseTimer > 0f -> BocchiExpression.SURPRISED
+            grooveTimer > 0f -> grooveExpr
+            idleTimer > 0f -> BocchiExpression.IDLE_CHARM
             else -> baseExpression
         }
         val finalExpr = BocchiLive2dPolicy.activeExpression(modeExpr, eyeOpen)
@@ -524,6 +586,12 @@ class BocchiPhysicsEngine {
         const val FAST_SCROLL_THRESHOLD = 0.035f
         const val GROOVE_HOLD_SEC = 2.2f
         const val PANIC_HOLD_SEC = 1.8f
+        const val CHEER_HOLD_SEC = 1.6f
+        const val SURPRISE_HOLD_SEC = 0.9f
+        const val IDLE_HOLD_SEC = 2.4f
+        const val FIRST_IDLE_SEC = 6f
+        const val IDLE_INTERVAL_A_SEC = 9.5f
+        const val IDLE_INTERVAL_B_SEC = 13f
         const val FIRST_BLINK_SEC = 1.6f
         const val SINGLE_BLINK_DURATION = 0.22f
         const val DOUBLE_BLINK_DURATION = 0.44f
