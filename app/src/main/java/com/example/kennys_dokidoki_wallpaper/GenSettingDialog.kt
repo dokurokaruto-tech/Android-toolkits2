@@ -94,15 +94,13 @@ object GenSettingDialog {
             draft = draft.copy(width = state.width, height = state.height)
         }
 
+        // スナップOFFなら微調整バーは従来どおり1px刻み。
         fun snapModeFor(source: ChangeSource): ResolutionControlPolicy.SnapMode = when {
             source == ChangeSource.FIELD -> ResolutionControlPolicy.SnapMode.EIGHT_PIXELS
-            source == ChangeSource.PRECISION -> ResolutionControlPolicy.SnapMode.CUSTOM
-            snapEnabled.isChecked -> ResolutionControlPolicy.SnapMode.CUSTOM
+            source == ChangeSource.PRECISION && !snapEnabled.isChecked -> ResolutionControlPolicy.SnapMode.ONE_PIXEL
+            source == ChangeSource.PRECISION || snapEnabled.isChecked -> ResolutionControlPolicy.SnapMode.CUSTOM
             else -> ResolutionControlPolicy.SnapMode.EIGHT_PIXELS
         }
-
-        fun snapStepFor(source: ChangeSource): Int =
-            if (source == ChangeSource.PRECISION) BuilderGenSettingPolicy.SLIDER_PIXEL_STEP else snapStep
 
         fun setSnapStep(raw: Int) {
             snapStep = BuilderGenSettingPolicy.sanitizeSnapStep(raw)
@@ -154,7 +152,7 @@ object GenSettingDialog {
 
             if (axis == BuilderGenSettingPolicy.Axis.WIDTH || axis == BuilderGenSettingPolicy.Axis.HEIGHT) {
                 syncResolution(
-                    ResolutionControlPolicy.update(resolution, axis, raw, snapModeFor(source), snapStepFor(source))
+                    ResolutionControlPolicy.update(resolution, axis, raw, snapModeFor(source), snapStep)
                 )
             } else {
                 draft = BuilderGenSettingPolicy.with(draft, axis, BuilderGenSettingPolicy.clamp(axis, raw))

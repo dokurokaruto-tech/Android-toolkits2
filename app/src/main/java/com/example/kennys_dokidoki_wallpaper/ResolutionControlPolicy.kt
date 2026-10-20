@@ -13,7 +13,8 @@ internal object ResolutionControlPolicy {
 
     enum class SnapMode {
         EIGHT_PIXELS,
-        CUSTOM
+        CUSTOM,
+        ONE_PIXEL
     }
 
     enum class LockMode {
@@ -109,6 +110,7 @@ internal object ResolutionControlPolicy {
     fun stepFor(mode: SnapMode, customStep: Int): Int = when (mode) {
         SnapMode.EIGHT_PIXELS -> BuilderGenSettingPolicy.SIZE_STEP
         SnapMode.CUSTOM -> sanitizeSnapStep(customStep)
+        SnapMode.ONE_PIXEL -> BuilderGenSettingPolicy.SLIDER_PIXEL_STEP
     }
 
     fun sanitizeSnapStep(step: Int): Int = BuilderGenSettingPolicy.sanitizeSnapStep(step)

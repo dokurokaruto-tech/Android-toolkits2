@@ -82,6 +82,16 @@ class ResolutionControlPolicyTest {
     }
 
     @Test
+    fun precisionBarUsesConfiguredSnapWhenEnabled() {
+        val initial = ResolutionControlPolicy.start(720, 1280)
+        val snapped = ResolutionControlPolicy.update(initial, Axis.WIDTH, 738, SnapMode.CUSTOM, 10)
+        val unsnapped = ResolutionControlPolicy.update(initial, Axis.WIDTH, 738, SnapMode.ONE_PIXEL, 10)
+
+        assertEquals(740, snapped.width)
+        assertEquals(738, unsnapped.width)
+    }
+
+    @Test
     fun precisionRangeTracksOneHundredPixelsAroundTheValue() {
         assertEquals(
             ResolutionControlPolicy.PrecisionBounds(620, 820),
