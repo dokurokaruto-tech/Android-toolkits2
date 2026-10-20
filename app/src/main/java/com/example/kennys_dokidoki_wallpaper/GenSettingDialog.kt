@@ -22,7 +22,7 @@ import kotlin.math.roundToInt
  * Builder 上部4ボタンを開いたときのポップアップ。
  * 名前は Dialog だが全画面ではなく、他の編集ポップアップと同じ浮きカード。
  * 解像度は ResolutionControlPolicy、他の数値は BuilderGenSettingPolicy で扱う。
- * 生成設定は「適用」まで下書き。スナップ設定は切替・入力時に保存する。
+ * 解像度と比率ロックは「適用」で確定。スナップ設定は切替・入力時に保存する。
  */
 object GenSettingDialog {
 
@@ -30,7 +30,11 @@ object GenSettingDialog {
     private const val SNAP_ENABLED_PREFERENCE = "gen_resolution_snap_enabled"
     private const val LEGACY_SNAP_ENABLED_PREFERENCE = "gen_resolution_snap_10"
     private const val SNAP_STEP_PREFERENCE = "gen_resolution_snap_step"
+    private const val LOCK_RATIO_PREFERENCE = "gen_resolution_lock_ratio"
+    private const val LOCK_RATIO_WIDTH_PREFERENCE = "gen_resolution_lock_width"
+    private const val LOCK_RATIO_HEIGHT_PREFERENCE = "gen_resolution_lock_height"
     private const val DEFAULT_SNAP_ENABLED = true
+    private const val DEFAULT_LOCK_RATIO = false
 
     /** 入力欄の桁数。枚数の上限ではなく Int の溢れ防止。 */
     private const val MAX_DIGITS = 7
@@ -52,11 +56,16 @@ object GenSettingDialog {
         val lockRatio = view.findViewById<MaterialSwitch>(R.id.sw_gen_setting_lock)
         val snapEnabled = view.findViewById<MaterialSwitch>(R.id.sw_gen_setting_snap)
         val snapStepRow = view.findViewById<View>(R.id.ll_gen_setting_snap_step)
+        val isResolution = kind == BuilderGenSettingPolicy.Kind.RESOLUTION
         val snapStepField = view.findViewById<EditText>(R.id.et_gen_setting_snap_step)
         val settingsPrefs = activity.getSharedPreferences(SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
         snapEnabled.isChecked = settingsPrefs.getBoolean(
             SNAP_ENABLED_PREFERENCE,
             settingsPrefs.getBoolean(LEGACY_SNAP_ENABLED_PREFERENCE, DEFAULT_SNAP_ENABLED)
+        )
+        lockRatio.isChecked = isResolution && settingsPrefs.getBoolean(
+            LOCK_RATIO_PREFERENCE,
+            DEFAULT_LOCK_RATIO
         )
         snapStepField.filters = arrayOf<InputFilter>(InputFilter.LengthFilter(3))
         var snapStep = BuilderGenSettingPolicy.sanitizeSnapStep(
@@ -69,6 +78,13 @@ object GenSettingDialog {
         val chipIds = mutableListOf<Int>()
         var draft = BuilderGenSettingPolicy.sanitize(current)
         var resolution = ResolutionControlPolicy.start(draft.width, draft.height)
+        if (lockRatio.isChecked) {
+            resolution = ResolutionControlPolicy.restoreLocked(
+                resolution,
+                settingsPrefs.getInt(LOCK_RATIO_WIDTH_PREFERENCE, draft.width),
+                settingsPrefs.getInt(LOCK_RATIO_HEIGHT_PREFERENCE, draft.height)
+            )
+        }
 
         val accent = MaterialColors.getColor(view, com.google.android.material.R.attr.colorPrimary)
         val danger = MaterialColors.getColor(view, com.google.android.material.R.attr.colorError)
@@ -78,12 +94,15 @@ object GenSettingDialog {
             draft = draft.copy(width = state.width, height = state.height)
         }
 
-        fun snapModeFor(source: ChangeSource): ResolutionControlPolicy.SnapMode =
-            if (source != ChangeSource.FIELD && snapEnabled.isChecked) {
-                ResolutionControlPolicy.SnapMode.CUSTOM
-            } else {
-                ResolutionControlPolicy.SnapMode.EIGHT_PIXELS
-            }
+        fun snapModeFor(source: ChangeSource): ResolutionControlPolicy.SnapMode = when {
+            source == ChangeSource.FIELD -> ResolutionControlPolicy.SnapMode.EIGHT_PIXELS
+            source == ChangeSource.PRECISION -> ResolutionControlPolicy.SnapMode.CUSTOM
+            snapEnabled.isChecked -> ResolutionControlPolicy.SnapMode.CUSTOM
+            else -> ResolutionControlPolicy.SnapMode.EIGHT_PIXELS
+        }
+
+        fun snapStepFor(source: ChangeSource): Int =
+            if (source == ChangeSource.PRECISION) BuilderGenSettingPolicy.SLIDER_PIXEL_STEP else snapStep
 
         fun setSnapStep(raw: Int) {
             snapStep = BuilderGenSettingPolicy.sanitizeSnapStep(raw)
@@ -93,7 +112,10 @@ object GenSettingDialog {
             settingsPrefs.edit().putInt(SNAP_STEP_PREFERENCE, snapStep).commit()
         }
 
-        fun sync(keepFieldFor: BuilderGenSettingPolicy.Axis?) {
+        fun sync(
+            keepFieldFor: BuilderGenSettingPolicy.Axis?,
+            keepPrecisionFor: BuilderGenSettingPolicy.Axis?
+        ) {
             val limit = BuilderGenSettingPolicy.AGENT_JOB_IMAGE_LIMIT
             val overBatch = kind == BuilderGenSettingPolicy.Kind.BATCH && draft.batch > limit
             val label = BuilderGenSettingPolicy.preview(kind, draft)
@@ -103,7 +125,12 @@ object GenSettingDialog {
             preview.setTextColor(if (overBatch) danger else accent)
             rows.forEach { (axis, row) ->
                 val value = BuilderGenSettingPolicy.valueOf(draft, axis)
-                row.show(value, updateField = axis != keepFieldFor)
+                val rowSync = when {
+                    axis == keepFieldFor -> RowSync.KEEP_FIELD
+                    axis == keepPrecisionFor -> RowSync.KEEP_PRECISION
+                    else -> RowSync.UPDATE_ALL
+                }
+                row.show(value, rowSync)
             }
 
             val index = choices.indexOfFirst { choice ->
@@ -126,12 +153,17 @@ object GenSettingDialog {
             }
 
             if (axis == BuilderGenSettingPolicy.Axis.WIDTH || axis == BuilderGenSettingPolicy.Axis.HEIGHT) {
-                syncResolution(ResolutionControlPolicy.update(resolution, axis, raw, snapModeFor(source), snapStep))
+                syncResolution(
+                    ResolutionControlPolicy.update(resolution, axis, raw, snapModeFor(source), snapStepFor(source))
+                )
             } else {
                 draft = BuilderGenSettingPolicy.with(draft, axis, BuilderGenSettingPolicy.clamp(axis, raw))
             }
 
-            sync(if (source == ChangeSource.FIELD) axis else null)
+            sync(
+                keepFieldFor = if (source == ChangeSource.FIELD) axis else null,
+                keepPrecisionFor = if (source == ChangeSource.PRECISION) axis else null
+            )
         }
 
         fun nudge(axis: BuilderGenSettingPolicy.Axis, direction: Int) {
@@ -152,7 +184,13 @@ object GenSettingDialog {
             val field = rowView.findViewById<EditText>(R.id.et_gen_number_value)
             field.filters = arrayOf<InputFilter>(InputFilter.LengthFilter(MAX_DIGITS))
 
-            val row = Row(axis, field, rowView.findViewById<Slider>(R.id.sl_gen_number_value))
+            val row = Row(
+                axis = axis,
+                field = field,
+                slider = rowView.findViewById(R.id.sl_gen_number_value),
+                precisionLabel = rowView.findViewById(R.id.tv_gen_number_precision_label),
+                precisionSlider = rowView.findViewById(R.id.sl_gen_number_precision)
+            )
             rows[axis] = row
             rowsHost.addView(rowView)
 
@@ -166,6 +204,19 @@ object GenSettingDialog {
                     commit(axis, value.roundToInt(), ChangeSource.SLIDER)
                 }
             }
+            row.precisionSlider.addOnChangeListener { _, value, fromUser ->
+                if (fromUser && !row.busy) {
+                    commit(axis, value.roundToInt(), ChangeSource.PRECISION)
+                }
+            }
+            row.precisionSlider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+                override fun onStartTrackingTouch(slider: Slider) {}
+
+                override fun onStopTrackingTouch(slider: Slider) {
+                    // 指を離した位置を次の±100px範囲の中心にする。
+                    sync(null, null)
+                }
+            })
             rowView.findViewById<MaterialButton>(R.id.btn_gen_number_minus)
                 .setOnClickListener { nudge(axis, -1) }
             rowView.findViewById<MaterialButton>(R.id.btn_gen_number_plus)
@@ -186,7 +237,7 @@ object GenSettingDialog {
                         if (kind == BuilderGenSettingPolicy.Kind.RESOLUTION) {
                             syncResolution(ResolutionControlPolicy.selectRatio(resolution, draft.width, draft.height))
                         }
-                        sync(null)
+                        sync(null, null)
                     }
                 }
                 chipIds += chip.id
@@ -194,7 +245,6 @@ object GenSettingDialog {
             }
         }
 
-        val isResolution = kind == BuilderGenSettingPolicy.Kind.RESOLUTION
         lockRatio.visibility = if (isResolution) View.VISIBLE else View.GONE
         snapEnabled.visibility = if (isResolution) View.VISIBLE else View.GONE
         snapStepRow.visibility = if (isResolution) View.VISIBLE else View.GONE
@@ -205,7 +255,7 @@ object GenSettingDialog {
                 ResolutionControlPolicy.LockMode.UNLOCKED
             }
             syncResolution(ResolutionControlPolicy.setLocked(resolution, mode))
-            sync(null)
+            sync(null, null)
         }
         snapEnabled.setOnCheckedChangeListener { _, checked ->
             settingsPrefs.edit()
@@ -244,7 +294,7 @@ object GenSettingDialog {
             if (isResolution) {
                 syncResolution(ResolutionControlPolicy.reset(resolution))
             }
-            sync(null)
+            sync(null, null)
         }
         view.findViewById<MaterialButton>(R.id.btn_gen_setting_cancel).setOnClickListener {
             dialog.dismiss()
@@ -257,37 +307,59 @@ object GenSettingDialog {
                 if (snapStepField.text.toString() != snapStep.toString()) {
                     snapStepField.setText(snapStep.toString())
                 }
-                settingsPrefs.edit()
+                val editor = settingsPrefs.edit()
                     .putBoolean(SNAP_ENABLED_PREFERENCE, snapEnabled.isChecked)
                     .putInt(SNAP_STEP_PREFERENCE, snapStep)
-                    .commit()
+                    .putBoolean(LOCK_RATIO_PREFERENCE, lockRatio.isChecked)
+                if (lockRatio.isChecked) {
+                    editor.putInt(LOCK_RATIO_WIDTH_PREFERENCE, resolution.ratioWidth)
+                    editor.putInt(LOCK_RATIO_HEIGHT_PREFERENCE, resolution.ratioHeight)
+                }
+                editor.commit()
             }
             dialog.dismiss()
             onApply(draft)
         }
 
-        sync(null)
+        sync(null, null)
     }
 
     private enum class ChangeSource {
         FIELD,
         SLIDER,
+        PRECISION,
         NUDGE
+    }
+
+    private enum class RowSync {
+        UPDATE_ALL,
+        KEEP_FIELD,
+        KEEP_PRECISION
     }
 
     /** 数値1項目ぶん。スライダーと入力欄を行の中で往復させる。 */
     private class Row(
         val axis: BuilderGenSettingPolicy.Axis,
         val field: EditText,
-        val slider: Slider
+        val slider: Slider,
+        val precisionLabel: MaterialTextView,
+        val precisionSlider: Slider
     ) {
         /** 行自身が書き換えている印。listener の発火ループを止める。 */
         var busy = false
             private set
 
         private var swipeTop = 0f
+        private val hasPrecision = axis == BuilderGenSettingPolicy.Axis.WIDTH ||
+            axis == BuilderGenSettingPolicy.Axis.HEIGHT
 
-        fun show(value: Int, updateField: Boolean) {
+        init {
+            val visibility = if (hasPrecision) View.VISIBLE else View.GONE
+            precisionLabel.visibility = visibility
+            precisionSlider.visibility = visibility
+        }
+
+        fun show(value: Int, syncMode: RowSync) {
             busy = true
 
             val bottom = BuilderGenSettingPolicy.swipeMin(axis).toFloat()
@@ -297,17 +369,33 @@ object GenSettingDialog {
             swipeTop = maxOf(swipeTop, BuilderGenSettingPolicy.swipeMax(axis, value).toFloat())
 
             // Slider は range → value → stepSize の順でないと内部検証で例外になる。
-            // stepSize は setter の引数が nullable Float なのでプロパティ代入できない。
             slider.valueTo = swipeTop
             slider.value = bottom
             slider.valueFrom = bottom
             slider.setStepSize(step)
             slider.value = value.toFloat()
 
-            if (updateField && field.text.toString().toIntOrNull() != value) {
+            if (hasPrecision) {
+                showPrecision(value, syncMode)
+            }
+            if (syncMode != RowSync.KEEP_FIELD && field.text.toString().toIntOrNull() != value) {
                 field.setText(value.toString())
             }
             busy = false
+        }
+
+        private fun showPrecision(value: Int, syncMode: RowSync) {
+            val center = value.toFloat()
+            if (syncMode != RowSync.KEEP_PRECISION) {
+                val bounds = ResolutionControlPolicy.precisionBounds(value)
+                precisionSlider.valueTo = maxOf(precisionSlider.valueTo, bounds.to.toFloat())
+                precisionSlider.valueFrom = minOf(precisionSlider.valueFrom, bounds.from.toFloat())
+                precisionSlider.value = center
+                precisionSlider.valueFrom = bounds.from.toFloat()
+                precisionSlider.valueTo = bounds.to.toFloat()
+                precisionSlider.setStepSize(BuilderGenSettingPolicy.SLIDER_PIXEL_STEP.toFloat())
+            }
+            precisionSlider.value = center
         }
     }
 

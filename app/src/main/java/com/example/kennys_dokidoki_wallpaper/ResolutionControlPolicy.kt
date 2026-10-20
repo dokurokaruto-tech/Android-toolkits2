@@ -7,6 +7,10 @@ import kotlin.math.roundToInt
 /** 解像度バー、比率プリセット、比率ロックの連動状態。 */
 internal object ResolutionControlPolicy {
 
+    const val PRECISION_RADIUS = 100
+
+    data class PrecisionBounds(val from: Int, val to: Int)
+
     enum class SnapMode {
         EIGHT_PIXELS,
         CUSTOM
@@ -38,6 +42,15 @@ internal object ResolutionControlPolicy {
         isLocked = mode == LockMode.LOCKED,
         ratioWidth = state.width,
         ratioHeight = state.height
+    )
+
+    /** 保存済みのロック比率を復元する。 */
+    fun restoreLocked(state: State, ratioWidth: Int, ratioHeight: Int): State = state.copy(
+        isLocked = true,
+        ratioWidth = ratioWidth.takeIf { it in BuilderGenSettingPolicy.SIZE_MIN..BuilderGenSettingPolicy.SIZE_MAX }
+            ?: state.width,
+        ratioHeight = ratioHeight.takeIf { it in BuilderGenSettingPolicy.SIZE_MIN..BuilderGenSettingPolicy.SIZE_MAX }
+            ?: state.height
     )
 
     /** プリセット選択時は、選んだ比率を新しい基準にする。 */
@@ -95,7 +108,17 @@ internal object ResolutionControlPolicy {
 
     fun stepFor(mode: SnapMode, customStep: Int): Int = when (mode) {
         SnapMode.EIGHT_PIXELS -> BuilderGenSettingPolicy.SIZE_STEP
-        SnapMode.CUSTOM -> BuilderGenSettingPolicy.sanitizeSnapStep(customStep)
+        SnapMode.CUSTOM -> sanitizeSnapStep(customStep)
+    }
+
+    fun sanitizeSnapStep(step: Int): Int = BuilderGenSettingPolicy.sanitizeSnapStep(step)
+
+    fun precisionBounds(value: Int): PrecisionBounds {
+        val center = value.coerceIn(BuilderGenSettingPolicy.SIZE_MIN, BuilderGenSettingPolicy.SIZE_MAX)
+        return PrecisionBounds(
+            from = (center - PRECISION_RADIUS).coerceAtLeast(BuilderGenSettingPolicy.SIZE_MIN),
+            to = (center + PRECISION_RADIUS).coerceAtMost(BuilderGenSettingPolicy.SIZE_MAX)
+        )
     }
 
     private fun snapSize(raw: Int, step: Int): Int {
