@@ -217,8 +217,10 @@ class DiaryCalendarActivity : AppCompatActivity() {
             ?: return "バックアップ先: 未設定（保存先を選択してください）"
         val last = LibraryBackupSync.lastBackupMs(this)
         val error = LibraryBackupSync.lastError(this)
+        val hasCounts = LibraryBackupSync.hasBackupCounts(this)
         val status = when {
             error != null -> "バックアップ先: $name（更新に失敗）"
+            !hasCounts -> "バックアップ先: $name（既存バックアップの安全確認が必要）"
             last == 0L -> "バックアップ先: $name（未更新）"
             else -> "バックアップ先: $name（最終更新 ${DiaryStore.displayDate(dateOf(last))}）"
         }
@@ -238,6 +240,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
         view.findViewById<MaterialTextView>(R.id.tv_backup_dialog_status).text = backupStatusText()
         view.findViewById<MaterialButton>(R.id.btn_backup_choose).text =
             if (hasBackup) "保存先ファイルを変更" else "保存先ファイルを選択"
+        view.findViewById<MaterialButton>(R.id.btn_backup_restore).visibility =
+            if (hasBackup) View.VISIBLE else View.GONE
         view.findViewById<MaterialButton>(R.id.btn_backup_now).visibility =
             if (hasBackup) View.VISIBLE else View.GONE
         view.findViewById<MaterialButton>(R.id.btn_backup_disconnect).visibility =
@@ -247,6 +251,10 @@ class DiaryCalendarActivity : AppCompatActivity() {
         view.findViewById<MaterialButton>(R.id.btn_backup_choose).setOnClickListener {
             dialog.dismiss()
             showBackupFileOptions()
+        }
+        view.findViewById<MaterialButton>(R.id.btn_backup_restore).setOnClickListener {
+            dialog.dismiss()
+            confirmRestoreBackup()
         }
         view.findViewById<MaterialButton>(R.id.btn_backup_now).setOnClickListener {
             dialog.dismiss()
@@ -319,19 +327,47 @@ class DiaryCalendarActivity : AppCompatActivity() {
         }
     }
 
-    private fun runManualBackup() {
+    private fun runManualBackup(allowDestructiveOverwrite: Boolean = false) {
         lifecycleScope.launch {
-            val outcome = LibraryBackupSync.backupNow(this@DiaryCalendarActivity)
+            val outcome = LibraryBackupSync.backupNow(
+                this@DiaryCalendarActivity,
+                allowDestructiveOverwrite = allowDestructiveOverwrite
+            )
             refresh()
             showBackupOutcome(outcome)
         }
     }
 
     private fun showBackupOutcome(outcome: LibraryBackupSync.Outcome) {
+        if (outcome.requiresOverwriteConfirmation) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("上書きを停止しました")
+                .setMessage(outcome.message)
+                .setNegativeButton("キャンセル", null)
+                .setNeutralButton("既存バックアップから復元") { _, _ -> confirmRestoreBackup() }
+                .setPositiveButton("この状態で上書き") { _, _ -> runManualBackup(allowDestructiveOverwrite = true) }
+                .show()
+            return
+        }
         MaterialAlertDialogBuilder(this)
             .setTitle(if (outcome.success) "バックアップ" else "バックアップに失敗しました")
             .setMessage(outcome.message)
             .setPositiveButton("閉じる", null)
+            .show()
+    }
+
+    private fun confirmRestoreBackup() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("選択済みバックアップから復元")
+            .setMessage("バックアップファイルから端末にない記録や写真を取り込みます。端末にあるデータは削除しません。取り込み後、同じファイルを更新します。")
+            .setNegativeButton("キャンセル", null)
+            .setPositiveButton("復元して更新") { _, _ ->
+                lifecycleScope.launch {
+                    val outcome = LibraryBackupSync.restoreNow(this@DiaryCalendarActivity)
+                    refresh()
+                    showBackupOutcome(outcome)
+                }
+            }
             .show()
     }
 

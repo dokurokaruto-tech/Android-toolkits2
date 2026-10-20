@@ -39,7 +39,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="日記・写真・エッセイ・やりたい事リストを1つのZIPに保存します。Androidのファイル選択画面でGoogle Driveなどを選べます。Google Cloud Consoleへの登録やOAuth設定は不要です。\n\n初回は新しいファイルを作るか、既存のバックアップを選択してください。既存データはローカルを消さず、項目ごとの更新日時でマージします。これはファイルバックアップであり、複数端末のリアルタイム同期ではありません。"
+        android:text="日記・写真・エッセイ・やりたい事リストを1つのZIPに保存します。Androidのファイル選択画面でGoogle Driveなどを選べます。Google Cloud Consoleへの登録やOAuthは不要です。\n\n新規作成または既存ファイルを選択できます。既存データはローカルを消さず更新日時でマージします。端末側データが急減した場合は上書きを止めます。複数端末のリアルタイム同期ではありません。"
         android:textAppearance="?attr/textAppearanceBodyMedium"
         android:textColor="?attr/colorOnSurfaceVariant"
         tools:ignore="HardcodedText" />
@@ -52,6 +52,17 @@
         android:layout_marginTop="20dp"
         android:text="保存先ファイルを選択"
         app:icon="@drawable/ic_md3_save"
+        tools:ignore="HardcodedText" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_backup_restore"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="選択済みバックアップから復元"
+        android:visibility="gone"
+        app:icon="@drawable/ic_md3_refresh"
         tools:ignore="HardcodedText" />
 
     <com.google.android.material.button.MaterialButton

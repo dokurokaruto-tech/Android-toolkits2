@@ -43,9 +43,10 @@ internal object LibraryBackupArchive {
     )
 
     /** `output` の所有権は呼び出し元に残す。 */
-    fun write(context: Context, output: OutputStream) {
+    fun write(context: Context, output: OutputStream): LibraryBackupCounts {
         val sources = collectSources(context)
         validateSources(sources)
+        val counts = countsFor(sources)
         val files = JSONArray()
         sources.forEach { source ->
             files.put(
@@ -71,6 +72,7 @@ internal object LibraryBackupArchive {
         }
         zip.finish()
         zip.flush()
+        return counts
     }
 
     /** 既存データは更新日時でマージし、ローカルの方が新しければ保持する。 */
@@ -129,7 +131,9 @@ internal object LibraryBackupArchive {
                         val bytes = readEntry(zip, MAX_JSON_BYTES, counter)
                         zip.closeEntry()
                         val raw = bytes.toString(StandardCharsets.UTF_8)
-                        if (LibraryNoteJson.decode(noteAddress.kind, noteAddress.id, raw) != null) {
+                        if (LibraryNoteJson.decode(noteAddress.kind, noteAddress.id, raw)
+                                ?.let { it.title.isNotBlank() || it.body.isNotBlank() } == true
+                        ) {
                             val noteDirectory = File(File(stagingDirectory, "notes"), noteAddress.kind.archiveKey)
                             val stagedFile = File(noteDirectory, "${noteAddress.id}.json")
                             writeStagedFile(stagedFile, bytes)
@@ -226,6 +230,14 @@ internal object LibraryBackupArchive {
         file.outputStream().use { it.write(bytes) }
     }
 
+    private fun countsFor(sources: List<SourceFile>) = LibraryBackupCounts(
+        diaries = sources.count { it.path.startsWith("diary/") },
+        essays = sources.count { it.path.startsWith("notes/essay/") },
+        wishLists = sources.count { it.path.startsWith("notes/wish/") },
+        images = sources.count { it.path.startsWith("images/") },
+        payloadBytes = sources.fold(0L) { total, source -> total + source.file.length() }
+    )
+
     private fun validateSources(sources: List<SourceFile>) {
         if (sources.size + 1 > MAX_ENTRIES) {
             throw IOException("バックアップに含まれるファイル数が上限を超えています。")
@@ -253,11 +265,12 @@ internal object LibraryBackupArchive {
                 return@forEach
             }
             val file = File(File(context.filesDir, "diary"), "$date.json")
+            val raw = DiaryStore.readRaw(context, date) ?: return@forEach
+            val imageNames = safeDiaryImages(date, raw) ?: return@forEach
+            if (imageNames.any { !DiaryStore.imageFile(context, it).isFile }) return@forEach
             if (file.isFile) {
                 sources += SourceFile("diary/$date.json", file, file.lastModified())
-                DiaryStore.load(context, date).photos.forEach { photo ->
-                    LibraryBackupPolicy.imageNameOf("images/${photo.fileName}")?.let(referencedImages::add)
-                }
+                referencedImages.addAll(imageNames)
             }
         }
 
@@ -271,7 +284,9 @@ internal object LibraryBackupArchive {
         LibraryNoteKind.entries.forEach { kind ->
             LibraryNoteStore.savedIds(context, kind).forEach { id ->
                 val file = noteFile(context, kind, id)
-                if (file.isFile) {
+                val raw = LibraryNoteStore.readRaw(context, kind, id) ?: return@forEach
+                val note = LibraryNoteJson.decode(kind, id, raw)
+                if (note != null && (note.title.isNotBlank() || note.body.isNotBlank()) && file.isFile) {
                     sources += SourceFile("notes/${kind.archiveKey}/$id.json", file, file.lastModified())
                 }
             }
@@ -314,7 +329,8 @@ internal object LibraryBackupArchive {
 
     private fun safeDiaryImages(date: String, raw: String): Set<String>? {
         return try {
-            JSONObject(raw)
+            val json = JSONObject(raw)
+            if (!json.has("text") && !json.has("photos")) return null
             val imageNames = LinkedHashSet<String>()
             for (photo in DiaryJson.decode(date, raw).photos) {
                 val imageName = LibraryBackupPolicy.imageNameOf("images/${photo.fileName}") ?: return null
