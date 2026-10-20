@@ -1,0 +1,23 @@
+{
+  "kita": {
+    "faceBox": [
+      161,
+      1,
+      453,
+      269
+    ],
+    "expressions": [
+      "blink",
+      "half_blink",
+      "laugh",
+      "smile",
+      "surprised"
+    ]
+  },
+  "nijika": {
+    "expressions": []
+  },
+  "ryo": {
+    "expressions": []
+  }
+}

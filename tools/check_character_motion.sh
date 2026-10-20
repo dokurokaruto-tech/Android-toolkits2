@@ -21,6 +21,6 @@ for kind, keys in names.items():
     text += '}\n'
 output.write_text(text + '}\n')
 PY
-"${KOTLINC:-kotlinc}" "$SOURCE"/{HomeCharacter,HomeSection,BocchiLive2dPolicy}.kt \
+"${KOTLINC:-kotlinc}" "$SOURCE"/{HomeCharacter,HomeSection,CharacterRig,BocchiLive2dPolicy}.kt \
     "$TEMP/R.kt" "$ROOT/tools/character_motion_check.kt" -include-runtime -d "$TEMP/check.jar"
 "${JAVA_HOME:?Set JAVA_HOME}/bin/java" -jar "$TEMP/check.jar"

@@ -15,3 +15,6 @@
 .cxx
 local.properties
 /models
+# 画像生成の下書きとビルド成果物
+/drafts
+/art

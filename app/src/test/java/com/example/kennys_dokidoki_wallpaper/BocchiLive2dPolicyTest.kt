@@ -39,7 +39,9 @@ class BocchiLive2dPolicyTest {
             breath = 0.9f
         )
         val faceVerts = FloatArray((BocchiLive2dPolicy.FACE_COLS + 1) * (BocchiLive2dPolicy.FACE_ROWS + 1) * 2)
-        BocchiLive2dPolicy.fillFaceMesh(pose, left = 100f, top = 50f, width = 500f, height = 800f, outVerts = faceVerts)
+        BocchiLive2dPolicy.fillFaceMesh(
+            pose, CharacterRigs.HITORI, left = 100f, top = 50f, width = 500f, height = 800f, outVerts = faceVerts
+        )
 
         val (u0, v0) = BocchiLive2dPolicy.deformUv(BocchiLive2dPolicy.FACE_U0, BocchiLive2dPolicy.FACE_V0, pose)
         assertEquals(100f + u0 * 500f, faceVerts[0], 0.01f)
@@ -94,6 +96,63 @@ class BocchiLive2dPolicyTest {
             BocchiExpression.BOCCHI_PANIC,
             BocchiLive2dPolicy.activeExpression(BocchiExpression.BOCCHI_PANIC, eyeOpen = 0.05f)
         )
+    }
+
+    /**
+     * 旧実装（キャラ固定のハードコード）で算出した座標。汎用リグ化でひとりの
+     * 動きが1ピクセルも変わっていないことを保証する。
+     */
+    @Test
+    fun hitoriDeformationMatchesLegacyGoldenValues() {
+        data class Case(val u: Float, val v: Float, val pose: BocchiPose, val du: Float, val dv: Float)
+
+        val cases = listOf(
+            Case(0.40f, 0.18f, BocchiPose(angleX = 0.8f, angleY = -0.5f, angleZ = 0.6f, breath = 0.9f), 0.428546667f, 0.171422154f),
+            Case(0.40f, 0.18f, BocchiPose(angleX = -0.65f, angleY = 0.40f, angleZ = -0.75f, bodyAngleX = 0.35f, bodyAngleZ = 0.25f, breath = 0.2f), 0.387160927f, 0.187349454f),
+            Case(0.335f, 0.615f, BocchiPose(armStrum = 0.7f, guitarRock = 0.9f), 0.340127051f, 0.626033366f),
+            Case(0.26f, 0.65f, BocchiPose(guitarRock = -1f, hairSideMid = -1f, hairSideTip = -1f), 0.264393330f, 0.654464185f),
+            Case(0.46f, 0.03f, BocchiPose(ahoge = 1f, cubeSwing = 0.8f), 0.488000005f, 0.037999999f),
+            Case(0.21f, 0.16f, BocchiPose(cubeSwing = -1f, hairFront = 0.6f), 0.192009509f, 0.151199266f),
+            Case(0.42f, 0.74f, BocchiPose(skirtSway = 0.9f, beatBounce = -0.7f), 0.419999987f, 0.732999980f),
+            Case(0.60f, 0.50f, BocchiPose(hairSideMid = 0.8f, hairSideTip = 0.6f, breath = 0.5f), 0.600000024f, 0.500000000f),
+            Case(0.90f, 0.22f, BocchiPose(angleX = 0.3f, angleZ = -0.4f, guitarRock = 0.5f), 0.899999976f, 0.219999999f),
+            Case(0.40f, 0.95f, BocchiPose(breath = 0f), 0.400000006f, 0.949999988f),
+            Case(0.05f, 0.60f, BocchiPose(hairSideMid = -0.9f, hairSideTip = 0.3f), 0.049963992f, 0.599993885f),
+            Case(0.70f, 0.60f, BocchiPose(hairSideMid = 0.9f, hairSideTip = -0.3f, beatBounce = 0.4f), 0.701382160f, 0.603764415f)
+        )
+
+        cases.forEach { case ->
+            val (du, dv) = BocchiLive2dPolicy.deformUv(case.u, case.v, case.pose, CharacterRigs.HITORI)
+            assertEquals(case.du, du, 1e-5f)
+            assertEquals(case.dv, dv, 1e-5f)
+        }
+    }
+
+    @Test
+    fun rigsKeepDrumsAnchoredWhileTheTorsoBounces() {
+        val rig = CharacterRigs.NIJIKA
+        val pose = BocchiPose(beatBounce = -1f, bodyAngleX = 0.6f, breath = 1f)
+        // 胴体は弾む
+        val torso = BocchiLive2dPolicy.deformUv(0.50f, 0.40f, pose, rig)
+        assertTrue(torso.second < 0.40f)
+        // 左下のバスドラムは動かない
+        val kick = BocchiLive2dPolicy.deformUv(rig.drumPads!!.kick.u, rig.drumPads.kick.v, pose, rig)
+        assertEquals(rig.drumPads.kick.u, kick.first, 1e-4f)
+        assertEquals(rig.drumPads.kick.v, kick.second, 1e-4f)
+    }
+
+    @Test
+    fun drumArmsOnlyMoveTheirOwnLimb() {
+        val rig = CharacterRigs.NIJIKA
+        val pose = BocchiPose(stickArm = 1f, snareArm = 0f, kickPedal = 0f)
+        val stickRegion = rig.limbs.first { it.channel == LimbChannel.STICK_ARM }
+        val moved = BocchiLive2dPolicy.deformUv(
+            stickRegion.region.center.u, stickRegion.region.center.v, pose, rig
+        )
+        val still = BocchiLive2dPolicy.deformUv(rig.head.pivot.u, rig.head.pivot.v, pose, rig)
+        assertTrue(abs(moved.first - stickRegion.region.center.u) + abs(moved.second - stickRegion.region.center.v) > 0.005f)
+        assertEquals(rig.head.pivot.u, still.first, 1e-4f)
+        assertEquals(rig.head.pivot.v, still.second, 1e-4f)
     }
 
     @Test
