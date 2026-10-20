@@ -54,16 +54,19 @@ class BuilderGenSettingPolicyTest {
 
     @Test
     fun sanitizeRepairsLoadedValuesButNotABigBatch() {
-        val broken = BuilderGenSettingPolicy.Settings(723, 1277, 0, -3, " ")
+        val broken = BuilderGenSettingPolicy.Settings(5000, 20, 0, -3, " ")
         val clean = BuilderGenSettingPolicy.sanitize(broken)
-        assertEquals(720, clean.width)
-        assertEquals(1280, clean.height)
+        assertEquals(4096, clean.width)
+        assertEquals(64, clean.height)
         assertEquals(1, clean.steps)
         assertEquals(1, clean.batch)
         assertEquals(BuilderGenSettingPolicy.DEFAULT_SAMPLER, clean.sampler)
 
-        val heavy = BuilderGenSettingPolicy.Settings(720, 1280, 20, 250, "DPM2")
-        assertEquals(250, BuilderGenSettingPolicy.sanitize(heavy).batch)
+        val tenPixelSize = BuilderGenSettingPolicy.Settings(730, 1300, 20, 250, "DPM2")
+        val sanitized = BuilderGenSettingPolicy.sanitize(tenPixelSize)
+        assertEquals(730, sanitized.width)
+        assertEquals(1300, sanitized.height)
+        assertEquals(250, sanitized.batch)
     }
 
     @Test

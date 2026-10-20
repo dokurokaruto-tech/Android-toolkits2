@@ -1,6 +1,7 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.app.Activity
+import android.content.Context
 import android.text.InputFilter
 import android.view.LayoutInflater
 import android.view.View
@@ -20,10 +21,14 @@ import kotlin.math.roundToInt
 /**
  * Builder 上部4ボタンを開いたときのポップアップ。
  * 名前は Dialog だが全画面ではなく、他の編集ポップアップと同じ浮きカード。
- * スワイプ（Slider）でも数値入力でも、値は必ず BuilderGenSettingPolicy を通る。
+ * 解像度は ResolutionControlPolicy、他の数値は BuilderGenSettingPolicy で扱う。
  * 確定は「適用」をタップしたときだけ。閉じれば何も変わらない。
  */
 object GenSettingDialog {
+
+    private const val SETTINGS_PREFERENCES = "settings"
+    private const val SNAP_TEN_PREFERENCE = "gen_resolution_snap_10"
+    private const val DEFAULT_SNAP_TEN = true
 
     /** 入力欄の桁数。枚数の上限ではなく Int の溢れ防止。 */
     private const val MAX_DIGITS = 7
@@ -43,18 +48,30 @@ object GenSettingDialog {
         val chipGroup = view.findViewById<ChipGroup>(R.id.cg_gen_setting_chips)
         val chipStrip = view.findViewById<View>(R.id.hsv_gen_setting_chips)
         val lockRatio = view.findViewById<MaterialSwitch>(R.id.sw_gen_setting_lock)
+        val snapTen = view.findViewById<MaterialSwitch>(R.id.sw_gen_setting_snap)
+        val settingsPrefs = activity.getSharedPreferences(SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
+        snapTen.isChecked = settingsPrefs.getBoolean(SNAP_TEN_PREFERENCE, DEFAULT_SNAP_TEN)
 
         val rows = mutableMapOf<BuilderGenSettingPolicy.Axis, Row>()
         val choices = choicesOf(kind)
         val chipIds = mutableListOf<Int>()
         var draft = BuilderGenSettingPolicy.sanitize(current)
+        var resolution = ResolutionControlPolicy.start(draft.width, draft.height)
 
         val accent = MaterialColors.getColor(view, com.google.android.material.R.attr.colorPrimary)
         val danger = MaterialColors.getColor(view, com.google.android.material.R.attr.colorError)
 
-        // 比率固定の基準辺。ロックを切っている間は現在のサイズへ追従させる。
-        var baseWidth = draft.width
-        var baseHeight = draft.height
+        fun syncResolution(state: ResolutionControlPolicy.State) {
+            resolution = state
+            draft = draft.copy(width = state.width, height = state.height)
+        }
+
+        fun snapModeFor(source: ChangeSource): ResolutionControlPolicy.SnapMode =
+            if (source != ChangeSource.FIELD && snapTen.isChecked) {
+                ResolutionControlPolicy.SnapMode.TEN_PIXELS
+            } else {
+                ResolutionControlPolicy.SnapMode.EIGHT_PIXELS
+            }
 
         fun sync(keepFieldFor: BuilderGenSettingPolicy.Axis?) {
             val limit = BuilderGenSettingPolicy.AGENT_JOB_IMAGE_LIMIT
@@ -69,7 +86,13 @@ object GenSettingDialog {
                 row.show(value, updateField = axis != keepFieldFor)
             }
 
-            val index = choices.indexOfFirst { it.matches(draft) }
+            val index = choices.indexOfFirst { choice ->
+                if (kind == BuilderGenSettingPolicy.Kind.RESOLUTION && lockRatio.isChecked) {
+                    choice.matchesRatio?.invoke(resolution) == true
+                } else {
+                    choice.matches(draft)
+                }
+            }
             if (index < 0) {
                 chipGroup.clearCheck()
             } else if (chipGroup.checkedChipId != chipIds[index]) {
@@ -77,36 +100,28 @@ object GenSettingDialog {
             }
         }
 
-        // 比率ロック中なら、動かした辺から相手辺を逆算して従える。
-        fun followRatio(axis: BuilderGenSettingPolicy.Axis) {
-            val other = BuilderGenSettingPolicy.pairedAxis(axis)
-            if (other == null || !lockRatio.isChecked) {
-                baseWidth = draft.width
-                baseHeight = draft.height
-                return
-            }
-            val widthFirst = axis == BuilderGenSettingPolicy.Axis.WIDTH
-            val moved = if (widthFirst) baseWidth else baseHeight
-            val anchor = if (widthFirst) baseHeight else baseWidth
-            val value = BuilderGenSettingPolicy.valueOf(draft, axis)
-            val linked = BuilderGenSettingPolicy.linkedSize(value, moved, anchor)
-            draft = BuilderGenSettingPolicy.with(draft, other, linked)
-        }
-
-        /** 数値を1軸ぶん確定する。typed=true は入力欄側なので書き戻さない。 */
-        fun commit(axis: BuilderGenSettingPolicy.Axis, raw: Int?, typed: Boolean) {
+        fun commit(axis: BuilderGenSettingPolicy.Axis, raw: Int?, source: ChangeSource) {
             if (raw == null) {
                 return
             }
-            draft = BuilderGenSettingPolicy.with(draft, axis, BuilderGenSettingPolicy.clamp(axis, raw))
-            followRatio(axis)
-            sync(if (typed) axis else null)
+
+            if (axis == BuilderGenSettingPolicy.Axis.WIDTH || axis == BuilderGenSettingPolicy.Axis.HEIGHT) {
+                syncResolution(ResolutionControlPolicy.update(resolution, axis, raw, snapModeFor(source)))
+            } else {
+                draft = BuilderGenSettingPolicy.with(draft, axis, BuilderGenSettingPolicy.clamp(axis, raw))
+            }
+
+            sync(if (source == ChangeSource.FIELD) axis else null)
         }
 
-        // スワイプが粗くなる大きな枚数や、8px刻みの境界用に細かく動かす口。
         fun nudge(axis: BuilderGenSettingPolicy.Axis, direction: Int) {
-            val step = BuilderGenSettingPolicy.swipeStep(axis) * direction
-            commit(axis, BuilderGenSettingPolicy.valueOf(draft, axis) + step, typed = false)
+            val step = if (axis == BuilderGenSettingPolicy.Axis.WIDTH || axis == BuilderGenSettingPolicy.Axis.HEIGHT) {
+                snapModeFor(ChangeSource.NUDGE).step
+            } else {
+                BuilderGenSettingPolicy.swipeStep(axis)
+            }
+            val value = BuilderGenSettingPolicy.valueOf(draft, axis) + step * direction
+            commit(axis, value, ChangeSource.NUDGE)
         }
 
         BuilderGenSettingPolicy.axesOf(kind).forEach { axis ->
@@ -123,12 +138,12 @@ object GenSettingDialog {
 
             field.addTextChangedListener {
                 if (!row.busy) {
-                    commit(axis, field.text.toString().toIntOrNull(), typed = true)
+                    commit(axis, field.text.toString().toIntOrNull(), ChangeSource.FIELD)
                 }
             }
             row.slider.addOnChangeListener { _, value, fromUser ->
                 if (fromUser && !row.busy) {
-                    commit(axis, value.roundToInt(), typed = false)
+                    commit(axis, value.roundToInt(), ChangeSource.SLIDER)
                 }
             }
             rowView.findViewById<MaterialButton>(R.id.btn_gen_number_minus)
@@ -148,6 +163,9 @@ object GenSettingDialog {
                     isCheckable = true
                     setOnClickListener {
                         draft = choice.updated(draft)
+                        if (kind == BuilderGenSettingPolicy.Kind.RESOLUTION) {
+                            syncResolution(ResolutionControlPolicy.selectRatio(resolution, draft.width, draft.height))
+                        }
                         sync(null)
                     }
                 }
@@ -156,8 +174,18 @@ object GenSettingDialog {
             }
         }
 
-        lockRatio.visibility =
-            if (kind == BuilderGenSettingPolicy.Kind.RESOLUTION) View.VISIBLE else View.GONE
+        val isResolution = kind == BuilderGenSettingPolicy.Kind.RESOLUTION
+        lockRatio.visibility = if (isResolution) View.VISIBLE else View.GONE
+        snapTen.visibility = if (isResolution) View.VISIBLE else View.GONE
+        lockRatio.setOnCheckedChangeListener { _, checked ->
+            val mode = if (checked) {
+                ResolutionControlPolicy.LockMode.LOCKED
+            } else {
+                ResolutionControlPolicy.LockMode.UNLOCKED
+            }
+            syncResolution(ResolutionControlPolicy.setLocked(resolution, mode))
+            sync(null)
+        }
 
         val dialog = Md3PopupDialog.showCompact(activity, view)
 
@@ -166,17 +194,29 @@ object GenSettingDialog {
 
         view.findViewById<MaterialButton>(R.id.btn_gen_setting_reset).setOnClickListener {
             draft = BuilderGenSettingPolicy.reset(kind, draft)
+            if (isResolution) {
+                syncResolution(ResolutionControlPolicy.reset(resolution))
+            }
             sync(null)
         }
         view.findViewById<MaterialButton>(R.id.btn_gen_setting_cancel).setOnClickListener {
             dialog.dismiss()
         }
         view.findViewById<MaterialButton>(R.id.btn_gen_setting_apply).setOnClickListener {
+            if (isResolution) {
+                settingsPrefs.edit().putBoolean(SNAP_TEN_PREFERENCE, snapTen.isChecked).apply()
+            }
             dialog.dismiss()
             onApply(draft)
         }
 
         sync(null)
+    }
+
+    private enum class ChangeSource {
+        FIELD,
+        SLIDER,
+        NUDGE
     }
 
     /** 数値1項目ぶん。スライダーと入力欄を行の中で往復させる。 */
@@ -195,7 +235,7 @@ object GenSettingDialog {
             busy = true
 
             val bottom = BuilderGenSettingPolicy.swipeMin(axis).toFloat()
-            val step = BuilderGenSettingPolicy.swipeStep(axis).toFloat()
+            val step = BuilderGenSettingPolicy.SLIDER_PIXEL_STEP.toFloat()
 
             // 枚数を範囲越えで指定しても切り捨てない。スワイプ範囲のほうが伸びる。
             swipeTop = maxOf(swipeTop, BuilderGenSettingPolicy.swipeMax(axis, value).toFloat())
@@ -219,22 +259,30 @@ object GenSettingDialog {
     private class Choice(
         val label: String,
         val matches: (BuilderGenSettingPolicy.Settings) -> Boolean,
-        val updated: (BuilderGenSettingPolicy.Settings) -> BuilderGenSettingPolicy.Settings
+        val updated: (BuilderGenSettingPolicy.Settings) -> BuilderGenSettingPolicy.Settings,
+        val matchesRatio: ((ResolutionControlPolicy.State) -> Boolean)? = null
     )
 
     private fun choicesOf(kind: BuilderGenSettingPolicy.Kind): List<Choice> {
         if (kind == BuilderGenSettingPolicy.Kind.RESOLUTION) {
             return BuilderGenSettingPolicy.SIZE_PRESETS.map { preset ->
-                Choice(preset.label, { it.width == preset.width && it.height == preset.height }) {
-                    it.copy(width = preset.width, height = preset.height)
-                }
+                Choice(
+                    label = preset.label,
+                    matches = { it.width == preset.width && it.height == preset.height },
+                    updated = { it.copy(width = preset.width, height = preset.height) },
+                    matchesRatio = { ResolutionControlPolicy.matchesPresetRatio(it, preset) }
+                )
             }
         }
         if (kind != BuilderGenSettingPolicy.Kind.SAMPLER) {
             return emptyList()
         }
         return BuilderGenSettingPolicy.SAMPLERS.map { name ->
-            Choice(name, { it.sampler == name }) { it.copy(sampler = name) }
+            Choice(
+                label = name,
+                matches = { it.sampler == name },
+                updated = { it.copy(sampler = name) }
+            )
         }
     }
 }

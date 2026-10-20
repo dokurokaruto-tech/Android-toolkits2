@@ -4,18 +4,14 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Prompt Builder 上部4ボタンの設定値そのもの。
- * ポップアップのスワイプ（Slider）と数値入力は、必ずここを通って丸める。
- *
- *   [数値入力] ─┐
- *              ├─> clamp(Axis) ─> Settings ─> 生成リクエスト
- *   [スワイプ] ─┘
+ * Prompt Builder 上部4ボタンの設定値と既定の入力制約。
+ * 解像度バーと比率ロックの連動は ResolutionControlPolicy で扱う。
  */
 object BuilderGenSettingPolicy {
 
     /** 4ボタンそれぞれの画面。 */
     enum class Kind(val title: String, val hint: String) {
-        RESOLUTION("解像度", "スワイプでざっくり、数字で正確に。8の倍数へ揃え、64〜4096に収めます。"),
+        RESOLUTION("解像度", "上の比率ボタンで選び、固定中は両辺が連動。スライダーは10px刻み（オフ時8px）。"),
         STEPS("ステップ数", "多いほど詰むが遅くなる。1〜100。"),
         BATCH("バッチカウント", "一度に生成する枚数。上限はない。多いほど時間がかかる。"),
         SAMPLER("サンプラー", "横にスワイプして一覧から選ぶ。")
@@ -39,10 +35,12 @@ object BuilderGenSettingPolicy {
 
     data class SizePreset(val label: String, val width: Int, val height: Int)
 
-    // SD API が受け付ける辺の範囲。8の倍数でないと弾かれる。
+    // 既定の8px刻みと、解像度スライダー用の刻み設定。
     const val SIZE_MIN = 64
     const val SIZE_MAX = 4096
     const val SIZE_STEP = 8
+    const val TEN_PIXEL_STEP = 10
+    const val SLIDER_PIXEL_STEP = 1
 
     const val STEPS_MIN = 1
     const val STEPS_MAX = 100
@@ -80,7 +78,7 @@ object BuilderGenSettingPolicy {
         Kind.SAMPLER -> emptyList()
     }
 
-    /** 生の入力値を、その軸の規則（8の倍数・範囲）へ落とす。読めない値は既定へ。 */
+    /** 数値入力と8pxモードの値を、軸の規則と範囲に収める。 */
     fun clamp(axis: Axis, raw: Int?): Int = when (axis) {
         Axis.WIDTH -> snapSize(raw, DEFAULT_WIDTH)
         Axis.HEIGHT -> snapSize(raw, DEFAULT_HEIGHT)
@@ -143,10 +141,10 @@ object BuilderGenSettingPolicy {
         return snapSize((moved.toFloat() * baseOther / baseMoved).roundToInt(), baseOther)
     }
 
-    /** プリセット読み込みや保存値の補正。枚数は上へは直さない。 */
+    /** 保存値は解像度の刻みを変えず、範囲外だけ補正する。 */
     fun sanitize(settings: Settings): Settings = Settings(
-        width = clamp(Axis.WIDTH, settings.width),
-        height = clamp(Axis.HEIGHT, settings.height),
+        width = settings.width.coerceIn(SIZE_MIN, SIZE_MAX),
+        height = settings.height.coerceIn(SIZE_MIN, SIZE_MAX),
         steps = clamp(Axis.STEPS, settings.steps),
         batch = clamp(Axis.BATCH, settings.batch),
         sampler = settings.sampler.ifBlank { DEFAULT_SAMPLER }
