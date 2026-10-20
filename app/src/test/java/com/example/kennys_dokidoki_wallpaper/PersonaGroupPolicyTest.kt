@@ -61,7 +61,7 @@ class PersonaGroupPolicyTest {
         val insertAt = PersonaGroupPolicy.dropIndex(rows, from = 1, to = 3)
         assertEquals(3, insertAt)
 
-        val moved = moveInto(rows, from = 1, to = insertAt)
+        val moved = moveInto(rows, from = 1, to = insertAt!!)
         assertEquals(listOf("学生" to style.id), PersonaGroupPolicy.arrangement(moved))
     }
 
@@ -75,7 +75,7 @@ class PersonaGroupPolicyTest {
         val insertAt = PersonaGroupPolicy.dropIndex(rows, from = 4, to = 1)
         assertEquals(1, insertAt)
 
-        val moved = moveInto(rows, from = 4, to = insertAt)
+        val moved = moveInto(rows, from = 4, to = insertAt!!)
         assertEquals(listOf("c", "a", "b"), PersonaGroupPolicy.flatten(moved).map { it.entry.body })
         assertEquals(
             listOf("c" to social.id, "a" to social.id, "b" to social.id),

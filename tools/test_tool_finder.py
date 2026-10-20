@@ -89,6 +89,25 @@ class ToolFinderInteractionTest(unittest.TestCase):
         self.assertIn('launchActivityFromWallpaper(', chat)
         self.assertIn('launchActivityFromWallpaper(', home)
 
+    def test_activity_launch_resilience_and_no_immediate_cancel(self):
+        helper = block(
+            self.source,
+            'private fun launchActivityFromWallpaper(',
+            'private fun openToolFinderSection('
+        )
+        self.assertNotIn('finally', helper)
+        self.assertNotIn('pendingIntent.cancel()', helper)
+        self.assertIn('catch (t: Throwable)', helper)
+        self.assertIn('applicationContext.startActivity(', helper)
+
+        chat = block(
+            self.source,
+            'private fun toggleAiChatOverlay()',
+            'private fun openApp()'
+        )
+        self.assertNotIn('FLAG_ACTIVITY_REORDER_TO_FRONT or\n                        Intent.FLAG_ACTIVITY_CLEAR_TOP', chat)
+        self.assertNotIn('FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_CLEAR_TOP', chat)
+
     def test_vertical_center_stays_at_touch_point(self):
         anchor = block(self.overlay, '    val centerX =', '    var revealProgress =')
         self.assertIn('val centerY = touchY', anchor)

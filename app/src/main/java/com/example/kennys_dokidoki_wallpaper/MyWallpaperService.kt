@@ -444,34 +444,59 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun launchActivityFromWallpaper(intent: Intent, requestCode: Int) {
-            val creatorOptions = ActivityOptions.makeBasic()
-            val senderOptions = ActivityOptions.makeBasic()
+            val options = ActivityOptions.makeBasic()
+
+            // Enable background activity launch on Android 14+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                creatorOptions.setPendingIntentCreatorBackgroundActivityStartMode(
+                options.setPendingIntentCreatorBackgroundActivityStartMode(
                     ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
                 )
-                senderOptions.setPendingIntentBackgroundActivityStartMode(
+                options.setPendingIntentBackgroundActivityStartMode(
                     ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
                 )
             }
 
+            // Create explicit immutable pending intent for wallpaper context
             val pendingIntent = PendingIntent.getActivity(
                 applicationContext,
                 requestCode,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                creatorOptions.toBundle()
+                options.toBundle()
             )
+
+            // Try sending pending intent with version-appropriate parameters
             try {
-                pendingIntent.send(senderOptions.toBundle())
-            } catch (e: Exception) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    pendingIntent.send(options.toBundle())
+                } else {
+                    pendingIntent.send(
+                        applicationContext,
+                        0,
+                        null,
+                        null,
+                        null,
+                        null,
+                        options.toBundle()
+                    )
+                }
+            } catch (t: Throwable) {
                 android.util.Log.e(
                     "MyWallpaperService",
-                    "Unable to launch ${intent.component?.className}",
-                    e
+                    "Unable to launch pending intent for ${intent.component?.className}",
+                    t
                 )
-            } finally {
-                pendingIntent.cancel()
+
+                // Fallback directly to startActivity if pending intent fails
+                try {
+                    applicationContext.startActivity(intent, options.toBundle())
+                } catch (t2: Throwable) {
+                    android.util.Log.e(
+                        "MyWallpaperService",
+                        "Unable to fallback startActivity for ${intent.component?.className}",
+                        t2
+                    )
+                }
             }
         }
 
@@ -558,9 +583,7 @@ class MyWallpaperService : WallpaperService() {
             val intent = Intent(applicationContext, ChatOverlayActivity::class.java).apply {
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
                 )
             }
             launchActivityFromWallpaper(intent, ToolFinderSpec.CHAT_ACTIVITY_REQUEST_CODE)
@@ -568,7 +591,11 @@ class MyWallpaperService : WallpaperService() {
 
         private fun openApp() {
             val intent = Intent(applicationContext, HomeCarouselActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                )
             }
             launchActivityFromWallpaper(intent, ToolFinderSpec.HOME_ACTIVITY_REQUEST_CODE)
         }
