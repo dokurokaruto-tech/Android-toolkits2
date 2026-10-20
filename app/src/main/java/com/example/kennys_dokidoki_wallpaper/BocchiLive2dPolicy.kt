@@ -214,6 +214,7 @@ object BocchiLive2dPolicy {
             dv += (gx * sinG + gy * cosG - gy)
         }
 
+<<<<<<< Updated upstream
         // 8. 左右ロングヘア毛束の2段振り子ウェーブ（ギター背面のみ）
         val leftHairW = (1f - smoothstep(0.18f, 0.28f, u)) *
             smoothstep(0.16f, 0.26f, v) *
@@ -223,6 +224,55 @@ object BocchiLive2dPolicy {
             smoothstep(0.16f, 0.26f, v) *
             (1f - smoothstep(0.56f, 0.65f, v))
         val hairFactor = (leftHairW + rightHairW) * (1f - guitarW)
+=======
+        // 8. ロングヘア毛束の2段振り子ウェーブ（キャラ別に重みを調整）
+        val (leftHairWBase, rightHairWBase) = when (character) {
+            HomeCharacter.NIJIKA -> {
+                // 虹夏は右側サイドポニテが長く、左は短め
+                val left = (1f - smoothstep(0.18f, 0.28f, u)) *
+                    smoothstep(0.16f, 0.26f, v) *
+                    (1f - smoothstep(0.54f, 0.63f, v)) * 0.3f
+                val right = smoothstep(0.50f, 0.57f, u) *
+                    (1f - smoothstep(0.64f, 0.72f, u)) *
+                    smoothstep(0.16f, 0.26f, v) *
+                    (1f - smoothstep(0.66f, 0.75f, v))
+                left to right
+            }
+            HomeCharacter.RYO -> {
+                // リョウはショートで揺れ控えめ
+                val left = (1f - smoothstep(0.18f, 0.28f, u)) *
+                    smoothstep(0.16f, 0.26f, v) *
+                    (1f - smoothstep(0.54f, 0.63f, v)) * 0.25f
+                val right = smoothstep(0.50f, 0.57f, u) *
+                    (1f - smoothstep(0.64f, 0.72f, u)) *
+                    smoothstep(0.16f, 0.26f, v) *
+                    (1f - smoothstep(0.56f, 0.65f, v)) * 0.25f
+                left to right
+            }
+            HomeCharacter.KITA -> {
+                // 喜多は肩にかかるレッドヘア、軽やか
+                val left = (1f - smoothstep(0.18f, 0.28f, u)) *
+                    smoothstep(0.16f, 0.26f, v) *
+                    (1f - smoothstep(0.54f, 0.63f, v)) * 0.8f
+                val right = smoothstep(0.50f, 0.57f, u) *
+                    (1f - smoothstep(0.64f, 0.72f, u)) *
+                    smoothstep(0.16f, 0.26f, v) *
+                    (1f - smoothstep(0.56f, 0.65f, v)) * 0.8f
+                left to right
+            }
+            else -> {
+                val left = (1f - smoothstep(0.18f, 0.28f, u)) *
+                    smoothstep(0.16f, 0.26f, v) *
+                    (1f - smoothstep(0.54f, 0.63f, v))
+                val right = smoothstep(0.50f, 0.57f, u) *
+                    (1f - smoothstep(0.64f, 0.72f, u)) *
+                    smoothstep(0.16f, 0.26f, v) *
+                    (1f - smoothstep(0.56f, 0.65f, v))
+                left to right
+            }
+        }
+        val hairFactor = (leftHairWBase + rightHairWBase) * (1f - guitarW)
+>>>>>>> Stashed changes
         if (hairFactor > 0f) {
             val depth = ((v - 0.18f) / 0.44f).coerceIn(0f, 1f)
             val wave = pose.hairSideMid * depth + pose.hairSideTip * depth * depth
