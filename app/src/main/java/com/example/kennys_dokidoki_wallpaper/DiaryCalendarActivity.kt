@@ -1,5 +1,8 @@
 package com.example.kennys_dokidoki_wallpaper
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
@@ -16,9 +19,11 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.textview.MaterialTextView
+import com.google.android.gms.common.api.CommonStatusCodes
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -53,11 +58,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
         val signInResult = GoogleDriveAuth.accountFromResult(result.data)
         val email = signInResult.email
         if (email == null) {
-            Toast.makeText(
-                this,
-                signInResult.errorMessage ?: "Googleアカウントと連携できませんでした。",
-                Toast.LENGTH_LONG
-            ).show()
+            showSignInFailure(signInResult)
             return@registerForActivityResult
         }
         DriveSyncPrefs.link(this, email)
@@ -241,6 +242,47 @@ class DiaryCalendarActivity : AppCompatActivity() {
             .atZone(java.time.ZoneId.systemDefault())
             .toLocalDate()
         return DiaryStore.dateKey(date.year, date.monthValue, date.dayOfMonth)
+    }
+
+    private fun showSignInFailure(result: GoogleDriveAuth.SignInResult) {
+        if (result.statusCode == CommonStatusCodes.DEVELOPER_ERROR) {
+            showOAuthConfigurationDialog()
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Google Driveに接続できませんでした")
+            .setMessage(result.errorMessage ?: "Googleアカウントと連携できませんでした。")
+            .setPositiveButton("閉じる", null)
+            .show()
+    }
+
+    private fun showOAuthConfigurationDialog() {
+        val appPackageName = packageName
+        val sha1 = GoogleDriveAuth.signingCertificateSha1(this) ?: "取得できませんでした"
+        val message = """
+            Googleから OAuth 設定エラー (10) が返りました。
+            Google Cloud Console の「API とサービス」>「認証情報」で Android OAuth クライアントを作成または修正し、次の値を一致させてください。
+
+            パッケージ名
+            $appPackageName
+
+            署名証明書の SHA-1
+            $sha1
+
+            Google Drive API が有効になっていることも確認してください。
+        """.trimIndent()
+        val copyText = "Package name: $appPackageName\nSHA-1: $sha1"
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Google OAuthの設定エラー")
+            .setMessage(message)
+            .setNeutralButton("設定値をコピー") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Android OAuth client", copyText))
+                Toast.makeText(this, "設定値をコピーしました。", Toast.LENGTH_SHORT).show()
+            }
+            .setPositiveButton("閉じる", null)
+            .show()
     }
 
     private fun syncWithDrive(feedback: Feedback) {

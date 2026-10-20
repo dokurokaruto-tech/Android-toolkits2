@@ -3,6 +3,8 @@ package com.example.kennys_dokidoki_wallpaper
 import android.accounts.Account
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -13,6 +15,8 @@ import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
+import java.util.Locale
 
 /**
  * Google アカウントの認可だけを受け持つ層。
@@ -74,6 +78,38 @@ object GoogleDriveAuth {
             }
         }
 
+    /** 実際にインストールされたAPKの署名SHA-1。OAuthクライアント設定の照合用。 */
+    @Suppress("DEPRECATION")
+    fun signingCertificateSha1(context: Context): String? = try {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            context.packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.GET_SIGNING_CERTIFICATES
+            )
+        } else {
+            context.packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.GET_SIGNATURES
+            )
+        }
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.signingInfo?.apkContentsSigners
+        } else {
+            packageInfo.signatures
+        }
+        signatures.orEmpty()
+            .map { signature ->
+                MessageDigest.getInstance("SHA-1").digest(signature.toByteArray())
+                    .joinToString(":") { byte -> "%02X".format(Locale.US, byte.toInt() and 0xFF) }
+            }
+            .distinct()
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString("\n")
+    } catch (error: Exception) {
+        Log.e(TAG, "Unable to read APK signing certificate", error)
+        null
+    }
+
     fun signOut(context: Context) {
         GoogleSignIn.getClient(context, signInOptions()).signOut()
     }
@@ -87,7 +123,7 @@ object GoogleDriveAuth {
     private fun signInErrorMessage(statusCode: Int): String = when (statusCode) {
         GoogleSignInStatusCodes.SIGN_IN_CANCELLED -> "Google Driveとの連携はキャンセルされました。"
         CommonStatusCodes.NETWORK_ERROR -> "ネットワークに接続できません。通信状態を確認して再度お試しください。"
-        CommonStatusCodes.DEVELOPER_ERROR -> "Google OAuthの設定エラーです。Cloud ConsoleのAndroid OAuthクライアントで、アプリIDと署名証明書のSHA-1を確認してください。"
+        CommonStatusCodes.DEVELOPER_ERROR -> "Google OAuthの設定エラーです。設定値を確認してください。"
         else -> "Googleアカウントと連携できませんでした（エラーコード: $statusCode）。"
     }
 
