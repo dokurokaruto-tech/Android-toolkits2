@@ -46,6 +46,26 @@ class ToolFinderInteractionTest(unittest.TestCase):
         self.assertIn('val centerY = touchY', anchor)
         self.assertNotIn('clampCenter(touchY', anchor)
 
+    def test_release_commits_last_highlight(self):
+        touch = block(
+            self.source,
+            'override fun onTouchEvent(event: MotionEvent?)',
+            'private fun executeHoldAction('
+        )
+        release = block(
+            touch,
+            'MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {',
+            '                    else -> {}'
+        )
+        self.assertNotIn('updateToolFinder', release)
+
+    def test_sleep_clears_pending_gesture_state(self):
+        quiet = block(self.source, 'private fun goQuiet()', 'private fun reloadCurrent()')
+        self.assertIn('tapCount = 0', quiet)
+        self.assertIn('lastTapTime = 0L', quiet)
+        self.assertIn('holdRunnable = null', quiet)
+        self.assertIn('longPressRunnable = null', quiet)
+
 
 if __name__ == '__main__':
     unittest.main()

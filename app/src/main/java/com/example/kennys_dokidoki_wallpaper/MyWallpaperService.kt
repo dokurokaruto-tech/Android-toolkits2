@@ -302,9 +302,8 @@ class MyWallpaperService : WallpaperService() {
                         holdRunnable?.let { r -> tapHandler.removeCallbacks(r); holdRunnable = null }
                         longPressRunnable?.let { r -> tapHandler.removeCallbacks(r); longPressRunnable = null }
                         if (toolFinder != null) {
-                            val commitSelection = it.action == MotionEvent.ACTION_UP
-                            if (commitSelection) updateToolFinder(it.x, it.y)
-                            closeToolFinder(commitSelection)
+                            // Release the last visible highlight, not a possibly jittered up-event coordinate.
+                            closeToolFinder(it.action == MotionEvent.ACTION_UP)
                             return
                         }
 
@@ -814,9 +813,15 @@ class MyWallpaperService : WallpaperService() {
             clearToolFinder()
             tapHandler.removeCallbacksAndMessages(null)
             textHandler.removeCallbacksAndMessages(null)
+            holdRunnable = null
+            longPressRunnable = null
             isAnimating = false
             showTextProgress = 0f
             tapCount = 0
+            lastTapTime = 0L
+            downX = 0f
+            downY = 0f
+            downTime = 0L
             previousBitmap = null
             previousEntry = null
             currentBitmap = null
