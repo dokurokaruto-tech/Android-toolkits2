@@ -2,6 +2,7 @@ package com.example.kennys_dokidoki_wallpaper
 
 import android.os.Bundle
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,6 +47,7 @@ class DiaryEditorActivity : AppCompatActivity() {
         dateKey = intent.getStringExtra(EXTRA_DATE) ?: DiaryStore.todayKey()
 
         editor = findViewById(R.id.et_diary_text)
+        enableLongTextScrolling()
         canvas = findViewById(R.id.diary_canvas)
         photoLayer = DiaryPhotoLayer(canvas) { handle -> confirmDelete(handle) }
 
@@ -55,6 +57,38 @@ class DiaryEditorActivity : AppCompatActivity() {
         toolbar.setOnMenuItemClickListener(::onToolbarMenuItemClick)
 
         restore()
+    }
+
+    /**
+     * 長文は本文欄の中をスクロールできるようにし、スクロール可能な間は
+     * 親の NestedScrollView が縦方向のタッチを先取りしないようにする。
+     * 本文欄が端まで来たら親へスクロールを引き継ぐ。
+     */
+    private fun enableLongTextScrolling() {
+        var lastTouchY = 0f
+        editor.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    lastTouchY = event.y
+                    view.parent.requestDisallowInterceptTouchEvent(
+                        view.canScrollVertically(-1) || view.canScrollVertically(1)
+                    )
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaY = event.y - lastTouchY
+                    if (deltaY != 0f) {
+                        val scrollDirection = if (deltaY > 0f) -1 else 1
+                        view.parent.requestDisallowInterceptTouchEvent(
+                            view.canScrollVertically(scrollDirection)
+                        )
+                    }
+                    lastTouchY = event.y
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    view.parent.requestDisallowInterceptTouchEvent(false)
+            }
+            false
+        }
     }
 
     private fun onToolbarMenuItemClick(item: MenuItem): Boolean = when (item.itemId) {
