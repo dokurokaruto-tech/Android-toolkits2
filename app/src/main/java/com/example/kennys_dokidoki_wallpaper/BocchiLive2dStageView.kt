@@ -210,7 +210,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         val ty = event.y
         val u = (tx - charLeft) / charWidth
         val v = (ty - charTop) / charHeight
-        val zone = BocchiLive2dPolicy.hitZone(u, v)
+        val zone = BocchiLive2dPolicy.hitZone(u, v, character.rig)
         physics.onTapZone(character.tapZone(zone), tx / w, ty / h)
         spawnBurst(tx, ty, zone)
         return true
@@ -442,7 +442,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         charLeft = (w - charWidth) * 0.5f + w * CHAR_X_BIAS
         charTop = h * CHAR_TOP_RATIO
 
-        BocchiLive2dPolicy.fillBodyMesh(pose, charLeft, charTop, charWidth, charHeight, bodyVerts)
+        BocchiLive2dPolicy.fillBodyMesh(pose, charLeft, charTop, charWidth, charHeight, bodyVerts, character.rig)
 
         // Pass 1: サイバーリムエコー（ぼっち崩壊時は色収差ズレが増폭）
         val echoOffset = (4.5f + pose.glitchIntensity * 16f)
@@ -488,7 +488,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         // Pass 3: 表情パッチ（10x8サブメッシュ）を同一の変形関数で重ねる
         val faceBmp = faceBitmaps[pose.expression]
         if (faceBmp != null) {
-            BocchiLive2dPolicy.fillFaceMesh(pose, charLeft, charTop, charWidth, charHeight, faceVerts)
+            BocchiLive2dPolicy.fillFaceMesh(pose, charLeft, charTop, charWidth, charHeight, faceVerts, character.rig)
             canvas.drawBitmapMesh(
                 faceBmp,
                 BocchiLive2dPolicy.FACE_COLS,
@@ -506,56 +506,60 @@ class BocchiLive2dStageView @JvmOverloads constructor(
     }
 
     private fun drawLive2dOverlays(canvas: Canvas, pose: BocchiPose) {
-        // 開眼時は瞳の上に視線追従するキラキラハイライトを描画
-        if (pose.eyeOpen > 0.65f && pose.expression != BocchiExpression.BOCCHI_PANIC) {
+        val rig = character.rig
+
+        // 開眼時は瞳の上に視線追従するキラキラハイライトを描画。
+        // 閉眼差分（チア・リョウの至福）とウィンクの右目には重ねない。
+        val eyesClosed = pose.expression == BocchiExpression.BOCCHI_PANIC ||
+            (character == HomeCharacter.RYO && pose.expression == BocchiExpression.AWAKENED_GROOVE)
+        if (pose.eyeOpen > 0.65f && !eyesClosed) {
             val gazeShiftU = pose.eyeBallX * 0.006f
             val gazeShiftV = pose.eyeBallY * 0.005f
-            val (lx, ly) = screenPoint(
-                BocchiLive2dPolicy.EYE_LEFT_U + gazeShiftU,
-                BocchiLive2dPolicy.EYE_LEFT_V + gazeShiftV,
-                pose
-            )
-            val (rx, ry) = screenPoint(
-                BocchiLive2dPolicy.EYE_RIGHT_U + gazeShiftU,
-                BocchiLive2dPolicy.EYE_RIGHT_V + gazeShiftV,
-                pose
-            )
+            val (lx, ly) = screenPoint(rig.eyeLeft.u + gazeShiftU, rig.eyeLeft.v + gazeShiftV, pose)
+            val (rx, ry) = screenPoint(rig.eyeRight.u + gazeShiftU, rig.eyeRight.v + gazeShiftV, pose)
             val sparkleSize = charWidth * (0.011f + 0.003f * abs(sin(stageTimeSec * 5f)))
             fxPaint.style = Paint.Style.FILL
             fxPaint.color = Color.WHITE
             drawStarSparkle(canvas, lx - sparkleSize * 0.8f, ly - sparkleSize * 0.6f, sparkleSize, fxPaint)
-            if (character != HomeCharacter.KITA || pose.expression != BocchiExpression.AWAKENED_GROOVE) {
+            if (pose.expression != BocchiExpression.WINK_JOY) {
                 drawStarSparkle(canvas, rx - sparkleSize * 0.8f, ry - sparkleSize * 0.6f, sparkleSize, fxPaint)
             }
         }
 
-        if (character == HomeCharacter.HITORI) {
-            // 青と黄色のキューブ髪飾りのキラリ反射
-            val (bx, by) = screenPoint(BocchiLive2dPolicy.CUBE_BLUE_U, BocchiLive2dPolicy.CUBE_BLUE_V, pose)
-            val (yx, yy) = screenPoint(BocchiLive2dPolicy.CUBE_YELLOW_U, BocchiLive2dPolicy.CUBE_YELLOW_V, pose)
-            val cubeGlint = charWidth * 0.014f * (0.6f + 0.4f * sin(stageTimeSec * 4.2f))
-            fxPaint.color = withAlpha(COLOR_NEON_CYAN, 180)
-            drawStarSparkle(canvas, bx, by, cubeGlint, fxPaint)
-            fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, 180)
-            drawStarSparkle(canvas, yx, yy, cubeGlint * 0.9f, fxPaint)
-        } else {
-            drawKitaAura(canvas, pose)
+        when (character) {
+            HomeCharacter.HITORI -> {
+                // 青と黄色のキューブ髪飾りのキラリ反射
+                val (bx, by) = screenPoint(rig.ornamentA, pose)
+                val (yx, yy) = screenPoint(rig.ornamentB, pose)
+                val cubeGlint = charWidth * 0.014f * (0.6f + 0.4f * sin(stageTimeSec * 4.2f))
+                fxPaint.style = Paint.Style.FILL
+                fxPaint.color = withAlpha(COLOR_NEON_CYAN, 180)
+                drawStarSparkle(canvas, bx, by, cubeGlint, fxPaint)
+                fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, 180)
+                drawStarSparkle(canvas, yx, yy, cubeGlint * 0.9f, fxPaint)
+            }
+
+            HomeCharacter.KITA -> drawKitaAura(canvas, pose)
+            HomeCharacter.NIJIKA -> drawDrumFx(canvas, pose)
+            HomeCharacter.RYO -> drawRyoFx(canvas, pose)
         }
 
-        // レスポール・カスタムの弦振動エフェクト
-        val (gx0, gy0) = screenPoint(BocchiLive2dPolicy.GUITAR_BRIDGE_U, BocchiLive2dPolicy.GUITAR_BRIDGE_V, pose)
-        val (gx1, gy1) = screenPoint(BocchiLive2dPolicy.GUITAR_NUT_U, BocchiLive2dPolicy.GUITAR_NUT_V, pose)
-        val strumAmp = abs(pose.armStrum) * charWidth * 0.012f
-        if (strumAmp > 0.5f) {
-            val midX = (gx0 + gx1) * 0.5f
-            val midY = (gy0 + gy1) * 0.5f + sin(stageTimeSec * 45f) * strumAmp
-            stringPath.reset()
-            stringPath.moveTo(gx0, gy0)
-            stringPath.quadTo(midX, midY, gx1, gy1)
-            fxPaint.style = Paint.Style.STROKE
-            fxPaint.strokeWidth = 2.4f
-            fxPaint.color = withAlpha(COLOR_NEON_CYAN, 175)
-            canvas.drawPath(stringPath, fxPaint)
+        // ギター／ベースの弦振動エフェクト
+        if (rig.instrument == InstrumentKind.GUITAR) {
+            val (gx0, gy0) = screenPoint(rig.stringBridge, pose)
+            val (gx1, gy1) = screenPoint(rig.stringNut, pose)
+            val strumAmp = abs(pose.armStrum) * charWidth * 0.012f
+            if (strumAmp > 0.5f) {
+                val midX = (gx0 + gx1) * 0.5f
+                val midY = (gy0 + gy1) * 0.5f + sin(stageTimeSec * 45f) * strumAmp
+                stringPath.reset()
+                stringPath.moveTo(gx0, gy0)
+                stringPath.quadTo(midX, midY, gx1, gy1)
+                fxPaint.style = Paint.Style.STROKE
+                fxPaint.strokeWidth = 2.4f
+                fxPaint.color = withAlpha(COLOR_NEON_CYAN, 175)
+                canvas.drawPath(stringPath, fxPaint)
+            }
         }
 
         // ぼっち崩壊時のグリッチ走査線
@@ -587,6 +591,77 @@ class BocchiLive2dStageView @JvmOverloads constructor(
             val pulse = 0.5f + 0.5f * sin(phase)
             fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, (210f * energy * pulse).toInt())
             drawStarSparkle(canvas, x, y, charWidth * (0.012f + pulse * 0.013f), fxPaint)
+        }
+
+        // リボンチョーカーのキラリ反射
+        val (cx, cy) = screenPoint(character.rig.ornamentA, pose)
+        val glint = charWidth * 0.012f * (0.6f + 0.4f * sin(stageTimeSec * 3.6f))
+        fxPaint.color = withAlpha(COLOR_NEON_CYAN, 170)
+        drawStarSparkle(canvas, cx, cy, glint, fxPaint)
+    }
+
+    /** 虹夏: 打面の衝撃リング、シンバルの閃光、ドリトの反射。 */
+    private fun drawDrumFx(canvas: Canvas, pose: BocchiPose) {
+        val rig = character.rig
+        drawHitRing(canvas, screenPoint(rig.drumLeft, pose), pose.drumLeft)
+        drawHitRing(canvas, screenPoint(rig.drumRight, pose), pose.drumRight)
+
+        // 両手アクセント時はシンバルが光る
+        val crash = min(pose.drumLeft, pose.drumRight)
+        if (crash > 0.3f) {
+            fxPaint.style = Paint.Style.FILL
+            fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, (200f * crash).toInt())
+            val (lx, ly) = screenPoint(rig.cymbalLeft, pose)
+            val (rx, ry) = screenPoint(rig.cymbalRight, pose)
+            drawStarSparkle(canvas, lx, ly, charWidth * 0.03f * crash, fxPaint)
+            drawStarSparkle(canvas, rx, ry, charWidth * 0.03f * crash, fxPaint)
+        }
+
+        // 三角ドリト（アホ毛）のキラリ反射
+        val (dx, dy) = screenPoint(rig.ornamentB, pose)
+        val glint = charWidth * 0.013f * (0.6f + 0.4f * sin(stageTimeSec * 4.2f))
+        fxPaint.style = Paint.Style.FILL
+        fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, 180)
+        drawStarSparkle(canvas, dx, dy, glint, fxPaint)
+    }
+
+    private fun drawHitRing(canvas: Canvas, center: Pair<Float, Float>, hit: Float) {
+        if (hit <= 0.25f) {
+            return
+        }
+        val (x, y) = center
+        val radius = charWidth * (0.05f + (1f - hit) * 0.10f)
+        fxPaint.style = Paint.Style.STROKE
+        fxPaint.strokeWidth = 3f * hit + 1f
+        fxPaint.color = withAlpha(character.accent, (190f * hit).toInt())
+        canvas.drawOval(x - radius, y - radius * 0.38f, x + radius, y + radius * 0.38f, fxPaint)
+
+        fxPaint.style = Paint.Style.FILL
+        fxPaint.color = withAlpha(Color.WHITE, (200f * hit).toInt())
+        drawStarSparkle(canvas, x, y, charWidth * 0.016f * hit, fxPaint)
+    }
+
+    /** リョウ: ペンダントの反射とネック沿いの控えめな青い閃光。 */
+    private fun drawRyoFx(canvas: Canvas, pose: BocchiPose) {
+        val rig = character.rig
+        val (px, py) = screenPoint(rig.ornamentA, pose)
+        val glint = charWidth * 0.012f * (0.6f + 0.4f * sin(stageTimeSec * 2.8f))
+        fxPaint.style = Paint.Style.FILL
+        fxPaint.color = withAlpha(COLOR_CUBE_YELLOW, 175)
+        drawStarSparkle(canvas, px, py, glint, fxPaint)
+
+        val energy = abs(pose.armStrum)
+        if (energy <= 0.2f) {
+            return
+        }
+        val (bx, by) = screenPoint(rig.stringBridge, pose)
+        val (nx, ny) = screenPoint(rig.stringNut, pose)
+        fxPaint.color = withAlpha(character.accent, (150f * energy).toInt())
+        for (index in 1..3) {
+            val t = index / 4f
+            val x = bx + (nx - bx) * t
+            val y = by + (ny - by) * t - charWidth * 0.012f * sin(stageTimeSec * 6f + index * 2f)
+            drawStarSparkle(canvas, x, y, charWidth * 0.010f, fxPaint)
         }
     }
 
@@ -633,8 +708,23 @@ class BocchiLive2dStageView @JvmOverloads constructor(
 
         // ステータスバッジ表示
         val mode = when (pose.expression) {
-            BocchiExpression.BOCCHI_PANIC -> "PANIC GLITCH!"
-            BocchiExpression.AWAKENED_GROOVE -> if (character == HomeCharacter.KITA) "KITA~N!" else "GUITAR HERO"
+            BocchiExpression.BOCCHI_PANIC -> when (character) {
+                HomeCharacter.HITORI -> "PANIC GLITCH!"
+                HomeCharacter.KITA -> "KITA~N!"
+                HomeCharacter.NIJIKA -> "NISHISHI!"
+                HomeCharacter.RYO -> "HENJIN MODE"
+            }
+
+            BocchiExpression.AWAKENED_GROOVE -> when (character) {
+                HomeCharacter.HITORI -> "GUITAR HERO"
+                HomeCharacter.KITA -> "VOCAL SING!"
+                HomeCharacter.NIJIKA -> "DRUM SOLO!"
+                HomeCharacter.RYO -> "GROOVE BASS"
+            }
+
+            BocchiExpression.WINK_JOY -> "WINK!"
+            BocchiExpression.SURPRISED -> "SURPRISED!"
+            BocchiExpression.DREAMY -> if (character == HomeCharacter.KITA) "RYO-SENPAI..." else "DREAMY"
             BocchiExpression.HAPPY_SMILE -> "KESSOKU LIVE"
             else -> "2D MESH 150BPM"
         }
@@ -652,9 +742,12 @@ class BocchiLive2dStageView @JvmOverloads constructor(
     }
 
     private fun screenPoint(u: Float, v: Float, pose: BocchiPose): Pair<Float, Float> {
-        val (du, dv) = BocchiLive2dPolicy.deformUv(u, v, pose)
+        val (du, dv) = BocchiLive2dPolicy.deformUv(u, v, pose, character.rig)
         return (charLeft + du * charWidth) to (charTop + dv * charHeight)
     }
+
+    private fun screenPoint(p: UvPoint, pose: BocchiPose): Pair<Float, Float> =
+        screenPoint(p.u, p.v, pose)
 
     private fun shiftVerts(src: FloatArray, dst: FloatArray, dx: Float, dy: Float) {
         var i = 0
@@ -719,7 +812,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
         b.y = y
         b.elapsed = 0f
         b.color = when (zone) {
-            BocchiHitZone.HEAD_PANIC -> character.accent
+            BocchiHitZone.HEAD_PANIC, BocchiHitZone.HEAD_EMOTE -> character.accent
             BocchiHitZone.GUITAR_STRUM -> COLOR_CUBE_YELLOW
             BocchiHitZone.STAGE_BURST -> COLOR_NEON_CYAN
         }

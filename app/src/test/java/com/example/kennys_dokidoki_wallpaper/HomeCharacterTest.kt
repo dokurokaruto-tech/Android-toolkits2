@@ -45,10 +45,54 @@ class HomeCharacterTest {
         val engine = BocchiPhysicsEngine()
         engine.onTapZone(HomeCharacter.KITA.tapZone(BocchiHitZone.HEAD_PANIC), 0.4f, 0.2f)
         val pose = HomeCharacter.KITA.adaptPose(engine.step(0.016f))
-        assertEquals(BocchiExpression.AWAKENED_GROOVE, pose.expression)
+        assertEquals(BocchiExpression.WINK_JOY, pose.expression)
         assertEquals(0f, pose.glitchIntensity, 0f)
-        assertEquals(0f, pose.cubeSwing, 0f)
         assertEquals(0f, pose.ahoge, 0f)
+        assertEquals(0f, pose.drumLeft, 0f)
+    }
+
+    @Test
+    fun nijikaDrumHitsAlternate() {
+        val engine = BocchiPhysicsEngine()
+        var maxLeft = 0f
+        var maxRight = 0f
+        repeat(600) {
+            val pose = HomeCharacter.NIJIKA.adaptPose(engine.step(0.016f))
+            maxLeft = maxOf(maxLeft, pose.drumLeft)
+            maxRight = maxOf(maxRight, pose.drumRight)
+            assertEquals(0f, pose.guitarRock, 0f)
+            val vertices = FloatArray((BocchiLive2dPolicy.MESH_COLS + 1) * (BocchiLive2dPolicy.MESH_ROWS + 1) * 2)
+            BocchiLive2dPolicy.fillBodyMesh(pose, 0f, 0f, 592f, 750f, vertices, HomeCharacter.NIJIKA.rig)
+            assertTrue(vertices.all { it.isFinite() })
+        }
+        assertTrue(maxLeft > 0.3f)
+        assertTrue(maxRight > 0.3f)
+        assertEquals(
+            BocchiHitZone.GUITAR_STRUM,
+            BocchiLive2dPolicy.hitZone(0.5f, 0.8f, HomeCharacter.NIJIKA.rig)
+        )
+    }
+
+    @Test
+    fun idleEmotesCycle() {
+        val engine = BocchiPhysicsEngine()
+        val seen = mutableSetOf<BocchiExpression>()
+        repeat(3600) { seen += engine.step(0.016f).expression }
+        assertTrue(BocchiExpression.WINK_JOY in seen)
+        assertTrue(BocchiExpression.DREAMY in seen)
+        assertTrue(BocchiExpression.SURPRISED in seen)
+    }
+
+    @Test
+    fun ryoStaysCoolAndSubdued() {
+        val pose = HomeCharacter.RYO.adaptPose(
+            BocchiPose(guitarRock = 1f, hairSideMid = 1f, glitchIntensity = 1f, drumLeft = 1f)
+        )
+        assertEquals(0.7f, pose.guitarRock, 0.0001f)
+        assertEquals(0.35f, pose.hairSideMid, 0.0001f)
+        assertEquals(0f, pose.glitchIntensity, 0f)
+        assertEquals(0f, pose.drumLeft, 0f)
+        assertEquals(BocchiHitZone.HEAD_EMOTE, HomeCharacter.RYO.tapZone(BocchiHitZone.HEAD_PANIC))
     }
 
     @Test
