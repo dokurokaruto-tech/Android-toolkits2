@@ -3,6 +3,8 @@ package com.example.kennys_dokidoki_wallpaper
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -48,6 +50,9 @@ private object ToolFinderSpec {
     const val EXPANSION_DELAY_MS = 600L
     const val OPEN_ANIMATION_MS = 280L
     const val CLOSE_ANIMATION_MS = 190L
+    const val HOME_ACTIVITY_REQUEST_CODE = 100
+    const val CHAT_ACTIVITY_REQUEST_CODE = 101
+    const val SECTION_REQUEST_CODE_BASE = 200
     const val BASE_RADIUS_DP = 112f
     const val CENTER_HOLE_RADIUS_DP = 21f
     const val MENU_RADIUS_DP = 148f
@@ -438,6 +443,38 @@ class MyWallpaperService : WallpaperService() {
             }
         }
 
+        private fun launchActivityFromWallpaper(intent: Intent, requestCode: Int) {
+            val creatorOptions = ActivityOptions.makeBasic()
+            val senderOptions = ActivityOptions.makeBasic()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                creatorOptions.setPendingIntentCreatorBackgroundActivityStartMode(
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                )
+                senderOptions.setPendingIntentBackgroundActivityStartMode(
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                )
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                applicationContext,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                creatorOptions.toBundle()
+            )
+            try {
+                pendingIntent.send(senderOptions.toBundle())
+            } catch (e: Exception) {
+                android.util.Log.e(
+                    "MyWallpaperService",
+                    "Unable to launch ${intent.component?.className}",
+                    e
+                )
+            } finally {
+                pendingIntent.cancel()
+            }
+        }
+
         private fun openToolFinderSection(section: HomeSection) {
             val intent = if (section == HomeSection.DIARY) {
                 Intent(applicationContext, DiaryCalendarActivity::class.java)
@@ -446,7 +483,10 @@ class MyWallpaperService : WallpaperService() {
                     .putExtra(HomeSection.EXTRA_KEY, section.name)
             }
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            applicationContext.startActivity(intent)
+            launchActivityFromWallpaper(
+                intent,
+                ToolFinderSpec.SECTION_REQUEST_CODE_BASE + section.ordinal
+            )
         }
 
         private fun clearToolFinder() {
@@ -515,26 +555,22 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun toggleAiChatOverlay() {
-            try {
-                val intent = Intent(applicationContext, ChatOverlayActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    )
-                }
-                applicationContext.startActivity(intent)
-            } catch (e: Exception) {
-                android.util.Log.e("MyWallpaperService", "toggleAiChatOverlay failed", e)
+            val intent = Intent(applicationContext, ChatOverlayActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                )
             }
+            launchActivityFromWallpaper(intent, ToolFinderSpec.CHAT_ACTIVITY_REQUEST_CODE)
         }
 
         private fun openApp() {
             val intent = Intent(applicationContext, HomeCarouselActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
-            applicationContext.startActivity(intent)
+            launchActivityFromWallpaper(intent, ToolFinderSpec.HOME_ACTIVITY_REQUEST_CODE)
         }
 
         private fun startCropImage() {

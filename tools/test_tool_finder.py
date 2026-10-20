@@ -58,6 +58,37 @@ class ToolFinderInteractionTest(unittest.TestCase):
         close = block(self.overlay, '    fun beginClosing()', '    fun draw(canvas: Canvas)')
         self.assertIn('closingSweepFraction = easeInOut(revealProgress)', close)
 
+    def test_activity_launches_use_background_start_allowed_pending_intents(self):
+        helper = block(
+            self.source,
+            'private fun launchActivityFromWallpaper(',
+            'private fun openToolFinderSection('
+        )
+        self.assertIn('PendingIntent.getActivity', helper)
+        self.assertIn('PendingIntent.FLAG_IMMUTABLE', helper)
+        self.assertIn('setPendingIntentCreatorBackgroundActivityStartMode', helper)
+        self.assertIn('setPendingIntentBackgroundActivityStartMode', helper)
+        self.assertIn('pendingIntent.send', helper)
+
+        section = block(
+            self.source,
+            'private fun openToolFinderSection(',
+            'private fun clearToolFinder('
+        )
+        chat = block(
+            self.source,
+            'private fun toggleAiChatOverlay()',
+            'private fun openApp()'
+        )
+        home = block(
+            self.source,
+            'private fun openApp()',
+            'private fun startCropImage()'
+        )
+        self.assertIn('launchActivityFromWallpaper(', section)
+        self.assertIn('launchActivityFromWallpaper(', chat)
+        self.assertIn('launchActivityFromWallpaper(', home)
+
     def test_vertical_center_stays_at_touch_point(self):
         anchor = block(self.overlay, '    val centerX =', '    var revealProgress =')
         self.assertIn('val centerY = touchY', anchor)
