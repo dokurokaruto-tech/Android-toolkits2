@@ -13,7 +13,11 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -30,6 +34,32 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
+
+private const val TOOL_FINDER_ACTION = "TOOL_FINDER"
+private const val DOUBLE_TAP_HOLD_KEY = "action_tap_2_hold"
+private const val TRIPLE_TAP_HOLD_KEY = "action_tap_3_hold"
+
+private object ToolFinderSpec {
+    const val EXPANSION_DELAY_MS = 600L
+    const val OPEN_ANIMATION_MS = 280L
+    const val CLOSE_ANIMATION_MS = 190L
+    const val BASE_RADIUS_DP = 112f
+    const val CENTER_HOLE_RADIUS_DP = 21f
+    const val MENU_RADIUS_DP = 148f
+    const val HORIZONTAL_EXTENT_DP = 160f
+    const val VERTICAL_EXTENT_DP = 180f
+    const val MAX_EXTENT_DP = 190f
+    const val OPTION_WIDTH_DP = 58f
+    const val OPTION_HEIGHT_DP = 58f
+    const val OPTION_ANGLE_START = -150f
+    const val OPTION_ANGLE_STEP = 24f
+    const val MAX_OPTION_ANGLE_DELTA = 13f
+}
 
 class MyWallpaperService : WallpaperService() {
 
@@ -82,6 +112,9 @@ class MyWallpaperService : WallpaperService() {
         
         private var holdRunnable: Runnable? = null
         private val holdTimeout = 400L
+        private var toolFinder: ToolFinderOverlay? = null
+        private var toolFinderAnimator: ValueAnimator? = null
+        private var toolFinderExpansionRunnable: Runnable? = null
 
         private var longPressRunnable: Runnable? = null
         private val longPress1sTimeout = 1000L
@@ -227,18 +260,14 @@ class MyWallpaperService : WallpaperService() {
 
                         if (tapCount == 1 && (downTime - lastTapTime) <= tapTimeout) {
                             holdRunnable = Runnable {
-                                val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-                                val action = prefs.getString("action_tap_2_hold", "NONE") ?: "NONE"
-                                executeActionString(action)
-                                tapCount = 0
+                                holdRunnable = null
+                                executeHoldAction(DOUBLE_TAP_HOLD_KEY)
                             }
                             tapHandler.postDelayed(holdRunnable!!, holdTimeout)
                         } else if (tapCount == 2 && (downTime - lastTapTime) <= tapTimeout) {
                             holdRunnable = Runnable {
-                                val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-                                val action = prefs.getString("action_tap_3_hold", "NONE") ?: "NONE"
-                                executeActionString(action)
-                                tapCount = 0
+                                holdRunnable = null
+                                executeHoldAction(TRIPLE_TAP_HOLD_KEY)
                             }
                             tapHandler.postDelayed(holdRunnable!!, holdTimeout)
                         } else {
@@ -257,17 +286,27 @@ class MyWallpaperService : WallpaperService() {
                         }
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        val dx = it.x - downX
-                        val dy = it.y - downY
-                        val distance = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-                        if (distance > TOUCH_TOLERANCE) {
-                            holdRunnable?.let { r -> tapHandler.removeCallbacks(r); holdRunnable = null }
-                            longPressRunnable?.let { r -> tapHandler.removeCallbacks(r); longPressRunnable = null }
+                        if (toolFinder != null) {
+                            updateToolFinder(it.x, it.y)
+                        } else {
+                            val dx = it.x - downX
+                            val dy = it.y - downY
+                            val distance = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                            if (distance > TOUCH_TOLERANCE) {
+                                holdRunnable?.let { r -> tapHandler.removeCallbacks(r); holdRunnable = null }
+                                longPressRunnable?.let { r -> tapHandler.removeCallbacks(r); longPressRunnable = null }
+                            }
                         }
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         holdRunnable?.let { r -> tapHandler.removeCallbacks(r); holdRunnable = null }
                         longPressRunnable?.let { r -> tapHandler.removeCallbacks(r); longPressRunnable = null }
+                        if (toolFinder != null) {
+                            val commitSelection = it.action == MotionEvent.ACTION_UP
+                            if (commitSelection) updateToolFinder(it.x, it.y)
+                            closeToolFinder(commitSelection)
+                            return
+                        }
 
                         if (it.action == MotionEvent.ACTION_UP) {
                             val upX = it.x
@@ -286,6 +325,137 @@ class MyWallpaperService : WallpaperService() {
                     else -> {}
                 }
             }
+        }
+
+        private fun executeHoldAction(prefKey: String) {
+            val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val action = prefs.getString(prefKey, "NONE") ?: "NONE"
+            tapCount = 0
+            if (action == TOOL_FINDER_ACTION) {
+                showToolFinder()
+                return
+            }
+            executeActionString(action)
+        }
+
+        private fun showToolFinder() {
+            clearToolFinder()
+            val frame = surfaceHolder.surfaceFrame
+            val metrics = resources.displayMetrics
+            val width = metrics.widthPixels.takeIf { it > 0 } ?: frame.width()
+            val height = metrics.heightPixels.takeIf { it > 0 } ?: frame.height()
+            val finder = ToolFinderOverlay(applicationContext, downX, downY, width, height)
+            toolFinder = finder
+            toolFinderAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = ToolFinderSpec.OPEN_ANIMATION_MS
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    if (toolFinder === finder) {
+                        finder.revealProgress = it.animatedValue as Float
+                        draw()
+                    }
+                }
+                start()
+            }
+        }
+
+        private fun updateToolFinder(x: Float, y: Float) {
+            val finder = toolFinder ?: return
+            if (finder.isClosing) {
+                return
+            }
+            val wasAppSelected = finder.isAppSelected()
+            finder.update(x, y)
+            val isAppSelected = finder.isAppSelected()
+            if (!finder.isExpanded && isAppSelected && !wasAppSelected) {
+                scheduleToolFinderExpansion(finder)
+            } else if (!isAppSelected) {
+                cancelToolFinderExpansion()
+            }
+            draw()
+        }
+
+        private fun scheduleToolFinderExpansion(finder: ToolFinderOverlay) {
+            cancelToolFinderExpansion()
+            val runnable = Runnable {
+                toolFinderExpansionRunnable = null
+                if (toolFinder !== finder || finder.isClosing || !finder.expand()) {
+                    return@Runnable
+                }
+                draw()
+            }
+            toolFinderExpansionRunnable = runnable
+            tapHandler.postDelayed(runnable, ToolFinderSpec.EXPANSION_DELAY_MS)
+        }
+
+        private fun cancelToolFinderExpansion() {
+            toolFinderExpansionRunnable?.let(tapHandler::removeCallbacks)
+            toolFinderExpansionRunnable = null
+        }
+
+        private fun closeToolFinder(commitSelection: Boolean) {
+            val finder = toolFinder ?: return
+            if (finder.isClosing) {
+                return
+            }
+            cancelToolFinderExpansion()
+            finder.beginClosing()
+            val previousAnimator = toolFinderAnimator
+            toolFinderAnimator = null
+            previousAnimator?.cancel()
+            val exitAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = ToolFinderSpec.CLOSE_ANIMATION_MS
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    if (toolFinder === finder) {
+                        finder.exitProgress = it.animatedValue as Float
+                        draw()
+                    }
+                }
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        if (toolFinder !== finder || toolFinderAnimator !== animation) {
+                            return
+                        }
+                        toolFinderAnimator = null
+                        toolFinder = null
+                        draw()
+                        launchToolFinderSelection(finder, commitSelection)
+                    }
+                })
+            }
+            toolFinderAnimator = exitAnimator
+            exitAnimator.start()
+        }
+
+        private fun launchToolFinderSelection(finder: ToolFinderOverlay, commitSelection: Boolean) {
+            if (!commitSelection) {
+                return
+            }
+            when {
+                finder.isAppSelected() -> openApp()
+                finder.isChatSelected() -> toggleAiChatOverlay()
+                else -> finder.selectedSection()?.let(::openToolFinderSection)
+            }
+        }
+
+        private fun openToolFinderSection(section: HomeSection) {
+            val intent = if (section == HomeSection.DIARY) {
+                Intent(applicationContext, DiaryCalendarActivity::class.java)
+            } else {
+                Intent(applicationContext, MainActivity::class.java)
+                    .putExtra(HomeSection.EXTRA_KEY, section.name)
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            applicationContext.startActivity(intent)
+        }
+
+        private fun clearToolFinder() {
+            cancelToolFinderExpansion()
+            val animation = toolFinderAnimator
+            toolFinderAnimator = null
+            animation?.cancel()
+            toolFinder = null
         }
 
         private fun showSetNameText() {
@@ -643,6 +813,7 @@ class MyWallpaperService : WallpaperService() {
             animator = null
             textAnimator?.cancel()
             textAnimator = null
+            clearToolFinder()
             tapHandler.removeCallbacksAndMessages(null)
             textHandler.removeCallbacksAndMessages(null)
             isAnimating = false
@@ -724,6 +895,7 @@ class MyWallpaperService : WallpaperService() {
                         canvas.drawText(displayText, x, y, textPaint)
                     }
                 }
+                toolFinder?.draw(canvas)
             } finally { surfaceHolder.unlockCanvasAndPost(canvas) }
         }
 
@@ -740,4 +912,373 @@ class MyWallpaperService : WallpaperService() {
             else { val height = (canvas.width / srcRatio).toInt(); val top = (canvas.height - height) / 2; outRect.set(0, top, canvas.width, top + height) }
         }
     }
+}
+
+private enum class ToolFinderTarget {
+    NONE,
+    APP,
+    CHAT,
+    SECTION
+}
+
+private data class ToolFinderOption(
+    val section: HomeSection,
+    val label: String,
+    val angle: Float
+)
+
+private class ToolFinderOverlay(
+    context: Context,
+    touchX: Float,
+    touchY: Float,
+    surfaceWidth: Int,
+    surfaceHeight: Int
+) {
+    private val density = context.resources.displayMetrics.density
+    private val scaledDensity = context.resources.displayMetrics.scaledDensity
+    private fun dp(value: Float) = value * density
+
+    private val baseRadius = dp(ToolFinderSpec.BASE_RADIUS_DP)
+    private val centerHoleRadius = dp(ToolFinderSpec.CENTER_HOLE_RADIUS_DP)
+    private val menuRadius = dp(ToolFinderSpec.MENU_RADIUS_DP)
+    private val optionWidth = dp(ToolFinderSpec.OPTION_WIDTH_DP)
+    private val optionHeight = dp(ToolFinderSpec.OPTION_HEIGHT_DP)
+    private val maxExtent = dp(ToolFinderSpec.MAX_EXTENT_DP)
+    private val maxPickRadius = maxExtent
+    private val appColor = Color.parseColor("#D0BCFF")
+    private val chatColor = Color.parseColor("#A6F0E4")
+    private val appPanelSelected = Color.parseColor("#704F378B")
+    private val appPanelIdle = Color.parseColor("#263D2860")
+    private val chatPanelSelected = Color.parseColor("#704A766D")
+    private val chatPanelIdle = Color.parseColor("#26305A53")
+    private val selectedAppArc = Color.parseColor("#FFD0BCFF")
+    private val selectedChatArc = Color.parseColor("#FFA6F0E4")
+    private val selectedLabel = Color.WHITE
+    private val idleOptionLabel = Color.parseColor("#C4CCD7")
+
+    val centerX = clampCenter(touchX, surfaceWidth.toFloat(), dp(ToolFinderSpec.HORIZONTAL_EXTENT_DP))
+    val centerY = clampCenter(touchY, surfaceHeight.toFloat(), dp(ToolFinderSpec.VERTICAL_EXTENT_DP))
+
+    var revealProgress = 0f
+    var exitProgress = 0f
+    var isClosing = false
+        private set
+    val isExpanded: Boolean
+        get() = expanded
+
+    private var expanded = false
+    private var lastX = centerX
+    private var lastY = centerY
+    private var selectedTarget = ToolFinderTarget.NONE
+    private var selectedSection: HomeSection? = null
+
+    // Fixed angles keep each tool in a predictable position.
+    private val options = listOf(
+        ToolFinderOption(HomeSection.ALL_IMAGES, "全画像", ToolFinderSpec.OPTION_ANGLE_START),
+        ToolFinderOption(HomeSection.IMAGE_SETS, "セット", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP),
+        ToolFinderOption(HomeSection.TAGS, "タグ", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP * 2f),
+        ToolFinderOption(HomeSection.BUILDER, "生成", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP * 3f),
+        ToolFinderOption(HomeSection.DIARY, "日記", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP * 4f),
+        ToolFinderOption(HomeSection.SETTINGS, "設定", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP * 5f)
+    )
+
+    private val optionIcons = options.associate { option ->
+        option.section to ContextCompat.getDrawable(context, option.section.iconRes)
+            ?.mutate()
+            ?.apply { setTint(ContextCompat.getColor(context, option.section.iconColorRes)) }
+    }
+    private val appIcon = ContextCompat.getDrawable(context, HomeSection.ALL_IMAGES.iconRes)
+        ?.mutate()
+        ?.apply { setTint(appColor) }
+    private val chatIcon = ContextCompat.getDrawable(context, R.drawable.ic_md3_smart_toy)
+        ?.mutate()
+        ?.apply { setTint(chatColor) }
+
+    private val bounds = RectF()
+    private val optionBounds = RectF()
+    private val baseFill = paint(Paint.Style.FILL, Color.parseColor("#E51B202B"))
+    private val baseOutline = paint(Paint.Style.STROKE, Color.parseColor("#80D0BCFF"), dp(1.2f))
+    private val dividerPaint = paint(Paint.Style.STROKE, Color.parseColor("#55D0BCFF"), dp(1f))
+    private val topFill = paint(Paint.Style.FILL, Color.parseColor("#263D2860"))
+    private val bottomFill = paint(Paint.Style.FILL, Color.parseColor("#26305A53"))
+    private val activeArc = paint(Paint.Style.STROKE, Color.WHITE, dp(3f))
+    private val appText = textPaint(appColor, 13f)
+    private val chatText = textPaint(chatColor, 13f)
+    private val optionText = textPaint(Color.parseColor("#C4CCD7"), 9f)
+    private val deadzoneFill = paint(Paint.Style.FILL, Color.parseColor("#F01A202B"))
+    private val deadzoneOutline = paint(Paint.Style.STROKE, Color.parseColor("#75D0BCFF"), dp(1f))
+    private val deadzoneDot = paint(Paint.Style.FILL, Color.parseColor("#FFD0BCFF"))
+    private val archPaint = paint(Paint.Style.STROKE, Color.parseColor("#80A6F0E4"), dp(1f))
+    private val guidePaint = paint(Paint.Style.STROKE, Color.parseColor("#5565C9C0"), dp(1f))
+    private val optionFill = paint(Paint.Style.FILL, Color.parseColor("#E5232935"))
+    private val optionOutline = paint(Paint.Style.STROKE, Color.parseColor("#667D8796"), dp(1f))
+    private val selectedOptionFill = paint(Paint.Style.FILL, Color.parseColor("#F038485B"))
+    private val selectedOptionOutline = paint(Paint.Style.STROKE, Color.parseColor("#E0A6F0E4"), dp(1.5f))
+    private val optionGlow = paint(Paint.Style.FILL, Color.parseColor("#355CE1D8"))
+    private val scannerPaint = paint(Paint.Style.STROKE, Color.parseColor("#E0A6F0E4"), dp(2f))
+
+    init {
+        bounds.set(centerX - baseRadius, centerY - baseRadius, centerX + baseRadius, centerY + baseRadius)
+        optionText.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        appText.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        chatText.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    }
+
+    fun update(x: Float, y: Float) {
+        lastX = x
+        lastY = y
+        selectedSection = null
+
+        val dx = x - centerX
+        val dy = y - centerY
+        val distance = hypot(dx.toDouble(), dy.toDouble()).toFloat()
+        if (distance <= centerHoleRadius || distance > maxPickRadius) {
+            selectedTarget = ToolFinderTarget.NONE
+            return
+        }
+
+        if (!expanded) {
+            selectedTarget = when {
+                distance > baseRadius -> ToolFinderTarget.NONE
+                dy < -centerHoleRadius -> ToolFinderTarget.APP
+                dy > centerHoleRadius -> ToolFinderTarget.CHAT
+                else -> ToolFinderTarget.NONE
+            }
+            return
+        }
+
+        if (dy > centerHoleRadius && distance <= baseRadius) {
+            selectedTarget = ToolFinderTarget.CHAT
+            return
+        }
+        if (dy >= -centerHoleRadius) {
+            selectedTarget = ToolFinderTarget.NONE
+            return
+        }
+
+        val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+        val option = options.minByOrNull { abs(it.angle - angle) }
+        if (option == null || abs(option.angle - angle) > ToolFinderSpec.MAX_OPTION_ANGLE_DELTA) {
+            selectedTarget = ToolFinderTarget.NONE
+            return
+        }
+
+        selectedTarget = ToolFinderTarget.SECTION
+        selectedSection = option.section
+    }
+
+    fun isAppSelected(): Boolean = !expanded && selectedTarget == ToolFinderTarget.APP
+
+    fun expand(): Boolean {
+        if (expanded || !isAppSelected() || isClosing) {
+            return false
+        }
+        expanded = true
+        update(lastX, lastY)
+        return true
+    }
+
+    fun isChatSelected(): Boolean = selectedTarget == ToolFinderTarget.CHAT
+
+    fun selectedSection(): HomeSection? =
+        selectedSection.takeIf { selectedTarget == ToolFinderTarget.SECTION }
+
+    fun beginClosing() {
+        isClosing = true
+        revealProgress = 1f
+    }
+
+    fun draw(canvas: Canvas) {
+        val alpha = if (isClosing) ((1f - exitProgress) * 255f).toInt().coerceIn(0, 255) else 255
+        val scale = if (isClosing) 1f - exitProgress * 0.06f else 0.92f + revealProgress * 0.08f
+        val clipSave = canvas.save()
+        if (!isClosing && revealProgress < 1f) {
+            canvas.clipPath(revealPath())
+        }
+        canvas.scale(scale, scale, centerX, centerY)
+        val layerSave = canvas.saveLayerAlpha(
+            centerX - maxExtent,
+            centerY - maxExtent,
+            centerX + maxExtent,
+            centerY + maxExtent,
+            alpha
+        )
+
+        drawWheel(canvas)
+        if (expanded) {
+            drawExpandedTools(canvas)
+        }
+        drawCenterHole(canvas)
+        drawScanner(canvas)
+
+        canvas.restoreToCount(layerSave)
+        canvas.restoreToCount(clipSave)
+    }
+
+    private fun drawWheel(canvas: Canvas) {
+        val appSelected = selectedTarget == ToolFinderTarget.APP || selectedTarget == ToolFinderTarget.SECTION
+        val chatSelected = selectedTarget == ToolFinderTarget.CHAT
+        canvas.drawCircle(centerX, centerY, baseRadius, baseFill)
+
+        topFill.color = if (appSelected) {
+            appPanelSelected
+        } else {
+            appPanelIdle
+        }
+        bottomFill.color = if (chatSelected) {
+            chatPanelSelected
+        } else {
+            chatPanelIdle
+        }
+        canvas.drawArc(bounds, 180f, 180f, true, topFill)
+        canvas.drawArc(bounds, 0f, 180f, true, bottomFill)
+        canvas.drawCircle(centerX, centerY, baseRadius, baseOutline)
+        canvas.drawLine(centerX - baseRadius + dp(12f), centerY, centerX + baseRadius - dp(12f), centerY, dividerPaint)
+
+        if (appSelected) {
+            activeArc.color = selectedAppArc
+            canvas.drawArc(bounds, 184f, 172f, false, activeArc)
+        }
+        if (chatSelected) {
+            activeArc.color = selectedChatArc
+            canvas.drawArc(bounds, 4f, 172f, false, activeArc)
+        }
+
+        drawIcon(canvas, appIcon, centerX, centerY - dp(61f), dp(if (appSelected) 30f else 26f))
+        appText.color = if (appSelected) selectedLabel else appColor
+        appText.textSize = scaledDensity * if (appSelected) 15f else 13f
+        canvas.drawText("アプリ", centerX, centerY - dp(29f), appText)
+
+        drawIcon(canvas, chatIcon, centerX, centerY + dp(51f), dp(if (chatSelected) 30f else 26f))
+        chatText.color = if (chatSelected) selectedLabel else chatColor
+        chatText.textSize = scaledDensity * if (chatSelected) 15f else 13f
+        canvas.drawText("AIチャット", centerX, centerY + dp(88f), chatText)
+    }
+
+    private fun drawExpandedTools(canvas: Canvas) {
+        val menuBounds = RectF(
+            centerX - menuRadius,
+            centerY - menuRadius,
+            centerX + menuRadius,
+            centerY + menuRadius
+        )
+        canvas.drawArc(
+            menuBounds,
+            ToolFinderSpec.OPTION_ANGLE_START,
+            ToolFinderSpec.OPTION_ANGLE_STEP * (options.size - 1),
+            false,
+            archPaint
+        )
+
+        options.forEach { option ->
+            val radians = Math.toRadians(option.angle.toDouble())
+            val directionX = cos(radians).toFloat()
+            val directionY = sin(radians).toFloat()
+            val innerGuideRadius = baseRadius + dp(2f)
+            val outerGuideRadius = menuRadius - optionHeight / 2f - dp(4f)
+            canvas.drawLine(
+                centerX + directionX * innerGuideRadius,
+                centerY + directionY * innerGuideRadius,
+                centerX + directionX * outerGuideRadius,
+                centerY + directionY * outerGuideRadius,
+                guidePaint
+            )
+            drawOption(canvas, option, centerX + directionX * menuRadius, centerY + directionY * menuRadius)
+        }
+    }
+
+    private fun drawOption(canvas: Canvas, option: ToolFinderOption, x: Float, y: Float) {
+        val selected = selectedTarget == ToolFinderTarget.SECTION && selectedSection == option.section
+        val scale = if (selected) 1.1f else 1f
+        canvas.save()
+        canvas.scale(scale, scale, x, y)
+        optionBounds.set(
+            x - optionWidth / 2f,
+            y - optionHeight / 2f,
+            x + optionWidth / 2f,
+            y + optionHeight / 2f
+        )
+        val radius = dp(16f)
+
+        if (selected) {
+            canvas.drawCircle(x, y, dp(35f), optionGlow)
+            canvas.drawRoundRect(optionBounds, radius, radius, selectedOptionFill)
+            canvas.drawRoundRect(optionBounds, radius, radius, selectedOptionOutline)
+        } else {
+            canvas.drawRoundRect(optionBounds, radius, radius, optionFill)
+            canvas.drawRoundRect(optionBounds, radius, radius, optionOutline)
+        }
+
+        drawIcon(canvas, optionIcons[option.section], x, y - dp(7f), dp(21f))
+        optionText.color = if (selected) selectedLabel else idleOptionLabel
+        optionText.textSize = scaledDensity * if (selected) 9.5f else 9f
+        canvas.drawText(option.label, x, y + dp(21f), optionText)
+        canvas.restore()
+    }
+
+    private fun drawCenterHole(canvas: Canvas) {
+        canvas.drawCircle(centerX, centerY, centerHoleRadius, deadzoneFill)
+        canvas.drawCircle(centerX, centerY, centerHoleRadius, deadzoneOutline)
+        canvas.drawCircle(centerX, centerY, dp(2f), deadzoneDot)
+    }
+
+    private fun drawScanner(canvas: Canvas) {
+        val progress = if (isClosing) exitProgress else revealProgress
+        if (progress <= 0f) {
+            return
+        }
+        val radius = if (expanded) menuRadius + dp(8f) else baseRadius + dp(8f)
+        val scanBounds = RectF(centerX - radius, centerY - radius, centerX + radius, centerY + radius)
+        canvas.drawArc(scanBounds, -90f, 360f * progress, false, scannerPaint)
+    }
+
+    private fun revealPath(): Path {
+        val path = Path()
+        val revealBounds = RectF(
+            centerX - maxExtent,
+            centerY - maxExtent,
+            centerX + maxExtent,
+            centerY + maxExtent
+        )
+        path.moveTo(centerX, centerY)
+        path.arcTo(revealBounds, -90f, 360f * revealProgress, false)
+        path.close()
+        return path
+    }
+
+    private fun drawIcon(canvas: Canvas, drawable: Drawable?, x: Float, y: Float, size: Float) {
+        if (drawable == null) {
+            return
+        }
+        val halfSize = size / 2f
+        drawable.setBounds(
+            (x - halfSize).toInt(),
+            (y - halfSize).toInt(),
+            (x + halfSize).toInt(),
+            (y + halfSize).toInt()
+        )
+        drawable.draw(canvas)
+    }
+
+    private fun clampCenter(position: Float, length: Float, extent: Float): Float {
+        if (length <= extent * 2f) {
+            return length / 2f
+        }
+        return position.coerceIn(extent, length - extent)
+    }
+
+    private fun paint(style: Paint.Style, color: Int, strokeWidth: Float = 0f) =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.style = style
+            this.color = color
+            this.strokeWidth = strokeWidth
+        }
+
+    private fun textPaint(color: Int, sizeSp: Float) =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
+            textSize = scaledDensity * sizeSp
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        }
 }

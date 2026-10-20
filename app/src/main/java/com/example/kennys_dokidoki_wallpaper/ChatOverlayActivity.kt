@@ -547,6 +547,8 @@ class ChatSessionAdapter(
     override fun getItemCount() = sessions.size
 }
 
+private const val TOOL_FINDER_ACTION = "TOOL_FINDER"
+
 class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener, ChatGenerationManager.Listener {
 
     private val OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -773,6 +775,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             startActivity(Intent(this, ImageTagEditorActivity::class.java).apply {
                 putExtra("IMAGE_URI", entry.uri.toString())
             })
+        } else if (action == TOOL_FINDER_ACTION) {
+            Toast.makeText(this, "ツールファインダーはホーム画面で利用できます。", Toast.LENGTH_SHORT).show()
         } else if (action != "NONE") {
             val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_EXECUTE_ACTION")
             intent.setPackage(packageName)

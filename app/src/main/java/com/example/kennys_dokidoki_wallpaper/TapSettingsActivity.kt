@@ -14,6 +14,12 @@ import androidx.appcompat.widget.Toolbar
 
 class TapSettingsActivity : AppCompatActivity() {
 
+    private companion object {
+        const val TOOL_FINDER_ACTION = "TOOL_FINDER"
+        const val DOUBLE_TAP_HOLD_KEY = "action_tap_2_hold"
+        const val TRIPLE_TAP_HOLD_KEY = "action_tap_3_hold"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_tap_settings)
@@ -34,11 +40,11 @@ class TapSettingsActivity : AppCompatActivity() {
         }
 
         // ダブルタップ＋長押しの設定行を追加
-        container.addView(createTapSettingRow("action_tap_2_hold", "ダブルタップして長押ししたとき", "NONE"))
+        container.addView(createTapSettingRow(DOUBLE_TAP_HOLD_KEY, "ダブルタップして長押ししたとき", "NONE"))
         container.addView(createDivider())
 
         // トリプルタップ＋長押しの設定行を追加
-        container.addView(createTapSettingRow("action_tap_3_hold", "トリプルタップして長押ししたとき", "NONE"))
+        container.addView(createTapSettingRow(TRIPLE_TAP_HOLD_KEY, "トリプルタップして長押ししたとき", "NONE"))
         container.addView(createDivider())
 
         // 1秒長押しの設定行を追加
@@ -104,6 +110,7 @@ class TapSettingsActivity : AppCompatActivity() {
             action == "CROP_IMAGE" -> "現在表示している画像のクロップ"
             action == "EDIT_TAGS" -> "現在の壁紙のタグを編集"
             action == "EDIT_ACTIVE_SET" -> "現在のイメージセットを編集"
+            action == TOOL_FINDER_ACTION -> "ツールファインダー"
             action.startsWith("SPECIFIC_SET:") -> {
                 val setName = action.substringAfter("SPECIFIC_SET:")
                 "「$setName」に切り替え"
@@ -113,7 +120,7 @@ class TapSettingsActivity : AppCompatActivity() {
     }
 
     private fun showActionSelectionDialog(prefKey: String, title: String, summaryView: TextView) {
-        val options = arrayOf(
+        val baseOptions = arrayOf(
             "なにもしない", 
             "次の壁紙に切り替え", 
             "次のイメージセットに切り替え", 
@@ -124,11 +131,18 @@ class TapSettingsActivity : AppCompatActivity() {
             "現在の壁紙のタグを編集",
             "現在のイメージセットを編集"
         )
+        val supportsToolFinder = prefKey == DOUBLE_TAP_HOLD_KEY || prefKey == TRIPLE_TAP_HOLD_KEY
+        val options = if (supportsToolFinder) baseOptions + "ツールファインダー" else baseOptions
         
         AlertDialog.Builder(this, R.style.Theme_Kennys_dokidoki_wallpaper) // デフォルトテーマ適用
             .setTitle(title + "の動作")
             .setItems(options) { _, which ->
                 val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+                if (supportsToolFinder && which == baseOptions.size) {
+                    prefs.edit().putString(prefKey, TOOL_FINDER_ACTION).apply()
+                    summaryView.text = getActionDisplayName(TOOL_FINDER_ACTION)
+                    return@setItems
+                }
                 when (which) {
                     0 -> {
                         prefs.edit().putString(prefKey, "NONE").apply()
