@@ -11,7 +11,7 @@ object BuilderGenSettingPolicy {
 
     /** 4ボタンそれぞれの画面。 */
     enum class Kind(val title: String, val hint: String) {
-        RESOLUTION("解像度", "上の比率ボタンで選び、固定中は両辺が連動。スライダーは10px刻み（オフ時8px）。"),
+        RESOLUTION("解像度", "比率ボタンで選択。固定中は両辺が連動。スナップ単位は1〜256px。"),
         STEPS("ステップ数", "多いほど詰むが遅くなる。1〜100。"),
         BATCH("バッチカウント", "一度に生成する枚数。上限はない。多いほど時間がかかる。"),
         SAMPLER("サンプラー", "横にスワイプして一覧から選ぶ。")
@@ -39,7 +39,9 @@ object BuilderGenSettingPolicy {
     const val SIZE_MIN = 64
     const val SIZE_MAX = 4096
     const val SIZE_STEP = 8
-    const val TEN_PIXEL_STEP = 10
+    const val DEFAULT_SNAP_STEP = 10
+    const val SNAP_STEP_MIN = 1
+    const val SNAP_STEP_MAX = 256
     const val SLIDER_PIXEL_STEP = 1
 
     const val STEPS_MIN = 1
@@ -85,6 +87,9 @@ object BuilderGenSettingPolicy {
         Axis.STEPS -> (raw ?: DEFAULT_STEPS).coerceIn(STEPS_MIN, STEPS_MAX)
         Axis.BATCH -> (raw ?: DEFAULT_BATCH).coerceAtLeast(BATCH_MIN)
     }
+
+    fun sanitizeSnapStep(raw: Int?): Int =
+        (raw ?: DEFAULT_SNAP_STEP).coerceIn(SNAP_STEP_MIN, SNAP_STEP_MAX)
 
     fun swipeMin(axis: Axis): Int = when (axis) {
         Axis.WIDTH, Axis.HEIGHT -> SIZE_MIN

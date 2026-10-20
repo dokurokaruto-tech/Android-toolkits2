@@ -7,9 +7,9 @@ import kotlin.math.roundToInt
 /** 解像度バー、比率プリセット、比率ロックの連動状態。 */
 internal object ResolutionControlPolicy {
 
-    enum class SnapMode(val step: Int) {
-        EIGHT_PIXELS(BuilderGenSettingPolicy.SIZE_STEP),
-        TEN_PIXELS(BuilderGenSettingPolicy.TEN_PIXEL_STEP)
+    enum class SnapMode {
+        EIGHT_PIXELS,
+        CUSTOM
     }
 
     enum class LockMode {
@@ -48,12 +48,13 @@ internal object ResolutionControlPolicy {
         ratioHeight = height
     )
 
-    fun update(state: State, axis: Axis, raw: Int, snap: SnapMode): State {
+    fun update(state: State, axis: Axis, raw: Int, snap: SnapMode, customStep: Int): State {
         if (axis != Axis.WIDTH && axis != Axis.HEIGHT) {
             return state
         }
 
-        val moved = snapSize(raw, snap)
+        val step = stepFor(snap, customStep)
+        val moved = snapSize(raw, step)
         val width = if (axis == Axis.WIDTH) moved else state.width
         val height = if (axis == Axis.HEIGHT) moved else state.height
 
@@ -69,10 +70,10 @@ internal object ResolutionControlPolicy {
         val baseMoved = if (axis == Axis.WIDTH) state.ratioWidth else state.ratioHeight
         val baseOther = if (axis == Axis.WIDTH) state.ratioHeight else state.ratioWidth
         val linked = if (baseMoved <= 0) {
-            snapSize(baseOther, snap)
+            snapSize(baseOther, step)
         } else {
             val calculated = (moved.toDouble() * baseOther / baseMoved).roundToInt()
-            snapSize(calculated, snap)
+            snapSize(calculated, step)
         }
 
         return if (axis == Axis.WIDTH) {
@@ -92,8 +93,13 @@ internal object ResolutionControlPolicy {
     fun matchesPresetRatio(state: State, preset: SizePreset): Boolean =
         state.ratioWidth.toLong() * preset.height == state.ratioHeight.toLong() * preset.width
 
-    private fun snapSize(raw: Int, snap: SnapMode): Int =
-        (raw.toFloat() / snap.step).roundToInt()
-            .times(snap.step)
-            .coerceIn(BuilderGenSettingPolicy.SIZE_MIN, BuilderGenSettingPolicy.SIZE_MAX)
+    fun stepFor(mode: SnapMode, customStep: Int): Int = when (mode) {
+        SnapMode.EIGHT_PIXELS -> BuilderGenSettingPolicy.SIZE_STEP
+        SnapMode.CUSTOM -> BuilderGenSettingPolicy.sanitizeSnapStep(customStep)
+    }
+
+    private fun snapSize(raw: Int, step: Int): Int {
+        val snapped = (raw.toFloat() / step).roundToInt() * step
+        return snapped.coerceIn(BuilderGenSettingPolicy.SIZE_MIN, BuilderGenSettingPolicy.SIZE_MAX)
+    }
 }

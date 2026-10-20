@@ -22,13 +22,15 @@ import kotlin.math.roundToInt
  * Builder 上部4ボタンを開いたときのポップアップ。
  * 名前は Dialog だが全画面ではなく、他の編集ポップアップと同じ浮きカード。
  * 解像度は ResolutionControlPolicy、他の数値は BuilderGenSettingPolicy で扱う。
- * 確定は「適用」をタップしたときだけ。閉じれば何も変わらない。
+ * 生成設定は「適用」まで下書き。スナップ設定は切替・入力時に保存する。
  */
 object GenSettingDialog {
 
     private const val SETTINGS_PREFERENCES = "settings"
-    private const val SNAP_TEN_PREFERENCE = "gen_resolution_snap_10"
-    private const val DEFAULT_SNAP_TEN = true
+    private const val SNAP_ENABLED_PREFERENCE = "gen_resolution_snap_enabled"
+    private const val LEGACY_SNAP_ENABLED_PREFERENCE = "gen_resolution_snap_10"
+    private const val SNAP_STEP_PREFERENCE = "gen_resolution_snap_step"
+    private const val DEFAULT_SNAP_ENABLED = true
 
     /** 入力欄の桁数。枚数の上限ではなく Int の溢れ防止。 */
     private const val MAX_DIGITS = 7
@@ -48,9 +50,19 @@ object GenSettingDialog {
         val chipGroup = view.findViewById<ChipGroup>(R.id.cg_gen_setting_chips)
         val chipStrip = view.findViewById<View>(R.id.hsv_gen_setting_chips)
         val lockRatio = view.findViewById<MaterialSwitch>(R.id.sw_gen_setting_lock)
-        val snapTen = view.findViewById<MaterialSwitch>(R.id.sw_gen_setting_snap)
+        val snapEnabled = view.findViewById<MaterialSwitch>(R.id.sw_gen_setting_snap)
+        val snapStepRow = view.findViewById<View>(R.id.ll_gen_setting_snap_step)
+        val snapStepField = view.findViewById<EditText>(R.id.et_gen_setting_snap_step)
         val settingsPrefs = activity.getSharedPreferences(SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
-        snapTen.isChecked = settingsPrefs.getBoolean(SNAP_TEN_PREFERENCE, DEFAULT_SNAP_TEN)
+        snapEnabled.isChecked = settingsPrefs.getBoolean(
+            SNAP_ENABLED_PREFERENCE,
+            settingsPrefs.getBoolean(LEGACY_SNAP_ENABLED_PREFERENCE, DEFAULT_SNAP_ENABLED)
+        )
+        snapStepField.filters = arrayOf<InputFilter>(InputFilter.LengthFilter(3))
+        var snapStep = BuilderGenSettingPolicy.sanitizeSnapStep(
+            settingsPrefs.getInt(SNAP_STEP_PREFERENCE, BuilderGenSettingPolicy.DEFAULT_SNAP_STEP)
+        )
+        snapStepField.setText(snapStep.toString())
 
         val rows = mutableMapOf<BuilderGenSettingPolicy.Axis, Row>()
         val choices = choicesOf(kind)
@@ -67,11 +79,19 @@ object GenSettingDialog {
         }
 
         fun snapModeFor(source: ChangeSource): ResolutionControlPolicy.SnapMode =
-            if (source != ChangeSource.FIELD && snapTen.isChecked) {
-                ResolutionControlPolicy.SnapMode.TEN_PIXELS
+            if (source != ChangeSource.FIELD && snapEnabled.isChecked) {
+                ResolutionControlPolicy.SnapMode.CUSTOM
             } else {
                 ResolutionControlPolicy.SnapMode.EIGHT_PIXELS
             }
+
+        fun setSnapStep(raw: Int) {
+            snapStep = BuilderGenSettingPolicy.sanitizeSnapStep(raw)
+            if (snapStepField.text.toString() != snapStep.toString()) {
+                snapStepField.setText(snapStep.toString())
+            }
+            settingsPrefs.edit().putInt(SNAP_STEP_PREFERENCE, snapStep).commit()
+        }
 
         fun sync(keepFieldFor: BuilderGenSettingPolicy.Axis?) {
             val limit = BuilderGenSettingPolicy.AGENT_JOB_IMAGE_LIMIT
@@ -106,7 +126,7 @@ object GenSettingDialog {
             }
 
             if (axis == BuilderGenSettingPolicy.Axis.WIDTH || axis == BuilderGenSettingPolicy.Axis.HEIGHT) {
-                syncResolution(ResolutionControlPolicy.update(resolution, axis, raw, snapModeFor(source)))
+                syncResolution(ResolutionControlPolicy.update(resolution, axis, raw, snapModeFor(source), snapStep))
             } else {
                 draft = BuilderGenSettingPolicy.with(draft, axis, BuilderGenSettingPolicy.clamp(axis, raw))
             }
@@ -116,7 +136,7 @@ object GenSettingDialog {
 
         fun nudge(axis: BuilderGenSettingPolicy.Axis, direction: Int) {
             val step = if (axis == BuilderGenSettingPolicy.Axis.WIDTH || axis == BuilderGenSettingPolicy.Axis.HEIGHT) {
-                snapModeFor(ChangeSource.NUDGE).step
+                ResolutionControlPolicy.stepFor(snapModeFor(ChangeSource.NUDGE), snapStep)
             } else {
                 BuilderGenSettingPolicy.swipeStep(axis)
             }
@@ -176,7 +196,8 @@ object GenSettingDialog {
 
         val isResolution = kind == BuilderGenSettingPolicy.Kind.RESOLUTION
         lockRatio.visibility = if (isResolution) View.VISIBLE else View.GONE
-        snapTen.visibility = if (isResolution) View.VISIBLE else View.GONE
+        snapEnabled.visibility = if (isResolution) View.VISIBLE else View.GONE
+        snapStepRow.visibility = if (isResolution) View.VISIBLE else View.GONE
         lockRatio.setOnCheckedChangeListener { _, checked ->
             val mode = if (checked) {
                 ResolutionControlPolicy.LockMode.LOCKED
@@ -185,6 +206,32 @@ object GenSettingDialog {
             }
             syncResolution(ResolutionControlPolicy.setLocked(resolution, mode))
             sync(null)
+        }
+        snapEnabled.setOnCheckedChangeListener { _, checked ->
+            settingsPrefs.edit()
+                .putBoolean(SNAP_ENABLED_PREFERENCE, checked)
+                .putInt(SNAP_STEP_PREFERENCE, snapStep)
+                .commit()
+        }
+        snapStepField.addTextChangedListener { editable ->
+            val entered = editable?.toString()?.toIntOrNull() ?: return@addTextChangedListener
+            if (entered !in BuilderGenSettingPolicy.SNAP_STEP_MIN..BuilderGenSettingPolicy.SNAP_STEP_MAX) {
+                return@addTextChangedListener
+            }
+            snapStep = entered
+            settingsPrefs.edit().putInt(SNAP_STEP_PREFERENCE, entered).apply()
+        }
+        snapStepField.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                val entered = snapStepField.text.toString().toIntOrNull()
+                setSnapStep(entered ?: snapStep)
+            }
+        }
+        view.findViewById<MaterialButton>(R.id.btn_gen_setting_snap_minus).setOnClickListener {
+            setSnapStep(snapStep - 1)
+        }
+        view.findViewById<MaterialButton>(R.id.btn_gen_setting_snap_plus).setOnClickListener {
+            setSnapStep(snapStep + 1)
         }
 
         val dialog = Md3PopupDialog.showCompact(activity, view)
@@ -204,7 +251,16 @@ object GenSettingDialog {
         }
         view.findViewById<MaterialButton>(R.id.btn_gen_setting_apply).setOnClickListener {
             if (isResolution) {
-                settingsPrefs.edit().putBoolean(SNAP_TEN_PREFERENCE, snapTen.isChecked).apply()
+                snapStep = BuilderGenSettingPolicy.sanitizeSnapStep(
+                    snapStepField.text.toString().toIntOrNull()
+                )
+                if (snapStepField.text.toString() != snapStep.toString()) {
+                    snapStepField.setText(snapStep.toString())
+                }
+                settingsPrefs.edit()
+                    .putBoolean(SNAP_ENABLED_PREFERENCE, snapEnabled.isChecked)
+                    .putInt(SNAP_STEP_PREFERENCE, snapStep)
+                    .commit()
             }
             dialog.dismiss()
             onApply(draft)
