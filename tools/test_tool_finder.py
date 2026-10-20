@@ -35,11 +35,28 @@ class ToolFinderInteractionTest(unittest.TestCase):
         option_angle = expanded.index('val angle')
         self.assertLess(app_select, option_angle)
 
-    def test_reveal_opacity_uses_eased_progress(self):
+    def test_clockwise_reveal_uses_eased_sweep_not_global_fade(self):
         draw = block(self.overlay, '    fun draw(canvas: Canvas)', '    private fun drawWheel(')
-        self.assertIn('easeInOut(revealProgress)', draw)
-        self.assertIn('easeInOut(exitProgress)', draw)
+        self.assertIn('val sweepProgress = easeInOut(', draw)
+        self.assertIn('revealPath(sweepProgress)', draw)
+        self.assertNotIn('saveLayerAlpha', draw)
+        self.assertNotIn('canvas.scale(', draw)
         self.assertIn('private fun easeInOut(', self.overlay)
+
+    def test_clockwise_scanner_owns_opacity_animation(self):
+        scanner = block(self.overlay, '    private fun drawScanner(', '    private fun revealPath(')
+        self.assertIn('scannerPaint.alpha =', scanner)
+        self.assertIn('Color.alpha(scannerColor) * sweepFraction', scanner)
+        self.assertIn('closingSweepFraction * (1f - progress)', scanner)
+        self.assertIn('ToolFinderSpec.FULL_CIRCLE_DEGREES * sweepFraction', scanner)
+
+    def test_close_wipe_removes_content_clockwise(self):
+        reveal = block(self.overlay, '    private fun revealPath(', '    private fun drawIcon(')
+        self.assertIn('if (isClosing)', reveal)
+        self.assertIn('closingSweepFraction * (1f - progress)', reveal)
+        self.assertIn('ToolFinderSpec.FULL_CIRCLE_DEGREES * sweepFraction', reveal)
+        close = block(self.overlay, '    fun beginClosing()', '    fun draw(canvas: Canvas)')
+        self.assertIn('closingSweepFraction = easeInOut(revealProgress)', close)
 
     def test_vertical_center_stays_at_touch_point(self):
         anchor = block(self.overlay, '    val centerX =', '    var revealProgress =')

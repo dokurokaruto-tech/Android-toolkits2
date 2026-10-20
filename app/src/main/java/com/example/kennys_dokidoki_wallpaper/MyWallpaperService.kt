@@ -59,6 +59,8 @@ private object ToolFinderSpec {
     const val OPTION_ANGLE_STEP = 24f
     const val MAX_OPTION_ANGLE_DELTA = 13f
     const val OPTION_PICK_RADIUS_DP = 136f
+    const val FULL_CIRCLE_DEGREES = 360f
+    const val REVEAL_START_ANGLE_DEGREES = -90f
 }
 
 class MyWallpaperService : WallpaperService() {
@@ -970,6 +972,7 @@ private class ToolFinderOverlay(
         get() = expanded
 
     private var expanded = false
+    private var closingSweepFraction = 1f
     private var lastX = centerX
     private var lastY = centerY
     private var selectedTarget = ToolFinderTarget.NONE
@@ -1018,7 +1021,8 @@ private class ToolFinderOverlay(
     private val selectedOptionFill = paint(Paint.Style.FILL, Color.parseColor("#F038485B"))
     private val selectedOptionOutline = paint(Paint.Style.STROKE, Color.parseColor("#E0A6F0E4"), dp(1.5f))
     private val optionGlow = paint(Paint.Style.FILL, Color.parseColor("#355CE1D8"))
-    private val scannerPaint = paint(Paint.Style.STROKE, Color.parseColor("#E0A6F0E4"), dp(2f))
+    private val scannerColor = Color.parseColor("#E0A6F0E4")
+    private val scannerPaint = paint(Paint.Style.STROKE, scannerColor, dp(2f))
 
     init {
         bounds.set(centerX - baseRadius, centerY - baseRadius, centerX + baseRadius, centerY + baseRadius)
@@ -1095,40 +1099,24 @@ private class ToolFinderOverlay(
         selectedSection.takeIf { selectedTarget == ToolFinderTarget.SECTION }
 
     fun beginClosing() {
+        closingSweepFraction = easeInOut(revealProgress)
         isClosing = true
-        revealProgress = 1f
     }
 
     fun draw(canvas: Canvas) {
-        val revealEased = easeInOut(revealProgress)
-        val exitEased = easeInOut(exitProgress)
-        val alpha = if (isClosing) {
-            ((1f - exitEased) * 255f).toInt().coerceIn(0, 255)
-        } else {
-            (revealEased * 255f).toInt().coerceIn(0, 255)
-        }
-        val scale = if (isClosing) 1f - exitEased * 0.06f else 0.92f + revealEased * 0.08f
+        val sweepProgress = easeInOut(if (isClosing) exitProgress else revealProgress)
         val clipSave = canvas.save()
-        if (!isClosing && revealProgress < 1f) {
-            canvas.clipPath(revealPath())
+        if (isClosing || sweepProgress < 1f) {
+            canvas.clipPath(revealPath(sweepProgress))
         }
-        canvas.scale(scale, scale, centerX, centerY)
-        val layerSave = canvas.saveLayerAlpha(
-            centerX - maxExtent,
-            centerY - maxExtent,
-            centerX + maxExtent,
-            centerY + maxExtent,
-            alpha
-        )
 
         drawWheel(canvas)
         if (expanded) {
             drawExpandedTools(canvas)
         }
         drawCenterHole(canvas)
-        drawScanner(canvas)
+        drawScanner(canvas, sweepProgress)
 
-        canvas.restoreToCount(layerSave)
         canvas.restoreToCount(clipSave)
     }
 
@@ -1244,17 +1232,22 @@ private class ToolFinderOverlay(
         canvas.drawCircle(centerX, centerY, dp(2f), deadzoneDot)
     }
 
-    private fun drawScanner(canvas: Canvas) {
-        val progress = if (isClosing) exitProgress else revealProgress
-        if (progress <= 0f) {
-            return
+    private fun drawScanner(canvas: Canvas, progress: Float) {
+        val sweepFraction = if (isClosing) closingSweepFraction * (1f - progress) else progress
+        scannerPaint.alpha = (Color.alpha(scannerColor) * sweepFraction).toInt().coerceIn(0, 255)
+        val startAngle = if (isClosing) {
+            ToolFinderSpec.REVEAL_START_ANGLE_DEGREES +
+                ToolFinderSpec.FULL_CIRCLE_DEGREES * closingSweepFraction * progress
+        } else {
+            ToolFinderSpec.REVEAL_START_ANGLE_DEGREES
         }
+        val sweepAngle = ToolFinderSpec.FULL_CIRCLE_DEGREES * sweepFraction
         val radius = if (expanded) menuRadius + dp(8f) else baseRadius + dp(8f)
         val scanBounds = RectF(centerX - radius, centerY - radius, centerX + radius, centerY + radius)
-        canvas.drawArc(scanBounds, -90f, 360f * progress, false, scannerPaint)
+        canvas.drawArc(scanBounds, startAngle, sweepAngle, false, scannerPaint)
     }
 
-    private fun revealPath(): Path {
+    private fun revealPath(progress: Float): Path {
         val path = Path()
         val revealBounds = RectF(
             centerX - maxExtent,
@@ -1262,8 +1255,16 @@ private class ToolFinderOverlay(
             centerX + maxExtent,
             centerY + maxExtent
         )
+        val startAngle = if (isClosing) {
+            ToolFinderSpec.REVEAL_START_ANGLE_DEGREES +
+                ToolFinderSpec.FULL_CIRCLE_DEGREES * closingSweepFraction * progress
+        } else {
+            ToolFinderSpec.REVEAL_START_ANGLE_DEGREES
+        }
+        val sweepFraction = if (isClosing) closingSweepFraction * (1f - progress) else progress
+        val sweepAngle = ToolFinderSpec.FULL_CIRCLE_DEGREES * sweepFraction
         path.moveTo(centerX, centerY)
-        path.arcTo(revealBounds, -90f, 360f * revealProgress, false)
+        path.arcTo(revealBounds, startAngle, sweepAngle, false)
         path.close()
         return path
     }
