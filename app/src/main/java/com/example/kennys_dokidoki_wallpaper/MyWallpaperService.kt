@@ -59,6 +59,7 @@ private object ToolFinderSpec {
     const val OPTION_ANGLE_START = -150f
     const val OPTION_ANGLE_STEP = 24f
     const val MAX_OPTION_ANGLE_DELTA = 13f
+    const val OPTION_PICK_RADIUS_DP = 136f
 }
 
 class MyWallpaperService : WallpaperService() {
@@ -943,6 +944,7 @@ private class ToolFinderOverlay(
     private val menuRadius = dp(ToolFinderSpec.MENU_RADIUS_DP)
     private val optionWidth = dp(ToolFinderSpec.OPTION_WIDTH_DP)
     private val optionHeight = dp(ToolFinderSpec.OPTION_HEIGHT_DP)
+    private val optionPickRadius = dp(ToolFinderSpec.OPTION_PICK_RADIUS_DP)
     private val maxExtent = dp(ToolFinderSpec.MAX_EXTENT_DP)
     private val maxPickRadius = maxExtent
     private val appColor = Color.parseColor("#D0BCFF")
@@ -1047,11 +1049,19 @@ private class ToolFinderOverlay(
             return
         }
 
-        if (dy > centerHoleRadius && distance <= baseRadius) {
-            selectedTarget = ToolFinderTarget.CHAT
+        if (distance <= baseRadius) {
+            selectedTarget = when {
+                dy < -centerHoleRadius -> ToolFinderTarget.APP
+                dy > centerHoleRadius -> ToolFinderTarget.CHAT
+                else -> ToolFinderTarget.NONE
+            }
             return
         }
-        if (dy >= -centerHoleRadius) {
+        if (dy < -centerHoleRadius && distance < optionPickRadius) {
+            selectedTarget = ToolFinderTarget.APP
+            return
+        }
+        if (dy >= -centerHoleRadius || distance < optionPickRadius) {
             selectedTarget = ToolFinderTarget.NONE
             return
         }
@@ -1067,7 +1077,7 @@ private class ToolFinderOverlay(
         selectedSection = option.section
     }
 
-    fun isAppSelected(): Boolean = !expanded && selectedTarget == ToolFinderTarget.APP
+    fun isAppSelected(): Boolean = selectedTarget == ToolFinderTarget.APP
 
     fun expand(): Boolean {
         if (expanded || !isAppSelected() || isClosing) {
@@ -1089,8 +1099,14 @@ private class ToolFinderOverlay(
     }
 
     fun draw(canvas: Canvas) {
-        val alpha = if (isClosing) ((1f - exitProgress) * 255f).toInt().coerceIn(0, 255) else 255
-        val scale = if (isClosing) 1f - exitProgress * 0.06f else 0.92f + revealProgress * 0.08f
+        val revealEased = easeInOut(revealProgress)
+        val exitEased = easeInOut(exitProgress)
+        val alpha = if (isClosing) {
+            ((1f - exitEased) * 255f).toInt().coerceIn(0, 255)
+        } else {
+            (revealEased * 255f).toInt().coerceIn(0, 255)
+        }
+        val scale = if (isClosing) 1f - exitEased * 0.06f else 0.92f + revealEased * 0.08f
         val clipSave = canvas.save()
         if (!isClosing && revealProgress < 1f) {
             canvas.clipPath(revealPath())
@@ -1113,6 +1129,11 @@ private class ToolFinderOverlay(
 
         canvas.restoreToCount(layerSave)
         canvas.restoreToCount(clipSave)
+    }
+
+    private fun easeInOut(progress: Float): Float {
+        val value = progress.coerceIn(0f, 1f)
+        return value * value * (3f - 2f * value)
     }
 
     private fun drawWheel(canvas: Canvas) {
