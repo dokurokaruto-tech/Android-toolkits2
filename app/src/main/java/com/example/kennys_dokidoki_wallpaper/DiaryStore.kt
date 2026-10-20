@@ -79,7 +79,7 @@ object DiaryStore {
 
     fun imageFile(context: Context, fileName: String): File = File(imagesDir(context), fileName)
 
-    /** Drive 同期が使う生データ。中身の解釈はせず、ファイルとして出し入れする */
+    /** バックアップが使う生データ。中身の解釈はせず、ファイルとして出し入れする */
     fun readRaw(context: Context, dateKey: String): String? =
         AtomicFiles.readUtf8(entryFile(context, dateKey))
 

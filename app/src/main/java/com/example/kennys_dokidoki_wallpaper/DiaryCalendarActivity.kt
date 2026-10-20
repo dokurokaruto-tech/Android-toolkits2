@@ -1,15 +1,13 @@
 package com.example.kennys_dokidoki_wallpaper
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
-import android.widget.Toast
+import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -18,12 +16,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.tabs.TabLayout
 import com.google.android.material.color.MaterialColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.tabs.TabLayout
 import com.google.android.material.textview.MaterialTextView
-import com.google.android.gms.common.api.CommonStatusCodes
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -34,7 +31,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private lateinit var monthAdapter: DiaryMonthAdapter
     private lateinit var notesAdapter: LibraryNoteAdapter
     private lateinit var monthTitle: MaterialTextView
-    private lateinit var driveStatus: MaterialTextView
+    private lateinit var backupStatus: MaterialTextView
     private lateinit var tabs: TabLayout
     private lateinit var calendarContent: View
     private lateinit var notesContent: View
@@ -46,28 +43,14 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private var activeNoteKind = LibraryNoteKind.ESSAY
     private var shownYear = 0
     private var shownMonth = 0
-    private var syncInProgress = false
-    private var authFlowPending = false
 
-    private val signIn = registerForActivityResult(
+    private val createBackupFile = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        authFlowPending = false
-        // Google Sign-In は失敗時にも RESULT_CANCELED を返すことがあるため、
-        // resultCode で早期終了せず Intent から ApiException の理由まで読む。
-        val signInResult = GoogleDriveAuth.accountFromResult(result.data)
-        val email = signInResult.email
-        if (email == null) {
-            showSignInFailure(signInResult)
-            return@registerForActivityResult
-        }
-        DriveSyncPrefs.link(this, email)
-        refresh()
-        Toast.makeText(this, "$email と連携しました。", Toast.LENGTH_SHORT).show()
-        syncWithDrive(Feedback.SHOW)
-    }
+    ) { result -> handleBackupSelection(result, isNewFile = true) }
 
-    private enum class Feedback { SHOW, SILENT }
+    private val openBackupFile = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result -> handleBackupSelection(result, isNewFile = false) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,7 +61,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
         toolbar.setOnMenuItemClickListener(::onToolbarMenuItemClick)
 
         monthTitle = findViewById(R.id.tv_month_title)
-        driveStatus = findViewById(R.id.tv_drive_status)
+        backupStatus = findViewById(R.id.tv_backup_status)
         calendarContent = findViewById(R.id.library_diary_content)
         notesContent = findViewById(R.id.library_notes_content)
         notesHeading = findViewById(R.id.tv_library_notes_heading)
@@ -112,15 +95,16 @@ class DiaryCalendarActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
-        // 開くたびに Drive 側の新しい日記・ノートを取り込む。
-        if (!authFlowPending && DiaryDriveSync.isLinked(this)) {
-            syncWithDrive(Feedback.SILENT)
+        // 前回のバックグラウンド更新が中断／失敗していた場合のみ再試行する。
+        lifecycleScope.launch {
+            LibraryBackupSync.backupIfDirty(this@DiaryCalendarActivity)
+            refresh()
         }
     }
 
     private fun onToolbarMenuItemClick(item: MenuItem): Boolean = when (item.itemId) {
-        R.id.action_library_drive -> {
-            showDriveDialog()
+        R.id.action_library_backup -> {
+            showBackupDialog()
             true
         }
         else -> false
@@ -204,7 +188,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private fun refresh() {
         refreshCalendar()
         refreshNotes()
-        driveStatus.text = driveStatusText()
+        backupStatus.text = backupStatusText()
     }
 
     private fun refreshCalendar() {
@@ -228,13 +212,17 @@ class DiaryCalendarActivity : AppCompatActivity() {
         notesList.visibility = if (notes.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    private fun driveStatusText(): String {
-        val account = DriveSyncPrefs.account(this) ?: return "Google Drive: 未連携"
-        val last = DriveSyncPrefs.lastSyncMs(this)
-        if (last == 0L) {
-            return "Google Drive: $account"
+    private fun backupStatusText(): String {
+        val name = LibraryBackupSync.selectedName(this)
+            ?: return "バックアップ先: 未設定（保存先を選択してください）"
+        val last = LibraryBackupSync.lastBackupMs(this)
+        val error = LibraryBackupSync.lastError(this)
+        val status = when {
+            error != null -> "バックアップ先: $name（更新に失敗）"
+            last == 0L -> "バックアップ先: $name（未更新）"
+            else -> "バックアップ先: $name（最終更新 ${DiaryStore.displayDate(dateOf(last))}）"
         }
-        return "Google Drive: $account（最終同期 ${DiaryStore.displayDate(dateOf(last))}）"
+        return if (error == null) status else "$status\n$error"
     }
 
     private fun dateOf(epochMs: Long): String {
@@ -244,102 +232,121 @@ class DiaryCalendarActivity : AppCompatActivity() {
         return DiaryStore.dateKey(date.year, date.monthValue, date.dayOfMonth)
     }
 
-    private fun showSignInFailure(result: GoogleDriveAuth.SignInResult) {
-        if (result.statusCode == CommonStatusCodes.DEVELOPER_ERROR) {
-            showOAuthConfigurationDialog()
-            return
-        }
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Google Driveに接続できませんでした")
-            .setMessage(result.errorMessage ?: "Googleアカウントと連携できませんでした。")
-            .setPositiveButton("閉じる", null)
-            .show()
-    }
-
-    private fun showOAuthConfigurationDialog() {
-        val appPackageName = packageName
-        val sha1 = GoogleDriveAuth.signingCertificateSha1(this) ?: "取得できませんでした"
-        val message = """
-            Googleから OAuth 設定エラー (10) が返りました。
-            Google Cloud Console の「API とサービス」>「認証情報」で Android OAuth クライアントを作成または修正し、次の値を一致させてください。
-
-            パッケージ名
-            $appPackageName
-
-            署名証明書の SHA-1
-            $sha1
-
-            Google Drive API が有効になっていることも確認してください。
-        """.trimIndent()
-        val copyText = "Package name: $appPackageName\nSHA-1: $sha1"
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Google OAuthの設定エラー")
-            .setMessage(message)
-            .setNeutralButton("設定値をコピー") { _, _ ->
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("Android OAuth client", copyText))
-                Toast.makeText(this, "設定値をコピーしました。", Toast.LENGTH_SHORT).show()
-            }
-            .setPositiveButton("閉じる", null)
-            .show()
-    }
-
-    private fun syncWithDrive(feedback: Feedback) {
-        if (syncInProgress) {
-            return
-        }
-        syncInProgress = true
-        lifecycleScope.launch {
-            val outcome = try {
-                DiaryDriveSync.sync(this@DiaryCalendarActivity)
-            } finally {
-                syncInProgress = false
-            }
-            refresh()
-            if (feedback == Feedback.SILENT) {
-                return@launch
-            }
-            val message = outcome.error
-                ?: "同期しました。アップロード${outcome.pushed}件 / 取り込み${outcome.pulled}件"
-            Toast.makeText(this@DiaryCalendarActivity, message, Toast.LENGTH_LONG).show()
-        }
-    }
-
-    /** Drive 連携の状態と操作をまとめた Material 3 ダイアログ */
-    private fun showDriveDialog() {
-        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_diary_drive)
-        val linked = DiaryDriveSync.isLinked(this)
-        view.findViewById<MaterialTextView>(R.id.tv_drive_dialog_status).text = driveStatusText()
-        view.findViewById<MaterialButton>(R.id.btn_drive_connect).text =
-            if (linked) "Googleアカウントを変更" else "Googleアカウントと連携"
-        view.findViewById<MaterialButton>(R.id.btn_drive_sync_now).visibility =
-            if (linked) View.VISIBLE else View.GONE
-        view.findViewById<MaterialButton>(R.id.btn_drive_disconnect).visibility =
-            if (linked) View.VISIBLE else View.GONE
+    private fun showBackupDialog() {
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_library_backup)
+        val hasBackup = LibraryBackupSync.selectedUri(this) != null
+        view.findViewById<MaterialTextView>(R.id.tv_backup_dialog_status).text = backupStatusText()
+        view.findViewById<MaterialButton>(R.id.btn_backup_choose).text =
+            if (hasBackup) "保存先ファイルを変更" else "保存先ファイルを選択"
+        view.findViewById<MaterialButton>(R.id.btn_backup_now).visibility =
+            if (hasBackup) View.VISIBLE else View.GONE
+        view.findViewById<MaterialButton>(R.id.btn_backup_disconnect).visibility =
+            if (hasBackup) View.VISIBLE else View.GONE
 
         val dialog = Md3PopupDialog.show(this, view)
-        view.findViewById<MaterialButton>(R.id.btn_drive_connect).setOnClickListener {
-            authFlowPending = true
-            try {
-                signIn.launch(GoogleDriveAuth.signInIntent(this))
-            } catch (error: Exception) {
-                authFlowPending = false
-                Toast.makeText(this, error.message ?: "Googleアカウント画面を開けませんでした。", Toast.LENGTH_LONG).show()
+        view.findViewById<MaterialButton>(R.id.btn_backup_choose).setOnClickListener {
+            dialog.dismiss()
+            showBackupFileOptions()
+        }
+        view.findViewById<MaterialButton>(R.id.btn_backup_now).setOnClickListener {
+            dialog.dismiss()
+            runManualBackup()
+        }
+        view.findViewById<MaterialButton>(R.id.btn_backup_disconnect).setOnClickListener {
+            dialog.dismiss()
+            confirmDisconnectBackup()
+        }
+        view.findViewById<MaterialButton>(R.id.btn_backup_close).setOnClickListener { dialog.dismiss() }
+    }
+
+    private fun showBackupFileOptions() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("バックアップファイル")
+            .setItems(arrayOf("新しいバックアップを作成", "既存のバックアップを選択")) { _, which ->
+                if (which == 0) launchCreateBackupPicker() else launchOpenBackupPicker()
             }
-            dialog.dismiss()
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun launchCreateBackupPicker() {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = LibraryBackupArchive.MIME_TYPE
+            putExtra(Intent.EXTRA_TITLE, LibraryBackupArchive.SUGGESTED_FILE_NAME)
+            addFlags(safGrantFlags())
         }
-        view.findViewById<MaterialButton>(R.id.btn_drive_sync_now).setOnClickListener {
-            syncWithDrive(Feedback.SHOW)
-            dialog.dismiss()
+        try {
+            createBackupFile.launch(intent)
+        } catch (error: Exception) {
+            showBackupOutcome(LibraryBackupSync.Outcome(false, error.localizedMessage ?: "ファイル選択画面を開けませんでした。"))
         }
-        view.findViewById<MaterialButton>(R.id.btn_drive_disconnect).setOnClickListener {
-            GoogleDriveAuth.signOut(this)
-            DriveSyncPrefs.unlink(this)
+    }
+
+    private fun launchOpenBackupPicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            // ProviderによってZIPのMIME登録が異なるため、候補は広く表示して中身を検証する。
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+            addFlags(safGrantFlags())
+        }
+        try {
+            openBackupFile.launch(intent)
+        } catch (error: Exception) {
+            showBackupOutcome(LibraryBackupSync.Outcome(false, error.localizedMessage ?: "ファイル選択画面を開けませんでした。"))
+        }
+    }
+
+    private fun safGrantFlags(): Int =
+        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+
+    private fun handleBackupSelection(result: ActivityResult, isNewFile: Boolean) {
+        if (result.resultCode != Activity.RESULT_OK) return
+        val data = result.data
+        val uri = data?.data
+        if (data == null || uri == null) {
+            showBackupOutcome(LibraryBackupSync.Outcome(false, "選択したファイルの場所を取得できませんでした。"))
+            return
+        }
+        val grantFlags = data.flags
+        lifecycleScope.launch {
+            val outcome = LibraryBackupSync.connect(this@DiaryCalendarActivity, uri, grantFlags, isNewFile)
             refresh()
-            dialog.dismiss()
+            showBackupOutcome(outcome)
         }
-        view.findViewById<MaterialButton>(R.id.btn_drive_close).setOnClickListener { dialog.dismiss() }
+    }
+
+    private fun runManualBackup() {
+        lifecycleScope.launch {
+            val outcome = LibraryBackupSync.backupNow(this@DiaryCalendarActivity)
+            refresh()
+            showBackupOutcome(outcome)
+        }
+    }
+
+    private fun showBackupOutcome(outcome: LibraryBackupSync.Outcome) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(if (outcome.success) "バックアップ" else "バックアップに失敗しました")
+            .setMessage(outcome.message)
+            .setPositiveButton("閉じる", null)
+            .show()
+    }
+
+    private fun confirmDisconnectBackup() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("保存先の設定を解除しますか？")
+            .setMessage("設定とアクセス権だけを解除します。バックアップファイル自体は削除されません。")
+            .setNegativeButton("キャンセル", null)
+            .setPositiveButton("解除") { _, _ ->
+                lifecycleScope.launch {
+                    LibraryBackupSync.disconnect(this@DiaryCalendarActivity)
+                    refresh()
+                }
+            }
+            .show()
     }
 
     private fun openDate(dateKey: String) {
@@ -352,7 +359,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private fun openNote(note: LibraryNote) {
         startActivity(
             Intent(this, LibraryNoteEditorActivity::class.java)
-                .putExtra(LibraryNoteEditorActivity.EXTRA_KIND, note.kind.driveKey)
+                .putExtra(LibraryNoteEditorActivity.EXTRA_KIND, note.kind.archiveKey)
                 .putExtra(LibraryNoteEditorActivity.EXTRA_ID, note.id)
         )
     }

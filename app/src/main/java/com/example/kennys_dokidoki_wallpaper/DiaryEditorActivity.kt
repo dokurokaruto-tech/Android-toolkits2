@@ -79,8 +79,8 @@ class DiaryEditorActivity : AppCompatActivity() {
     private fun save() {
         val entry = DiaryEntry(dateKey, editor.text?.toString().orEmpty(), photoLayer.snapshot())
         DiaryStore.save(this, entry)
-        // 連携済みなら保存のたびに Drive を追いかけさせる
-        DiaryDriveSync.syncInBackground(this)
+        LibraryBackupSync.markDirty(this)
+        LibraryBackupSync.backupInBackground(this)
     }
 
     private fun confirmDelete(handle: DiaryPhotoHandle) {

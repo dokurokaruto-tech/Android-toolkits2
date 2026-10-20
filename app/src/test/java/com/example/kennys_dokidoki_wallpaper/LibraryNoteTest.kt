@@ -26,12 +26,16 @@ class LibraryNoteTest {
     }
 
     @Test
-    fun driveFileNamesKeepLibraryNotesSeparateFromDiaryDates() {
-        val essayName = LibraryNoteStore.driveFileName(LibraryNoteKind.ESSAY, "note-123")
-        val wishName = LibraryNoteStore.driveFileName(LibraryNoteKind.WISH_LIST, "note-123")
-
-        assertEquals(LibraryNoteStore.Address(LibraryNoteKind.ESSAY, "note-123"), LibraryNoteStore.addressOf(essayName))
-        assertEquals(LibraryNoteStore.Address(LibraryNoteKind.WISH_LIST, "note-123"), LibraryNoteStore.addressOf(wishName))
-        assertNull(LibraryNoteStore.addressOf("library_essay_../secret.json"))
+    fun backupPathsKeepTheTwoLibraryKindsSeparateAndRejectTraversal() {
+        assertEquals(
+            LibraryBackupPolicy.NoteAddress(LibraryNoteKind.ESSAY, "note-123"),
+            LibraryBackupPolicy.noteAddressOf("notes/essay/note-123.json")
+        )
+        assertEquals(
+            LibraryBackupPolicy.NoteAddress(LibraryNoteKind.WISH_LIST, "note-123"),
+            LibraryBackupPolicy.noteAddressOf("notes/wish/note-123.json")
+        )
+        assertNull(LibraryBackupPolicy.noteAddressOf("notes/essay/../secret.json"))
+        assertNull(LibraryBackupPolicy.noteAddressOf("notes/unknown/note-123.json"))
     }
 }

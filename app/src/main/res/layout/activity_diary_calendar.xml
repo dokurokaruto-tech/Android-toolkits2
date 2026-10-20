@@ -47,14 +47,14 @@
         app:strokeWidth="1dp">
 
         <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/tv_drive_status"
+            android:id="@+id/tv_backup_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingStart="14dp"
             android:paddingTop="9dp"
             android:paddingEnd="14dp"
             android:paddingBottom="9dp"
-            android:text="Google Drive: 未連携"
+            android:text="バックアップ先: 未設定"
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:ignore="HardcodedText" />

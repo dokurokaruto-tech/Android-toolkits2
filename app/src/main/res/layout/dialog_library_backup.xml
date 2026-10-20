@@ -11,7 +11,7 @@
     <com.google.android.material.textview.MaterialTextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="私の図書館を Google Drive と連携"
+        android:text="バックアップファイルの設定"
         android:textAppearance="?attr/textAppearanceHeadlineSmall"
         android:textColor="?attr/colorOnSurface"
         tools:ignore="HardcodedText" />
@@ -27,7 +27,7 @@
         app:strokeWidth="1dp">
 
         <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/tv_drive_dialog_status"
+            android:id="@+id/tv_backup_dialog_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="14dp"
@@ -39,42 +39,42 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="連携すると Drive に同期用フォルダ「Kennys日記」を作成または再利用し、日記・エッセイ・やりたい事リストを同期します。日記の画像も保存のたびにアップロードし、開くたびに Drive 側の新しい記録を取り込みます。"
+        android:text="日記・写真・エッセイ・やりたい事リストを1つのZIPに保存します。Androidのファイル選択画面でGoogle Driveなどを選べます。Google Cloud Consoleへの登録やOAuth設定は不要です。\n\n初回は新しいファイルを作るか、既存のバックアップを選択してください。既存データはローカルを消さず、項目ごとの更新日時でマージします。これはファイルバックアップであり、複数端末のリアルタイム同期ではありません。"
         android:textAppearance="?attr/textAppearanceBodyMedium"
         android:textColor="?attr/colorOnSurfaceVariant"
         tools:ignore="HardcodedText" />
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_drive_connect"
+        android:id="@+id/btn_backup_choose"
         style="@style/Widget.Material3.Button.TonalButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
-        android:text="Googleアカウントと連携"
-        app:icon="@drawable/ic_md3_link"
+        android:text="保存先ファイルを選択"
+        app:icon="@drawable/ic_md3_save"
         tools:ignore="HardcodedText" />
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_drive_sync_now"
+        android:id="@+id/btn_backup_now"
         style="@style/Widget.Material3.Button.OutlinedButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="今すぐ同期"
+        android:text="今すぐバックアップ"
         app:icon="@drawable/ic_md3_refresh"
         tools:ignore="HardcodedText" />
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_drive_disconnect"
+        android:id="@+id/btn_backup_disconnect"
         style="@style/Widget.Material3.Button.TextButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="連携を解除"
+        android:text="保存先の設定を解除"
         tools:ignore="HardcodedText" />
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_drive_close"
+        android:id="@+id/btn_backup_close"
         style="@style/Widget.Material3.Button.TextButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

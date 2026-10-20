@@ -65,7 +65,6 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.recyclerview)
     implementation(libs.androidx.biometric)
-    implementation(libs.play.services.auth)
     implementation("androidx.documentfile:documentfile:1.0.1")
     
     implementation(libs.glide)

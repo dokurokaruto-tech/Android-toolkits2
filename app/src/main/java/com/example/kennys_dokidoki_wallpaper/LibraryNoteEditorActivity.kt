@@ -24,7 +24,7 @@ class LibraryNoteEditorActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_library_note_editor)
 
-        kind = LibraryNoteKind.fromDriveKey(intent.getStringExtra(EXTRA_KIND)) ?: run {
+        kind = LibraryNoteKind.fromArchiveKey(intent.getStringExtra(EXTRA_KIND)) ?: run {
             finish()
             return
         }
@@ -93,7 +93,8 @@ class LibraryNoteEditorActivity : AppCompatActivity() {
         LibraryNoteStore.save(this, LibraryNote(noteId, kind, title, body))
         lastSavedTitle = title
         lastSavedBody = body
-        DiaryDriveSync.syncInBackground(this)
+        LibraryBackupSync.markDirty(this)
+        LibraryBackupSync.backupInBackground(this)
     }
 
     companion object {
