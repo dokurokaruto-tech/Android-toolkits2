@@ -38,7 +38,7 @@ class DiaryDateAdapter(
     override fun onBindViewHolder(holder: DateHolder, position: Int) {
         val row = rows[position]
         holder.date.text = DiaryStore.displayDate(row.dateKey)
-        holder.preview.text = row.text.ifBlank { "（画像のみ）" }
+        holder.preview.text = row.text.replace("\n", " ").ifBlank { "（画像のみ）" }
         holder.itemView.setOnClickListener { onPick(row.dateKey) }
     }
 }
