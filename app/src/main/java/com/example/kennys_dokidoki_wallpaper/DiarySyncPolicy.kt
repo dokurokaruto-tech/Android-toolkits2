@@ -1,5 +1,7 @@
 package com.example.kennys_dokidoki_wallpaper
 
+import java.time.LocalDate
+
 /**
  * ローカルと Drive のどちらが新しいかを決める規則。
  * 端末と Drive の時計はぴったり合わないので、わずかな差は「同じ」とみなす。
@@ -13,11 +15,21 @@ object DiarySyncPolicy {
     const val ENTRY_MIME = "application/json"
     const val IMAGE_MIME = "image/*"
     const val IMAGE_PREFIX = "img_"
+    private val DATE_KEY_PATTERN = Regex("\\d{4}-\\d{2}-\\d{2}")
 
     fun entryFileName(dateKey: String): String = dateKey + ENTRY_SUFFIX
 
-    fun dateKeyOf(driveFileName: String): String? =
-        if (driveFileName.endsWith(ENTRY_SUFFIX)) driveFileName.removeSuffix(ENTRY_SUFFIX) else null
+    fun dateKeyOf(driveFileName: String): String? {
+        if (!driveFileName.endsWith(ENTRY_SUFFIX)) {
+            return null
+        }
+        val dateKey = driveFileName.removeSuffix(ENTRY_SUFFIX)
+        if (!DATE_KEY_PATTERN.matches(dateKey)) {
+            return null
+        }
+        return runCatching { LocalDate.parse(dateKey).takeIf { it.toString() == dateKey }?.let { dateKey } }
+            .getOrNull()
+    }
 
     fun imageFileName(localName: String): String = IMAGE_PREFIX + localName
 

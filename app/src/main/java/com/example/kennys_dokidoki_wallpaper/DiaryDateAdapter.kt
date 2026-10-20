@@ -4,8 +4,8 @@ import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.textview.MaterialTextView
 
 /** 記録のある日付の一覧。1行タップでその日の日記へ */
 class DiaryDateAdapter(
@@ -17,8 +17,8 @@ class DiaryDateAdapter(
     private var rows: List<Row> = emptyList()
 
     class DateHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val date: TextView = view.findViewById(R.id.tv_diary_date)
-        val preview: TextView = view.findViewById(R.id.tv_diary_preview)
+        val date: MaterialTextView = view.findViewById(R.id.tv_diary_date)
+        val preview: MaterialTextView = view.findViewById(R.id.tv_diary_preview)
     }
 
     @SuppressLint("NotifyDataSetChanged")

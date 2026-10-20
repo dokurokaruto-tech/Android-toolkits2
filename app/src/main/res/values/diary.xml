@@ -3,6 +3,6 @@
     <!-- 日記の用紙。画面より十分に長く取り、画像を自由に置けるようにする -->
     <dimen name="diary_canvas_height">1600dp</dimen>
 
-    <!-- 書いた量を示す緑。濃さは文字数に応じて透明度で変える -->
-    <color name="diary_day_green">#4CAF50</color>
+    <!-- Material 3 の primary container 色で記録日を示す。濃さは文字数に応じて変える -->
+    <color name="diary_day_primary_container">#4F378B</color>
 </resources>

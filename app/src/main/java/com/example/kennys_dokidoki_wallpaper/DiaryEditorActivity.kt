@@ -1,23 +1,20 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.os.Bundle
-import android.widget.EditText
+import android.view.MenuItem
 import android.widget.FrameLayout
-import android.widget.ImageButton
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.button.MaterialButton
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
 
-/**
- * 1日分の日記を書く画面。文字はいくらでも書け、画像は用紙の好きな場所へ置ける。
- */
+/** 1日分の日記を書く画面。文字はいくらでも書け、画像は用紙の好きな場所へ置ける。 */
 class DiaryEditorActivity : AppCompatActivity() {
 
     private lateinit var dateKey: String
-    private lateinit var editor: EditText
+    private lateinit var editor: TextInputEditText
     private lateinit var canvas: FrameLayout
     private lateinit var photoLayer: DiaryPhotoLayer
 
@@ -52,17 +49,25 @@ class DiaryEditorActivity : AppCompatActivity() {
         canvas = findViewById(R.id.diary_canvas)
         photoLayer = DiaryPhotoLayer(canvas) { handle -> confirmDelete(handle) }
 
-        findViewById<TextView>(R.id.tv_editor_date).text = DiaryStore.displayDate(dateKey)
-        findViewById<ImageButton>(R.id.btn_editor_back).setOnClickListener { finish() }
-        findViewById<ImageButton>(R.id.btn_editor_add_image).setOnClickListener {
-            pickImage.launch("image/*")
-        }
-        findViewById<MaterialButton>(R.id.btn_editor_save).setOnClickListener {
-            save()
-            Toast.makeText(this, "保存しました。", Toast.LENGTH_SHORT).show()
-        }
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar_diary_editor)
+        toolbar.title = DiaryStore.displayDate(dateKey)
+        toolbar.setNavigationOnClickListener { finish() }
+        toolbar.setOnMenuItemClickListener(::onToolbarMenuItemClick)
 
         restore()
+    }
+
+    private fun onToolbarMenuItemClick(item: MenuItem): Boolean = when (item.itemId) {
+        R.id.action_diary_add_image -> {
+            pickImage.launch("image/*")
+            true
+        }
+        R.id.action_diary_save -> {
+            save()
+            Toast.makeText(this, "保存しました。", Toast.LENGTH_SHORT).show()
+            true
+        }
+        else -> false
     }
 
     private fun restore() {
@@ -72,15 +77,16 @@ class DiaryEditorActivity : AppCompatActivity() {
     }
 
     private fun save() {
-        val entry = DiaryEntry(dateKey, editor.text.toString(), photoLayer.snapshot())
+        val entry = DiaryEntry(dateKey, editor.text?.toString().orEmpty(), photoLayer.snapshot())
         DiaryStore.save(this, entry)
         // 連携済みなら保存のたびに Drive を追いかけさせる
-        DiaryDriveSync.pushInBackground(this, entry)
+        DiaryDriveSync.syncInBackground(this)
     }
 
     private fun confirmDelete(handle: DiaryPhotoHandle) {
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("この画像を削除しますか？")
+            .setMessage("この日記から画像を取り除きます。")
             .setPositiveButton("削除") { _, _ ->
                 photoLayer.remove(handle)
                 save()

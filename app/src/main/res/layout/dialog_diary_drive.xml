@@ -1,42 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="?android:attr/colorBackground"
+    android:background="?attr/colorSurface"
     android:orientation="vertical"
     android:padding="24dp">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <com.google.android.material.textview.MaterialTextView
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Google Drive連携"
+        android:text="私の図書館を Google Drive と連携"
+        android:textAppearance="?attr/textAppearanceHeadlineSmall"
         android:textColor="?attr/colorOnSurface"
-        android:textSize="20sp"
-        android:textStyle="bold" />
+        tools:ignore="HardcodedText" />
 
-    <TextView
-        android:id="@+id/tv_drive_dialog_status"
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:textSize="13sp" />
+        android:layout_marginTop="16dp"
+        app:cardBackgroundColor="?attr/colorSurfaceContainerLow"
+        app:cardCornerRadius="14dp"
+        app:cardElevation="0dp"
+        app:strokeColor="?attr/colorOutlineVariant"
+        app:strokeWidth="1dp">
 
-    <TextView
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tv_drive_dialog_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="14dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.textview.MaterialTextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="連携すると Drive に「Kennys日記」フォルダを作り、保存のたびに本文と画像をアップロードします。開くたびに Drive 側の新しい記録も取り込みます。"
+        android:layout_marginTop="16dp"
+        android:text="連携すると Drive に同期用フォルダ「Kennys日記」を作成または再利用し、日記・エッセイ・やりたい事リストを同期します。日記の画像も保存のたびにアップロードし、開くたびに Drive 側の新しい記録を取り込みます。"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
         android:textColor="?attr/colorOnSurfaceVariant"
-        android:textSize="12sp" />
+        tools:ignore="HardcodedText" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btn_drive_connect"
         style="@style/Widget.Material3.Button.TonalButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Googleアカウントと連携" />
+        android:layout_marginTop="20dp"
+        android:text="Googleアカウントと連携"
+        app:icon="@drawable/ic_md3_link"
+        tools:ignore="HardcodedText" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btn_drive_sync_now"
@@ -44,7 +60,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="今すぐ同期" />
+        android:text="今すぐ同期"
+        app:icon="@drawable/ic_md3_refresh"
+        tools:ignore="HardcodedText" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btn_drive_disconnect"
@@ -52,7 +70,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="連携を解除" />
+        android:text="連携を解除"
+        tools:ignore="HardcodedText" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btn_drive_close"
@@ -61,5 +80,6 @@
         android:layout_height="wrap_content"
         android:layout_gravity="end"
         android:layout_marginTop="8dp"
-        android:text="閉じる" />
+        android:text="閉じる"
+        tools:ignore="HardcodedText" />
 </LinearLayout>

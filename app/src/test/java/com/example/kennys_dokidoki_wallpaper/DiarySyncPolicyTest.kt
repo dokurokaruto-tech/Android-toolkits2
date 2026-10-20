@@ -13,6 +13,8 @@ class DiarySyncPolicyTest {
         assertEquals("2026-09-30.json", DiarySyncPolicy.entryFileName("2026-09-30"))
         assertEquals("2026-09-30", DiarySyncPolicy.dateKeyOf("2026-09-30.json"))
         assertNull(DiarySyncPolicy.dateKeyOf("img_abc.img"))
+        assertNull(DiarySyncPolicy.dateKeyOf("library_essay_note-123.json"))
+        assertNull(DiarySyncPolicy.dateKeyOf("2026-13-40.json"))
         assertEquals("abc.img", DiarySyncPolicy.localImageName("img_abc.img"))
         assertNull(DiarySyncPolicy.localImageName("2026-09-30.json"))
     }

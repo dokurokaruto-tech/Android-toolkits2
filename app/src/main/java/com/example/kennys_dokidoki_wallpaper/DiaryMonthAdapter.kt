@@ -4,8 +4,8 @@ import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.textview.MaterialTextView
 
 /**
  * 1か月分の升目。日記のある日は緑で塗り、文字数が多いほど濃くする。
@@ -21,7 +21,7 @@ class DiaryMonthAdapter(
 
     class DayHolder(view: View) : RecyclerView.ViewHolder(view) {
         val fill: View = view.findViewById(R.id.v_day_fill)
-        val number: TextView = view.findViewById(R.id.tv_day_number)
+        val number: MaterialTextView = view.findViewById(R.id.tv_day_number)
     }
 
     @SuppressLint("NotifyDataSetChanged")
