@@ -136,30 +136,32 @@ object BocchiLive2dPolicy {
     const val STAGE_BPM = 150f
 
     // ドラムキットの正規化UVレイアウト（キャラクター矩形基準。画面左が本人の右手側）
-    const val KIT_HAT_U = 0.20f
-    const val KIT_HAT_V = 0.56f
+    const val KIT_HAT_U = 0.22f
+    const val KIT_HAT_V = 0.58f
     const val KIT_HAT_RU = 0.085f
     const val KIT_HAT_RV = 0.024f
-    const val KIT_SNARE_U = 0.46f
-    const val KIT_SNARE_V = 0.66f
+    const val KIT_SNARE_U = 0.52f
+    const val KIT_SNARE_V = 0.68f
     const val KIT_SNARE_RU = 0.088f
     const val KIT_SNARE_RV = 0.058f
-    const val KIT_TOM_U = 0.62f
-    const val KIT_TOM_V = 0.57f
+    const val KIT_TOM_U = 0.66f
+    const val KIT_TOM_V = 0.58f
     const val KIT_TOM_RU = 0.072f
     const val KIT_TOM_RV = 0.048f
-    const val KIT_FLOOR_U = 0.78f
+    const val KIT_FLOOR_U = 0.82f
     const val KIT_FLOOR_V = 0.66f
     const val KIT_FLOOR_RU = 0.098f
     const val KIT_FLOOR_RV = 0.064f
-    const val KIT_BASS_U = 0.52f
-    const val KIT_BASS_V = 0.86f
-    const val KIT_BASS_RU = 0.20f
-    const val KIT_BASS_RV = 0.128f
-    const val KIT_CRASH_U = 0.82f
-    const val KIT_CRASH_V = 0.45f
+    const val KIT_BASS_U = 0.56f
+    const val KIT_BASS_V = 0.84f
+    const val KIT_BASS_RU = 0.185f
+    const val KIT_BASS_RV = 0.120f
+    const val KIT_CRASH_U = 0.86f
+    const val KIT_CRASH_V = 0.46f
     const val KIT_CRASH_RU = 0.105f
     const val KIT_CRASH_RV = 0.028f
+    // シンバルを吊るスタンドの長さ（キャラクター高さ比）
+    const val KIT_STAND_V = 0.14f
 
     private const val TEX_ASPECT = 592f / 750f
     private const val INV_ASPECT = 750f / 592f

@@ -61,9 +61,9 @@ enum class HomeCharacter(
         instrument = Instrument.DRUMS,
         headReaction = HeadReaction.CHEER,
         hairSway = 1.15f,
-        handLeftU = BocchiLive2dPolicy.KIT_HAT_U + 0.06f,
+        handLeftU = 0.28f,
         handLeftV = 0.46f,
-        handRightU = BocchiLive2dPolicy.KIT_SNARE_U + 0.14f,
+        handRightU = 0.58f,
         handRightV = 0.44f,
         shellColor = 0xFFFFC94A.toInt()
     ),

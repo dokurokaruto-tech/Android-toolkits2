@@ -643,7 +643,7 @@ class BocchiLive2dStageView @JvmOverloads constructor(
     /** シンバルを吊るスタンド。楕円の中心から下端まで細い線を引く */
     private fun drawStand(canvas: Canvas, u: Float, v: Float, paint: Paint) {
         val (x, y) = screenPoint(u, v, currentPose)
-        canvas.drawLine(x, y, x, y + charHeight * 0.055f, paint)
+        canvas.drawLine(x, y, x, y + charHeight * BocchiLive2dPolicy.KIT_STAND_V, paint)
     }
 
     /** シンバル。ヒットで径が膨らみ、ヘッドに衝撃輪が広がる */
