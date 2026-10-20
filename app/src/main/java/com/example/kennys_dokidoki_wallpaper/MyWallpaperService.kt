@@ -52,7 +52,6 @@ private object ToolFinderSpec {
     const val CENTER_HOLE_RADIUS_DP = 21f
     const val MENU_RADIUS_DP = 148f
     const val HORIZONTAL_EXTENT_DP = 160f
-    const val VERTICAL_EXTENT_DP = 180f
     const val MAX_EXTENT_DP = 190f
     const val OPTION_WIDTH_DP = 58f
     const val OPTION_HEIGHT_DP = 58f
@@ -342,10 +341,8 @@ class MyWallpaperService : WallpaperService() {
         private fun showToolFinder() {
             clearToolFinder()
             val frame = surfaceHolder.surfaceFrame
-            val metrics = resources.displayMetrics
-            val width = metrics.widthPixels.takeIf { it > 0 } ?: frame.width()
-            val height = metrics.heightPixels.takeIf { it > 0 } ?: frame.height()
-            val finder = ToolFinderOverlay(applicationContext, downX, downY, width, height)
+            val width = resources.displayMetrics.widthPixels.takeIf { it > 0 } ?: frame.width()
+            val finder = ToolFinderOverlay(applicationContext, downX, downY, width)
             toolFinder = finder
             toolFinderAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
                 duration = ToolFinderSpec.OPEN_ANIMATION_MS
@@ -932,8 +929,7 @@ private class ToolFinderOverlay(
     context: Context,
     touchX: Float,
     touchY: Float,
-    surfaceWidth: Int,
-    surfaceHeight: Int
+    surfaceWidth: Int
 ) {
     private val density = context.resources.displayMetrics.density
     private val scaledDensity = context.resources.displayMetrics.scaledDensity
@@ -959,7 +955,7 @@ private class ToolFinderOverlay(
     private val idleOptionLabel = Color.parseColor("#C4CCD7")
 
     val centerX = clampCenter(touchX, surfaceWidth.toFloat(), dp(ToolFinderSpec.HORIZONTAL_EXTENT_DP))
-    val centerY = clampCenter(touchY, surfaceHeight.toFloat(), dp(ToolFinderSpec.VERTICAL_EXTENT_DP))
+    val centerY = touchY
 
     var revealProgress = 0f
     var exitProgress = 0f

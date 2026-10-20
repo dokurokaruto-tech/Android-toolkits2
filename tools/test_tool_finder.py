@@ -41,6 +41,11 @@ class ToolFinderInteractionTest(unittest.TestCase):
         self.assertIn('easeInOut(exitProgress)', draw)
         self.assertIn('private fun easeInOut(', self.overlay)
 
+    def test_vertical_center_stays_at_touch_point(self):
+        anchor = block(self.overlay, '    val centerX =', '    var revealProgress =')
+        self.assertIn('val centerY = touchY', anchor)
+        self.assertNotIn('clampCenter(touchY', anchor)
+
 
 if __name__ == '__main__':
     unittest.main()
