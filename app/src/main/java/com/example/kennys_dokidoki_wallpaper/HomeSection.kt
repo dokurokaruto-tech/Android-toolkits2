@@ -30,7 +30,7 @@ enum class HomeSection(
         R.color.home_builder_container, R.color.home_builder_icon, R.id.nav_builder
     ),
     DIARY(
-        "私の図書館", R.drawable.ic_home_diary,
+        "日記", R.drawable.ic_home_diary,
         R.color.home_diary_container, R.color.home_diary_icon, null
     ),
     SETTINGS(

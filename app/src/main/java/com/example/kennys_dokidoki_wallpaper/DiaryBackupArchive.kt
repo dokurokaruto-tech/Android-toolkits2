@@ -15,11 +15,11 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
-/** 日記・写真・「私の図書館」を1つのZIPファイルにまとめる。 */
-internal object LibraryBackupArchive {
+/** 日記本文と参照写真だけを1つのZIPファイルにまとめる。 */
+internal object DiaryBackupArchive {
 
     const val MIME_TYPE = "application/zip"
-    const val SUGGESTED_FILE_NAME = "MyLibraryBackup.zip"
+    const val SUGGESTED_FILE_NAME = "DiaryBackup.zip"
 
     private const val FORMAT = "kennys-diary-library-backup"
     private const val VERSION = 1
@@ -32,8 +32,8 @@ internal object LibraryBackupArchive {
 
     data class MergeResult(
         val importedDiaries: Int,
-        val importedNotes: Int,
-        val importedImages: Int
+        val importedImages: Int,
+        val retiredRecords: Int
     )
 
     private data class SourceFile(
@@ -43,7 +43,7 @@ internal object LibraryBackupArchive {
     )
 
     /** `output` の所有権は呼び出し元に残す。 */
-    fun write(context: Context, output: OutputStream): LibraryBackupCounts {
+    fun write(context: Context, output: OutputStream): DiaryBackupCounts {
         val sources = collectSources(context)
         validateSources(sources)
         val counts = countsFor(sources)
@@ -80,21 +80,21 @@ internal object LibraryBackupArchive {
         val zip = ZipInputStream(input)
         val first = zip.nextEntry ?: throw IOException("バックアップファイルが空です。")
         if (first.name != MANIFEST_ENTRY) {
-            throw IOException("このファイルは「私の図書館」のバックアップではありません。")
+            throw IOException("このファイルは日記バックアップではありません。")
         }
         val counter = Counter()
         val manifestBytes = readEntry(zip, MAX_MANIFEST_BYTES, counter)
         zip.closeEntry()
         val importedModifiedTimes = parseManifest(manifestBytes)
-        val stagingDirectory = File(context.cacheDir, "library-backup-import-${java.util.UUID.randomUUID()}")
+        val stagingDirectory = File(context.cacheDir, "diary-backup-import-${java.util.UUID.randomUUID()}")
         if (!stagingDirectory.mkdirs()) {
             throw IOException("バックアップを一時保存する領域を作成できませんでした。")
         }
 
         try {
             val stagedDiaries = LinkedHashMap<String, StagedJson>()
-            val stagedNotes = LinkedHashMap<LibraryBackupPolicy.NoteAddress, StagedJson>()
             val stagedImages = LinkedHashMap<String, File>()
+            var retiredRecords = 0
             var entryCount = 1
 
             while (true) {
@@ -110,9 +110,9 @@ internal object LibraryBackupArchive {
                 }
 
                 val backupModifiedMs = importedModifiedTimes[entry.name] ?: entry.time
-                val diaryDate = LibraryBackupPolicy.diaryDateOf(entry.name)
-                val noteAddress = LibraryBackupPolicy.noteAddressOf(entry.name)
-                val imageName = LibraryBackupPolicy.imageNameOf(entry.name)
+                val diaryDate = DiaryBackupPolicy.diaryDateOf(entry.name)
+                val isRetiredRecord = DiaryBackupPolicy.isRetiredRecordPath(entry.name)
+                val imageName = DiaryBackupPolicy.imageNameOf(entry.name)
 
                 when {
                     diaryDate != null -> {
@@ -127,18 +127,10 @@ internal object LibraryBackupArchive {
                         }
                     }
 
-                    noteAddress != null -> {
-                        val bytes = readEntry(zip, MAX_JSON_BYTES, counter)
+                    isRetiredRecord -> {
+                        drainEntry(zip, counter, MAX_JSON_BYTES)
                         zip.closeEntry()
-                        val raw = bytes.toString(StandardCharsets.UTF_8)
-                        if (LibraryNoteJson.decode(noteAddress.kind, noteAddress.id, raw)
-                                ?.let { it.title.isNotBlank() || it.body.isNotBlank() } == true
-                        ) {
-                            val noteDirectory = File(File(stagingDirectory, "notes"), noteAddress.kind.archiveKey)
-                            val stagedFile = File(noteDirectory, "${noteAddress.id}.json")
-                            writeStagedFile(stagedFile, bytes)
-                            stagedNotes[noteAddress] = StagedJson(stagedFile, backupModifiedMs)
-                        }
+                        retiredRecords += 1
                     }
 
                     imageName != null -> {
@@ -186,7 +178,7 @@ internal object LibraryBackupArchive {
                 val imagesAvailable = staged.requiredImages.all { imageName ->
                     DiaryStore.imageFile(context, imageName).isFile
                 }
-                if (imagesAvailable && LibraryBackupPolicy.shouldImport(
+                if (imagesAvailable && DiaryBackupPolicy.shouldImport(
                         DiaryStore.entryModifiedMs(context, date),
                         staged.modifiedMs
                     )
@@ -196,24 +188,7 @@ internal object LibraryBackupArchive {
                 }
             }
 
-            var importedNotes = 0
-            stagedNotes.forEach { (address, staged) ->
-                if (LibraryBackupPolicy.shouldImport(
-                        LibraryNoteStore.modifiedMs(context, address.kind, address.id),
-                        staged.modifiedMs
-                    )
-                ) {
-                    LibraryNoteStore.writeRaw(
-                        context,
-                        address.kind,
-                        address.id,
-                        staged.file.readText(StandardCharsets.UTF_8)
-                    )
-                    importedNotes += 1
-                }
-            }
-
-            return MergeResult(importedDiaries, importedNotes, importedImages)
+            return MergeResult(importedDiaries, importedImages, retiredRecords)
         } finally {
             stagingDirectory.deleteRecursively()
         }
@@ -230,10 +205,9 @@ internal object LibraryBackupArchive {
         file.outputStream().use { it.write(bytes) }
     }
 
-    private fun countsFor(sources: List<SourceFile>) = LibraryBackupCounts(
+    private fun countsFor(sources: List<SourceFile>) = DiaryBackupCounts(
         diaries = sources.count { it.path.startsWith("diary/") },
-        essays = sources.count { it.path.startsWith("notes/essay/") },
-        wishLists = sources.count { it.path.startsWith("notes/wish/") },
+        retiredRecords = 0,
         images = sources.count { it.path.startsWith("images/") },
         payloadBytes = sources.fold(0L) { total, source -> total + source.file.length() }
     )
@@ -261,7 +235,7 @@ internal object LibraryBackupArchive {
         val referencedImages = LinkedHashSet<String>()
 
         DiaryStore.savedDates(context).forEach { date ->
-            if (LibraryBackupPolicy.diaryDateOf("diary/$date.json") == null) {
+            if (DiaryBackupPolicy.diaryDateOf("diary/$date.json") == null) {
                 return@forEach
             }
             val file = File(File(context.filesDir, "diary"), "$date.json")
@@ -281,21 +255,8 @@ internal object LibraryBackupArchive {
             }
         }
 
-        LibraryNoteKind.entries.forEach { kind ->
-            LibraryNoteStore.savedIds(context, kind).forEach { id ->
-                val file = noteFile(context, kind, id)
-                val raw = LibraryNoteStore.readRaw(context, kind, id) ?: return@forEach
-                val note = LibraryNoteJson.decode(kind, id, raw)
-                if (note != null && (note.title.isNotBlank() || note.body.isNotBlank()) && file.isFile) {
-                    sources += SourceFile("notes/${kind.archiveKey}/$id.json", file, file.lastModified())
-                }
-            }
-        }
         return sources
     }
-
-    private fun noteFile(context: Context, kind: LibraryNoteKind, id: String): File =
-        File(File(File(context.filesDir, "my_library"), kind.storageDirectory), "$id.json")
 
     private fun parseManifest(bytes: ByteArray): Map<String, Long> {
         val manifest = try {
@@ -323,9 +284,8 @@ internal object LibraryBackupArchive {
     }
 
     private fun isRecognizedPath(path: String): Boolean =
-        LibraryBackupPolicy.diaryDateOf(path) != null ||
-            LibraryBackupPolicy.noteAddressOf(path) != null ||
-            LibraryBackupPolicy.imageNameOf(path) != null
+        DiaryBackupPolicy.diaryDateOf(path) != null ||
+            DiaryBackupPolicy.imageNameOf(path) != null
 
     private fun safeDiaryImages(date: String, raw: String): Set<String>? {
         return try {
@@ -333,7 +293,7 @@ internal object LibraryBackupArchive {
             if (!json.has("text") && !json.has("photos")) return null
             val imageNames = LinkedHashSet<String>()
             for (photo in DiaryJson.decode(date, raw).photos) {
-                val imageName = LibraryBackupPolicy.imageNameOf("images/${photo.fileName}") ?: return null
+                val imageName = DiaryBackupPolicy.imageNameOf("images/${photo.fileName}") ?: return null
                 imageNames.add(imageName)
             }
             imageNames

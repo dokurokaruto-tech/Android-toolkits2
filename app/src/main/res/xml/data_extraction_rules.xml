@@ -3,9 +3,12 @@
     <cloud-backup>
         <!-- The stored URI is only valid with the SAF grant on the original installation. -->
         <exclude domain="sharedpref" path="library_backup_file.xml" />
+        <!-- Retired note files stay local but are no longer part of the diary feature. -->
+        <exclude domain="file" path="my_library/" />
     </cloud-backup>
     <device-transfer>
         <!-- A transferred URI does not carry its original persistable permission. -->
         <exclude domain="sharedpref" path="library_backup_file.xml" />
+        <exclude domain="file" path="my_library/" />
     </device-transfer>
 </data-extraction-rules>

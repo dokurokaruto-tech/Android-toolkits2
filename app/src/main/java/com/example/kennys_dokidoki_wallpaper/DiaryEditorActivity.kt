@@ -1,15 +1,20 @@
 package com.example.kennys_dokidoki_wallpaper
 
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.MenuItem
+import android.view.View
 import android.view.MotionEvent
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowInsetsControllerCompat
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 
 /** 1日分の日記を書く画面。文字はいくらでも書け、画像は用紙の好きな場所へ置ける。 */
 class DiaryEditorActivity : AppCompatActivity() {
@@ -55,8 +60,41 @@ class DiaryEditorActivity : AppCompatActivity() {
         toolbar.title = DiaryStore.displayDate(dateKey)
         toolbar.setNavigationOnClickListener { finish() }
         toolbar.setOnMenuItemClickListener(::onToolbarMenuItemClick)
+        applyDiaryPalette(toolbar)
 
         restore()
+    }
+
+    private fun applyDiaryPalette(toolbar: MaterialToolbar) {
+        val palette = DiaryPaletteStore.load(this)
+        findViewById<View>(R.id.diary_editor_root).setBackgroundColor(palette.background)
+        findViewById<View>(R.id.diary_scroll).setBackgroundColor(palette.background)
+        findViewById<MaterialCardView>(R.id.card_diary_canvas).apply {
+            setCardBackgroundColor(palette.background)
+            setStrokeColor(palette.border)
+        }
+        findViewById<View>(R.id.diary_canvas).setBackgroundColor(palette.background)
+        findViewById<MaterialCardView>(R.id.card_diary_editor_hint).apply {
+            setCardBackgroundColor(palette.background)
+            setStrokeColor(palette.border)
+        }
+        findViewById<TextInputLayout>(R.id.til_diary_text)
+            .setHintTextColor(ColorStateList.valueOf(palette.text))
+        editor.setTextColor(palette.text)
+        editor.setHintTextColor(palette.mutedText)
+        findViewById<com.google.android.material.textview.MaterialTextView>(R.id.tv_editor_hint)
+            .setTextColor(palette.mutedText)
+        toolbar.setTitleTextColor(palette.text)
+        toolbar.navigationIcon?.mutate()?.setTint(palette.text)
+        for (index in 0 until toolbar.menu.size()) {
+            toolbar.menu.getItem(index).icon?.mutate()?.setTint(palette.text)
+        }
+        window.statusBarColor = palette.background
+        window.navigationBarColor = palette.background
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
     }
 
     /**
@@ -113,8 +151,8 @@ class DiaryEditorActivity : AppCompatActivity() {
     private fun save() {
         val entry = DiaryEntry(dateKey, editor.text?.toString().orEmpty(), photoLayer.snapshot())
         DiaryStore.save(this, entry)
-        LibraryBackupSync.markDirty(this)
-        LibraryBackupSync.backupInBackground(this)
+        DiaryBackupSync.markDirty(this)
+        DiaryBackupSync.backupInBackground(this)
     }
 
     private fun confirmDelete(handle: DiaryPhotoHandle) {

@@ -1047,7 +1047,7 @@ private class ToolFinderOverlay(
         ToolFinderOption(HomeSection.IMAGE_SETS, "セット", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP),
         ToolFinderOption(HomeSection.TAGS, "タグ", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP * 2f),
         ToolFinderOption(HomeSection.BUILDER, "生成", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP * 3f),
-        ToolFinderOption(HomeSection.DIARY, "私の図書館", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP * 4f),
+        ToolFinderOption(HomeSection.DIARY, "日記", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP * 4f),
         ToolFinderOption(HomeSection.SETTINGS, "設定", ToolFinderSpec.OPTION_ANGLE_START + ToolFinderSpec.OPTION_ANGLE_STEP * 5f)
     )
 

@@ -1,48 +1,50 @@
 package com.example.kennys_dokidoki_wallpaper
 
 import android.app.Activity
+import android.app.Dialog
 import android.content.Intent
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.UnderlineSpan
 import android.view.Gravity
-import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.google.android.material.tabs.TabLayout
 import com.google.android.material.textview.MaterialTextView
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-/** 「私の図書館」の入口。日記・エッセイ・やりたい事リストを切り替える。 */
+/** 黒地に赤字の、古い個人サイト風の日記ページ。 */
 class DiaryCalendarActivity : AppCompatActivity() {
 
-    private lateinit var datesAdapter: DiaryDateAdapter
-    private lateinit var monthAdapter: DiaryMonthAdapter
-    private lateinit var notesAdapter: LibraryNoteAdapter
-    private lateinit var monthTitle: MaterialTextView
-    private lateinit var backupStatus: MaterialTextView
-    private lateinit var tabs: TabLayout
-    private lateinit var calendarContent: View
-    private lateinit var notesContent: View
-    private lateinit var notesHeading: MaterialTextView
-    private lateinit var notesEmpty: MaterialTextView
-    private lateinit var notesList: RecyclerView
-    private lateinit var addNoteButton: FloatingActionButton
+    private lateinit var pageRoot: View
+    private lateinit var pageScroll: ScrollView
+    private lateinit var miniGraph: DiaryContributionGraphView
+    private lateinit var selectedDateLabel: TextView
+    private lateinit var diaryBody: TextView
+    private lateinit var emptyDiary: TextView
+    private lateinit var photoCount: TextView
+    private lateinit var editDiaryLink: TextView
+    private lateinit var backupStatus: TextView
 
-    private var activeNoteKind = LibraryNoteKind.ESSAY
-    private var shownYear = 0
-    private var shownMonth = 0
+    private var selectedDate: LocalDate = LocalDate.now()
+    private var palette: DiaryPalette = DiaryPalette(0xFF000000.toInt(), 0xFFFF2020.toInt())
+    private var entryLengths: Map<String, Int> = emptyMap()
 
     private val createBackupFile = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -56,173 +58,433 @@ class DiaryCalendarActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_diary_calendar)
 
-        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar_my_library)
-        toolbar.setNavigationOnClickListener { finish() }
-        toolbar.setOnMenuItemClickListener(::onToolbarMenuItemClick)
-
-        monthTitle = findViewById(R.id.tv_month_title)
+        pageRoot = findViewById(R.id.diary_page_root)
+        pageScroll = findViewById(R.id.diary_page_scroll)
+        miniGraph = findViewById(R.id.diary_mini_graph)
+        selectedDateLabel = findViewById(R.id.tv_diary_selected_date)
+        diaryBody = findViewById(R.id.tv_diary_body)
+        emptyDiary = findViewById(R.id.tv_diary_empty)
+        photoCount = findViewById(R.id.tv_diary_photo_count)
+        editDiaryLink = findViewById(R.id.btn_diary_edit)
         backupStatus = findViewById(R.id.tv_backup_status)
-        calendarContent = findViewById(R.id.library_diary_content)
-        notesContent = findViewById(R.id.library_notes_content)
-        notesHeading = findViewById(R.id.tv_library_notes_heading)
-        notesEmpty = findViewById(R.id.tv_library_notes_empty)
-        notesList = findViewById(R.id.recycler_library_notes)
-        addNoteButton = findViewById(R.id.fab_library_add_note)
-        tabs = findViewById(R.id.tabs_my_library)
+        selectedDate = LocalDate.now()
 
-        findViewById<MaterialButton>(R.id.btn_diary_today).setOnClickListener {
-            openDate(DiaryStore.todayKey())
-        }
-        findViewById<MaterialButton>(R.id.btn_month_prev).setOnClickListener { shiftMonth(-1) }
-        findViewById<MaterialButton>(R.id.btn_month_next).setOnClickListener { shiftMonth(1) }
+        findViewById<TextView>(R.id.btn_diary_back).setOnClickListener { finish() }
+        findViewById<TextView>(R.id.btn_diary_palette).setOnClickListener { showPaletteSettings() }
+        findViewById<TextView>(R.id.btn_diary_backup).setOnClickListener { showBackupDialog() }
+        findViewById<TextView>(R.id.btn_diary_open_graph).setOnClickListener { showContributionDialog() }
+        findViewById<View>(R.id.diary_mini_graph_panel).setOnClickListener { showContributionDialog() }
+        editDiaryLink.setOnClickListener { openEditor(selectedDate) }
 
-        setupWeekdayRow()
-        setupMonthGrid()
-        setupDateList()
-        setupLibraryNotes()
-        setupTabs()
-
-        val today = LocalDate.now()
-        shownYear = today.year
-        shownMonth = today.monthValue
-        val savedTab = getSharedPreferences(LIBRARY_PREFS, MODE_PRIVATE)
-            .getInt(KEY_SELECTED_TAB, TAB_DIARY)
-            .coerceIn(TAB_DIARY, TAB_WISH_LIST)
-        tabs.getTabAt(savedTab)?.select()
-        showSection(savedTab)
+        setupMiniWeekdayLabels()
+        palette = DiaryPaletteStore.load(this)
+        applyPalette()
+        refreshDiary()
     }
 
     override fun onResume() {
         super.onResume()
-        refresh()
-        // 前回のバックグラウンド更新が中断／失敗していた場合のみ再試行する。
+        if (!::backupStatus.isInitialized) return
+        refreshDiary()
         lifecycleScope.launch {
-            LibraryBackupSync.backupIfDirty(this@DiaryCalendarActivity)
-            refresh()
+            DiaryBackupSync.backupIfDirty(this@DiaryCalendarActivity)
+            refreshBackupStatus()
         }
     }
 
-    private fun onToolbarMenuItemClick(item: MenuItem): Boolean = when (item.itemId) {
-        R.id.action_library_backup -> {
-            showBackupDialog()
-            true
-        }
-        else -> false
-    }
-
-    private fun setupTabs() {
-        listOf("日記", "エッセイ", "やりたい事リスト").forEach { title ->
-            tabs.addTab(tabs.newTab().setText(title), false)
-        }
-        tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab) {
-                showSection(tab.position)
-            }
-
-            override fun onTabUnselected(tab: TabLayout.Tab) = Unit
-            override fun onTabReselected(tab: TabLayout.Tab) = Unit
-        })
-    }
-
-    private fun showSection(position: Int) {
-        val isDiary = position == TAB_DIARY
-        calendarContent.visibility = if (isDiary) View.VISIBLE else View.GONE
-        notesContent.visibility = if (isDiary) View.GONE else View.VISIBLE
-        getSharedPreferences(LIBRARY_PREFS, MODE_PRIVATE)
-            .edit()
-            .putInt(KEY_SELECTED_TAB, position)
-            .apply()
-
-        if (!isDiary) {
-            activeNoteKind = if (position == TAB_ESSAY) LibraryNoteKind.ESSAY else LibraryNoteKind.WISH_LIST
-            notesHeading.text = activeNoteKind.displayName
-            notesEmpty.text = "まだ${activeNoteKind.displayName}はありません。\n右下の＋から追加できます。"
-            refreshNotes()
-        }
-    }
-
-    private fun setupWeekdayRow() {
-        val row = findViewById<LinearLayout>(R.id.diary_weekday_row)
-        listOf("日", "月", "火", "水", "木", "金", "土").forEach { name ->
-            val label = MaterialTextView(this).apply {
-                text = name
+    private fun setupMiniWeekdayLabels() {
+        val labels = findViewById<LinearLayout>(R.id.diary_mini_weekday_labels)
+        labels.removeAllViews()
+        DiaryContributionPolicy.weekdayLabels.forEach { day ->
+            labels.addView(TextView(this).apply {
+                text = day
                 gravity = Gravity.CENTER
-                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelMedium)
-                setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurfaceVariant))
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            row.addView(label)
+                textSize = 8f
+                typeface = Typeface.MONOSPACE
+                layoutParams = LinearLayout.LayoutParams(dp(10), dp(10))
+            })
         }
     }
 
-    private fun setupMonthGrid() {
-        monthAdapter = DiaryMonthAdapter { dateKey -> openDate(dateKey) }
-        val grid = findViewById<RecyclerView>(R.id.recycler_diary_month)
-        grid.layoutManager = GridLayoutManager(this, DiaryCalendarPolicy.COLUMNS)
-        grid.adapter = monthAdapter
+    private fun refreshDiary() {
+        entryLengths = DiaryStore.textLengths(this)
+        miniGraph.show(
+            DiaryContributionPolicy.recentWeeks(LocalDate.now()),
+            entryLengths,
+            palette
+        )
+        refreshSelectedEntry()
+        refreshBackupStatus()
     }
 
-    private fun setupDateList() {
-        datesAdapter = DiaryDateAdapter { dateKey -> openDate(dateKey) }
-        val recycler = findViewById<RecyclerView>(R.id.recycler_diary_dates)
-        recycler.layoutManager = LinearLayoutManager(this)
-        recycler.adapter = datesAdapter
-    }
+    private fun refreshSelectedEntry() {
+        val dateKey = dateKey(selectedDate)
+        val entry = DiaryStore.load(this, dateKey)
+        val hasText = entry.text.isNotBlank()
+        val hasPhotos = entry.photos.isNotEmpty()
+        selectedDateLabel.text = "${displayDate(selectedDate)} の日記"
 
-    private fun setupLibraryNotes() {
-        notesAdapter = LibraryNoteAdapter(::openNote)
-        notesList.layoutManager = LinearLayoutManager(this)
-        notesList.adapter = notesAdapter
-        addNoteButton.setOnClickListener {
-            openNote(LibraryNote(LibraryNoteStore.newId(), activeNoteKind, "", ""))
-        }
-    }
-
-    private fun shiftMonth(delta: Int) {
-        val (year, month) = DiaryCalendarPolicy.shiftMonth(shownYear, shownMonth, delta)
-        shownYear = year
-        shownMonth = month
-        refreshCalendar()
-    }
-
-    private fun refresh() {
-        refreshCalendar()
-        refreshNotes()
-        backupStatus.text = backupStatusText()
-    }
-
-    private fun refreshCalendar() {
-        val lengths = DiaryStore.textLengths(this)
-        monthTitle.text = DiaryCalendarPolicy.monthTitle(shownYear, shownMonth)
-        monthAdapter.show(shownYear, shownMonth, lengths)
-        datesAdapter.submit(
-            DiaryStore.savedDates(this).map { date ->
-                DiaryDateAdapter.Row(date, DiaryStore.load(this, date).text)
+        if (hasText) {
+            diaryBody.text = entry.text
+            diaryBody.visibility = View.VISIBLE
+            emptyDiary.visibility = View.GONE
+        } else {
+            diaryBody.text = ""
+            diaryBody.visibility = View.GONE
+            emptyDiary.text = if (hasPhotos) {
+                "本文はありません。写真が${entry.photos.size}枚あります。"
+            } else {
+                "この日の日記はまだありません。"
             }
+            emptyDiary.visibility = View.VISIBLE
+        }
+
+        if (hasPhotos) {
+            photoCount.text = "写真：${entry.photos.size}枚"
+            photoCount.visibility = View.VISIBLE
+        } else {
+            photoCount.text = ""
+            photoCount.visibility = View.GONE
+        }
+        editDiaryLink.text = linkText(if (hasText || hasPhotos) "[ この日の日記を編集する ]" else "[ この日に日記を書く ]")
+    }
+
+    private fun selectDate(date: LocalDate) {
+        selectedDate = date
+        refreshSelectedEntry()
+        pageScroll.post { pageScroll.scrollTo(0, 0) }
+    }
+
+    private fun openEditor(date: LocalDate) {
+        startActivity(
+            Intent(this, DiaryEditorActivity::class.java)
+                .putExtra(DiaryEditorActivity.EXTRA_DATE, dateKey(date))
         )
     }
 
-    private fun refreshNotes() {
-        if (!::notesAdapter.isInitialized) {
-            return
+    private fun displayDate(date: LocalDate): String {
+        val weekday = DiaryContributionPolicy.weekdayLabels[date.dayOfWeek.value % 7]
+        return "${date.year}年${date.monthValue}月${date.dayOfMonth}日（${weekday}）"
+    }
+
+    private fun dateKey(date: LocalDate): String =
+        DiaryStore.dateKey(date.year, date.monthValue, date.dayOfMonth)
+
+    private fun showContributionDialog() {
+        val dialog = Dialog(this)
+        val content = layoutInflater.inflate(R.layout.dialog_diary_contribution, null, false)
+        dialog.setContentView(content)
+        dialog.setCanceledOnTouchOutside(true)
+
+        val dialogRoot = content.findViewById<View>(R.id.diary_graph_dialog_root)
+        val yearLabel = content.findViewById<TextView>(R.id.tv_diary_graph_year)
+        val previousYear = content.findViewById<TextView>(R.id.btn_diary_graph_previous_year)
+        val nextYear = content.findViewById<TextView>(R.id.btn_diary_graph_next_year)
+        val close = content.findViewById<TextView>(R.id.btn_diary_graph_close)
+        val weekdayLabels = content.findViewById<LinearLayout>(R.id.diary_graph_weekday_labels)
+        val monthLabels = content.findViewById<LinearLayout>(R.id.diary_graph_month_labels)
+        val weekColumns = content.findViewById<LinearLayout>(R.id.diary_graph_week_columns)
+        val horizontalScroll = content.findViewById<HorizontalScrollView>(R.id.diary_graph_horizontal_scroll)
+        val currentYear = LocalDate.now().year
+        val minimumYear = minimumDiaryYear()
+        var shownYear = selectedDate.year.coerceIn(minimumYear, currentYear)
+
+        close.setOnClickListener { dialog.dismiss() }
+        previousYear.setOnClickListener {
+            if (shownYear > minimumYear) {
+                shownYear -= 1
+                renderDetailYear(
+                    shownYear, yearLabel, previousYear, nextYear,
+                    weekdayLabels, monthLabels, weekColumns, horizontalScroll, dialog
+                )
+            }
         }
-        val notes = LibraryNoteStore.notes(this, activeNoteKind)
-        notesAdapter.submitList(notes)
-        notesEmpty.visibility = if (notes.isEmpty()) View.VISIBLE else View.GONE
-        notesList.visibility = if (notes.isEmpty()) View.GONE else View.VISIBLE
+        nextYear.setOnClickListener {
+            if (shownYear < currentYear) {
+                shownYear += 1
+                renderDetailYear(
+                    shownYear, yearLabel, previousYear, nextYear,
+                    weekdayLabels, monthLabels, weekColumns, horizontalScroll, dialog
+                )
+            }
+        }
+        styleDialogText(dialogRoot)
+        renderDetailYear(
+            shownYear, yearLabel, previousYear, nextYear,
+            weekdayLabels, monthLabels, weekColumns, horizontalScroll, dialog
+        )
+
+        dialog.show()
+        val dialogWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(280))
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(palette.background))
+            setLayout(dialogWidth, WindowManager.LayoutParams.WRAP_CONTENT)
+            setDimAmount(0.65f)
+        }
+    }
+
+    private fun renderDetailYear(
+        year: Int,
+        yearLabel: TextView,
+        previousYear: TextView,
+        nextYear: TextView,
+        weekdayLabels: LinearLayout,
+        monthLabels: LinearLayout,
+        weekColumns: LinearLayout,
+        horizontalScroll: HorizontalScrollView,
+        dialog: Dialog
+    ) {
+        val today = LocalDate.now()
+        val weeks = DiaryContributionPolicy.yearWeeks(year)
+        val cellWidth = dp(GRAPH_CELL_WIDTH_DP)
+        val cellHeight = dp(GRAPH_CELL_HEIGHT_DP)
+        val monthHeight = dp(GRAPH_MONTH_HEIGHT_DP)
+
+        yearLabel.text = "${year}年"
+        previousYear.isEnabled = year > minimumDiaryYear()
+        previousYear.alpha = if (previousYear.isEnabled) 1f else 0.38f
+        nextYear.isEnabled = year < today.year
+        nextYear.alpha = if (nextYear.isEnabled) 1f else 0.38f
+
+        weekdayLabels.removeAllViews()
+        weekdayLabels.addView(TextView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(28), monthHeight)
+        })
+        DiaryContributionPolicy.weekdayLabels.forEach { label ->
+            weekdayLabels.addView(TextView(this).apply {
+                text = label
+                gravity = Gravity.CENTER
+                textSize = 11f
+                typeface = Typeface.MONOSPACE
+                setTextColor(palette.text)
+                layoutParams = LinearLayout.LayoutParams(dp(28), dp(GRAPH_ROW_HEIGHT_DP))
+            })
+        }
+
+        monthLabels.removeAllViews()
+        weekColumns.removeAllViews()
+        weeks.forEach { week ->
+            val monthStart = week.firstOrNull { it?.dayOfMonth == 1 }
+            monthLabels.addView(TextView(this).apply {
+                text = monthStart?.let { "${it.monthValue}月" }.orEmpty()
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                textSize = 9f
+                typeface = Typeface.MONOSPACE
+                setTextColor(palette.text)
+                layoutParams = LinearLayout.LayoutParams(cellWidth, monthHeight)
+            })
+
+            val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            week.forEach { date ->
+                val cell = TextView(this).apply {
+                    gravity = Gravity.CENTER
+                    textSize = 10f
+                    typeface = Typeface.MONOSPACE
+                    layoutParams = LinearLayout.LayoutParams(dp(GRAPH_CELL_WIDTH_DP - 4), cellHeight).apply {
+                        rightMargin = dp(4)
+                        bottomMargin = dp(2)
+                    }
+                }
+                if (date == null) {
+                    cell.text = ""
+                    cell.isEnabled = false
+                    cell.background = cellBackground(0, isSelected = false)
+                } else {
+                    val key = dateKey(date)
+                    val count = entryLengths[key] ?: 0
+                    val hasEntry = entryLengths.containsKey(key)
+                    val level = DiaryContributionPolicy.level(count, hasEntry)
+                    cell.text = date.dayOfMonth.toString()
+                    cell.contentDescription = if (hasEntry) {
+                        "${displayDate(date)}、日記あり、${count}文字"
+                    } else {
+                        "${displayDate(date)}、日記なし"
+                    }
+                    cell.setTooltipText(displayDate(date))
+                    cell.setTextColor(if (level >= 3) palette.background else palette.text)
+                    cell.background = cellBackground(level, date == selectedDate)
+                    cell.isClickable = true
+                    cell.isFocusable = true
+                    cell.setOnClickListener {
+                        dialog.dismiss()
+                        selectDate(date)
+                    }
+                }
+                column.addView(cell)
+            }
+            weekColumns.addView(column, LinearLayout.LayoutParams(cellWidth, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+
+        horizontalScroll.post {
+            if (year == selectedDate.year) {
+                val selectedWeek = weeks.indexOfFirst { selectedDate in it.filterNotNull() }
+                if (selectedWeek >= 0) {
+                    horizontalScroll.scrollTo(
+                        (selectedWeek * cellWidth - horizontalScroll.width / 2).coerceAtLeast(0),
+                        0
+                    )
+                }
+            } else {
+                horizontalScroll.fullScroll(View.FOCUS_RIGHT)
+            }
+        }
+    }
+
+
+    private fun minimumDiaryYear(): Int {
+        val firstSavedYear = DiaryStore.savedDates(this)
+            .mapNotNull { it.take(4).toIntOrNull() }
+            .minOrNull()
+        return minOf(MIN_GRAPH_YEAR, firstSavedYear ?: MIN_GRAPH_YEAR).coerceAtLeast(1)
+    }
+
+    private fun cellBackground(level: Int, isSelected: Boolean): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(palette.cellColor(level))
+            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) palette.text else palette.border)
+        }
+
+    private fun styleDialogText(root: View) {
+        root.setBackgroundColor(palette.background)
+        root.background = panelBackground()
+        tintTextViews(root, palette.text)
+        root.findViewById<View>(R.id.tv_diary_graph_instructions)
+            .let { (it as? TextView)?.setTextColor(palette.mutedText) }
+        root.findViewById<View>(R.id.tv_diary_graph_legend)
+            .let { (it as? TextView)?.setTextColor(palette.mutedText) }
+    }
+
+    private fun showPaletteSettings() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("ページの配色")
+            .setItems(arrayOf("背景色を変更", "文字色を変更", "初期配色に戻す")) { _, which ->
+                when (which) {
+                    0 -> choosePaletteColor("背景色", DiaryPaletteStore.backgrounds, palette.background) { color ->
+                        DiaryPaletteStore.saveBackground(this, color)
+                        applyPalette()
+                        refreshDiary()
+                    }
+                    1 -> choosePaletteColor("文字色", DiaryPaletteStore.textColors, palette.text) { color ->
+                        DiaryPaletteStore.saveText(this, color)
+                        applyPalette()
+                        refreshDiary()
+                    }
+                    2 -> {
+                        DiaryPaletteStore.reset(this)
+                        palette = DiaryPaletteStore.load(this)
+                        applyPalette()
+                        refreshDiary()
+                    }
+                }
+            }
+            .setNegativeButton("閉じる", null)
+            .show()
+    }
+
+    private fun choosePaletteColor(
+        title: String,
+        choices: List<DiaryPaletteStore.Choice>,
+        currentColor: Int,
+        onChosen: (Int) -> Unit
+    ) {
+        val selected = choices.indexOfFirst { it.color == currentColor }.coerceAtLeast(0)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setSingleChoiceItems(choices.map { it.label }.toTypedArray(), selected) { dialog, which ->
+                onChosen(choices[which].color)
+                palette = DiaryPaletteStore.load(this)
+                dialog.dismiss()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun applyPalette() {
+        palette = DiaryPaletteStore.load(this)
+        pageRoot.setBackgroundColor(palette.background)
+        pageScroll.setBackgroundColor(palette.background)
+        tintTextViews(pageRoot, palette.text)
+
+        findViewById<TextView>(R.id.tv_diary_page_subtitle).setTextColor(palette.mutedText)
+        findViewById<TextView>(R.id.tv_diary_graph_subtitle).setTextColor(palette.mutedText)
+        findViewById<TextView>(R.id.tv_diary_empty).setTextColor(palette.mutedText)
+        findViewById<TextView>(R.id.tv_diary_photo_count).setTextColor(palette.mutedText)
+        findViewById<TextView>(R.id.tv_backup_status).setTextColor(palette.mutedText)
+        findViewById<TextView>(R.id.tv_diary_footer).setTextColor(palette.mutedText)
+
+        findViewById<View>(R.id.diary_mini_graph_panel).background = panelBackground()
+        findViewById<View>(R.id.diary_entry_panel).background = panelBackground()
+        findViewById<View>(R.id.v_diary_header_rule).setBackgroundColor(palette.border)
+        findViewById<View>(R.id.v_diary_entry_rule).setBackgroundColor(palette.border)
+        miniGraph.show(
+            DiaryContributionPolicy.recentWeeks(LocalDate.now()),
+            entryLengths,
+            palette
+        )
+
+        listOf(
+            R.id.btn_diary_back,
+            R.id.btn_diary_palette,
+            R.id.btn_diary_backup,
+            R.id.btn_diary_open_graph,
+            R.id.btn_diary_edit
+        ).forEach { findViewById<TextView>(it).apply {
+            text = linkText(text.toString())
+            setTextColor(palette.text)
+            isClickable = true
+            isFocusable = true
+        } }
+
+        window.statusBarColor = palette.background
+        window.navigationBarColor = palette.background
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+    }
+
+    private fun panelBackground(): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        setColor(palette.background)
+        setStroke(dp(1), palette.border)
+    }
+
+    private fun tintTextViews(view: View, color: Int) {
+        if (view is TextView) {
+            view.setTextColor(color)
+            view.setLinkTextColor(color)
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) tintTextViews(view.getChildAt(index), color)
+        }
+    }
+
+    private fun linkText(value: CharSequence): CharSequence {
+        val plain = value.toString()
+        return SpannableString(plain).apply {
+            if (plain.isNotEmpty()) setSpan(UnderlineSpan(), 0, plain.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+
+    private fun refreshBackupStatus() {
+        backupStatus.text = backupStatusText()
     }
 
     private fun backupStatusText(): String {
-        val name = LibraryBackupSync.selectedName(this)
-            ?: return "バックアップ先: 未設定（保存先を選択してください）"
-        val last = LibraryBackupSync.lastBackupMs(this)
-        val error = LibraryBackupSync.lastError(this)
-        val hasCounts = LibraryBackupSync.hasBackupCounts(this)
+        val name = DiaryBackupSync.selectedName(this)
+            ?: return "バックアップ先：未設定（［バックアップ］から選択）"
+        val last = DiaryBackupSync.lastBackupMs(this)
+        val error = DiaryBackupSync.lastError(this)
+        val hasCounts = DiaryBackupSync.hasBackupCounts(this)
         val status = when {
-            error != null -> "バックアップ先: $name（更新に失敗）"
-            !hasCounts -> "バックアップ先: $name（既存バックアップの安全確認が必要）"
-            last == 0L -> "バックアップ先: $name（未更新）"
-            else -> "バックアップ先: $name（最終更新 ${DiaryStore.displayDate(dateOf(last))}）"
+            error != null -> "バックアップ先：$name（更新に失敗）"
+            !hasCounts -> "バックアップ先：$name（既存バックアップの安全確認が必要）"
+            last == 0L -> "バックアップ先：$name（未更新）"
+            else -> "バックアップ先：$name（最終更新 ${DiaryStore.displayDate(dateOf(last))}）"
         }
         return if (error == null) status else "$status\n$error"
     }
@@ -235,8 +497,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
     }
 
     private fun showBackupDialog() {
-        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_library_backup)
-        val hasBackup = LibraryBackupSync.selectedUri(this) != null
+        val (_, view) = Md3PopupDialog.inflate(this, R.layout.dialog_diary_backup)
+        val hasBackup = DiaryBackupSync.selectedUri(this) != null
         view.findViewById<MaterialTextView>(R.id.tv_backup_dialog_status).text = backupStatusText()
         view.findViewById<MaterialButton>(R.id.btn_backup_choose).text =
             if (hasBackup) "保存先ファイルを変更" else "保存先ファイルを選択"
@@ -269,8 +531,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
 
     private fun showBackupFileOptions() {
         MaterialAlertDialogBuilder(this)
-            .setTitle("バックアップファイル")
-            .setItems(arrayOf("新しいバックアップを作成", "既存のバックアップを選択")) { _, which ->
+            .setTitle("日記バックアップファイル")
+            .setItems(arrayOf("新しいバックアップを作成", "既存の日記バックアップを選択")) { _, which ->
                 if (which == 0) launchCreateBackupPicker() else launchOpenBackupPicker()
             }
             .setNegativeButton("キャンセル", null)
@@ -280,21 +542,20 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private fun launchCreateBackupPicker() {
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = LibraryBackupArchive.MIME_TYPE
-            putExtra(Intent.EXTRA_TITLE, LibraryBackupArchive.SUGGESTED_FILE_NAME)
+            type = DiaryBackupArchive.MIME_TYPE
+            putExtra(Intent.EXTRA_TITLE, DiaryBackupArchive.SUGGESTED_FILE_NAME)
             addFlags(safGrantFlags())
         }
         try {
             createBackupFile.launch(intent)
         } catch (error: Exception) {
-            showBackupOutcome(LibraryBackupSync.Outcome(false, error.localizedMessage ?: "ファイル選択画面を開けませんでした。"))
+            showBackupOutcome(DiaryBackupSync.Outcome(false, error.localizedMessage ?: "ファイル選択画面を開けませんでした。"))
         }
     }
 
     private fun launchOpenBackupPicker() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            // ProviderによってZIPのMIME登録が異なるため、候補は広く表示して中身を検証する。
             type = "*/*"
             putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
             addFlags(safGrantFlags())
@@ -302,7 +563,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
         try {
             openBackupFile.launch(intent)
         } catch (error: Exception) {
-            showBackupOutcome(LibraryBackupSync.Outcome(false, error.localizedMessage ?: "ファイル選択画面を開けませんでした。"))
+            showBackupOutcome(DiaryBackupSync.Outcome(false, error.localizedMessage ?: "ファイル選択画面を開けませんでした。"))
         }
     }
 
@@ -316,29 +577,29 @@ class DiaryCalendarActivity : AppCompatActivity() {
         val data = result.data
         val uri = data?.data
         if (data == null || uri == null) {
-            showBackupOutcome(LibraryBackupSync.Outcome(false, "選択したファイルの場所を取得できませんでした。"))
+            showBackupOutcome(DiaryBackupSync.Outcome(false, "選択したファイルの場所を取得できませんでした。"))
             return
         }
         val grantFlags = data.flags
         lifecycleScope.launch {
-            val outcome = LibraryBackupSync.connect(this@DiaryCalendarActivity, uri, grantFlags, isNewFile)
-            refresh()
+            val outcome = DiaryBackupSync.connect(this@DiaryCalendarActivity, uri, grantFlags, isNewFile)
+            refreshDiary()
             showBackupOutcome(outcome)
         }
     }
 
     private fun runManualBackup(allowDestructiveOverwrite: Boolean = false) {
         lifecycleScope.launch {
-            val outcome = LibraryBackupSync.backupNow(
+            val outcome = DiaryBackupSync.backupNow(
                 this@DiaryCalendarActivity,
                 allowDestructiveOverwrite = allowDestructiveOverwrite
             )
-            refresh()
+            refreshDiary()
             showBackupOutcome(outcome)
         }
     }
 
-    private fun showBackupOutcome(outcome: LibraryBackupSync.Outcome) {
+    private fun showBackupOutcome(outcome: DiaryBackupSync.Outcome) {
         if (outcome.requiresOverwriteConfirmation) {
             MaterialAlertDialogBuilder(this)
                 .setTitle("上書きを停止しました")
@@ -350,7 +611,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
             return
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle(if (outcome.success) "バックアップ" else "バックアップに失敗しました")
+            .setTitle(if (outcome.success) "バックアップ" else "バックアップを更新できませんでした")
             .setMessage(outcome.message)
             .setPositiveButton("閉じる", null)
             .show()
@@ -359,12 +620,12 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private fun confirmRestoreBackup() {
         MaterialAlertDialogBuilder(this)
             .setTitle("選択済みバックアップから復元")
-            .setMessage("バックアップファイルから端末にない記録や写真を取り込みます。端末にあるデータは削除しません。取り込み後、同じファイルを更新します。")
+            .setMessage("バックアップZIPから端末にない日記や写真を取り込みます。端末にあるデータは削除しません。復元後にバックアップを更新します。")
             .setNegativeButton("キャンセル", null)
             .setPositiveButton("復元して更新") { _, _ ->
                 lifecycleScope.launch {
-                    val outcome = LibraryBackupSync.restoreNow(this@DiaryCalendarActivity)
-                    refresh()
+                    val outcome = DiaryBackupSync.restoreNow(this@DiaryCalendarActivity)
+                    refreshDiary()
                     showBackupOutcome(outcome)
                 }
             }
@@ -378,33 +639,18 @@ class DiaryCalendarActivity : AppCompatActivity() {
             .setNegativeButton("キャンセル", null)
             .setPositiveButton("解除") { _, _ ->
                 lifecycleScope.launch {
-                    LibraryBackupSync.disconnect(this@DiaryCalendarActivity)
-                    refresh()
+                    DiaryBackupSync.disconnect(this@DiaryCalendarActivity)
+                    refreshDiary()
                 }
             }
             .show()
     }
 
-    private fun openDate(dateKey: String) {
-        startActivity(
-            Intent(this, DiaryEditorActivity::class.java)
-                .putExtra(DiaryEditorActivity.EXTRA_DATE, dateKey)
-        )
-    }
-
-    private fun openNote(note: LibraryNote) {
-        startActivity(
-            Intent(this, LibraryNoteEditorActivity::class.java)
-                .putExtra(LibraryNoteEditorActivity.EXTRA_KIND, note.kind.archiveKey)
-                .putExtra(LibraryNoteEditorActivity.EXTRA_ID, note.id)
-        )
-    }
-
     companion object {
-        private const val LIBRARY_PREFS = "my_library_ui"
-        private const val KEY_SELECTED_TAB = "selected_tab"
-        private const val TAB_DIARY = 0
-        private const val TAB_ESSAY = 1
-        private const val TAB_WISH_LIST = 2
+        private const val MIN_GRAPH_YEAR = 2000
+        private const val GRAPH_CELL_WIDTH_DP = 40
+        private const val GRAPH_CELL_HEIGHT_DP = 36
+        private const val GRAPH_ROW_HEIGHT_DP = 38
+        private const val GRAPH_MONTH_HEIGHT_DP = 28
     }
 }

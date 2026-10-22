@@ -1,228 +1,246 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/diary_calendar_root"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/diary_page_scroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
-    android:orientation="vertical">
+    android:background="#000000"
+    android:clipToPadding="false"
+    android:fillViewport="true"
+    android:overScrollMode="ifContentScrolls"
+    android:scrollbars="vertical">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar_my_library"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorSurface"
-        app:menu="@menu/menu_my_library"
-        app:navigationIcon="@drawable/ic_md3_arrow_back"
-        app:navigationIconTint="?attr/colorOnSurface"
-        app:title="私の図書館"
-        app:titleTextColor="?attr/colorOnSurface" />
-
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/tabs_my_library"
+    <LinearLayout
+        android:id="@+id/diary_page_root"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?attr/colorSurface"
-        app:tabGravity="fill"
-        app:tabIndicatorColor="?attr/colorPrimary"
-        app:tabIndicatorFullWidth="false"
-        app:tabIndicatorHeight="3dp"
-        app:tabMode="fixed"
-        app:tabRippleColor="?attr/colorSecondaryContainer"
-        app:tabSelectedTextColor="?attr/colorPrimary"
-        app:tabTextColor="?attr/colorOnSurfaceVariant" />
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="24dp">
 
-    <com.google.android.material.card.MaterialCardView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="4dp"
-        app:cardBackgroundColor="?attr/colorSurfaceContainerLow"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="0dp"
-        app:strokeColor="?attr/colorOutlineVariant"
-        app:strokeWidth="1dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <com.google.android.material.textview.MaterialTextView
+            <TextView
+                android:id="@+id/btn_diary_back"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:gravity="center"
+                android:minWidth="48dp"
+                android:text="[戻る]"
+                android:textColor="#FFFF2020"
+                android:textSize="12sp"
+                android:typeface="monospace" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/btn_diary_palette"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:gravity="center"
+                android:minWidth="64dp"
+                android:text="[配色設定]"
+                android:textColor="#FFFF2020"
+                android:textSize="12sp"
+                android:typeface="monospace" />
+
+            <TextView
+                android:id="@+id/btn_diary_backup"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:gravity="center"
+                android:minWidth="72dp"
+                android:text="[バックアップ]"
+                android:textColor="#FFFF2020"
+                android:textSize="12sp"
+                android:typeface="monospace" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_diary_page_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingTop="8dp"
+            android:paddingBottom="2dp"
+            android:text="│　管理人の手記　│"
+            android:textColor="#FFFF6969"
+            android:textSize="24sp"
+            android:typeface="serif" />
+
+        <TextView
+            android:id="@+id/tv_diary_page_subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingBottom="10dp"
+            android:text="―　日々の記録　―"
+            android:textColor="#FFFF3030"
+            android:textSize="12sp"
+            android:typeface="serif" />
+
+        <View
+            android:id="@+id/v_diary_header_rule"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#FF6B1010" />
+
+        <TextView
+            android:id="@+id/tv_diary_graph_heading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="12dp"
+            android:paddingBottom="4dp"
+            android:text="■ 日記の足あと"
+            android:textColor="#FFFF3030"
+            android:textSize="14sp"
+            android:typeface="serif" />
+
+        <TextView
+            android:id="@+id/tv_diary_graph_subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="6dp"
+            android:text="日曜日から土曜日まで / 最近24週間"
+            android:textColor="#FFB32323"
+            android:textSize="11sp"
+            android:typeface="monospace" />
+
+        <LinearLayout
+            android:id="@+id/diary_mini_graph_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:minHeight="84dp"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <LinearLayout
+                android:id="@+id/diary_mini_weekday_labels"
+                android:layout_width="18dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <com.example.kennys_dokidoki_wallpaper.DiaryContributionGraphView
+                android:id="@+id/diary_mini_graph"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:importantForAccessibility="yes" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/btn_diary_open_graph"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:text="[ 詳しいカレンダーを開く ]"
+            android:textColor="#FFFF2020"
+            android:textSize="13sp"
+            android:typeface="serif" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="4dp"
+            android:background="#FF6B1010" />
+
+        <LinearLayout
+            android:id="@+id/diary_entry_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/tv_diary_selected_date"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFF5555"
+                android:textSize="16sp"
+                android:typeface="serif" />
+
+            <View
+                android:id="@+id/v_diary_entry_rule"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="7dp"
+                android:layout_marginBottom="10dp"
+                android:background="#FF4D1111" />
+
+            <TextView
+                android:id="@+id/tv_diary_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="4dp"
+                android:minHeight="48dp"
+                android:textColor="#FFFF3030"
+                android:textIsSelectable="true"
+                android:textSize="15sp"
+                android:typeface="serif" />
+
+            <TextView
+                android:id="@+id/tv_diary_empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:text="この日の日記はまだありません。"
+                android:textColor="#FFB32323"
+                android:textSize="14sp"
+                android:typeface="serif"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tv_diary_photo_count"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="8dp"
+                android:textColor="#FFB32323"
+                android:textSize="12sp"
+                android:typeface="monospace"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/btn_diary_edit"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:text="[ この日の日記を編集する ]"
+                android:textColor="#FFFF2020"
+                android:textSize="14sp"
+                android:typeface="serif" />
+        </LinearLayout>
+
+        <TextView
             android:id="@+id/tv_backup_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingStart="14dp"
-            android:paddingTop="9dp"
-            android:paddingEnd="14dp"
-            android:paddingBottom="9dp"
+            android:paddingTop="14dp"
+            android:paddingBottom="8dp"
             android:text="バックアップ先: 未設定"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            tools:ignore="HardcodedText" />
-    </com.google.android.material.card.MaterialCardView>
+            android:textColor="#FF8E2424"
+            android:textSize="11sp"
+            android:typeface="monospace" />
 
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
-
-        <LinearLayout
-            android:id="@+id/library_diary_content"
+        <TextView
+            android:id="@+id/tv_diary_footer"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="12dp"
-                android:paddingTop="4dp"
-                android:paddingEnd="12dp"
-                android:paddingBottom="4dp">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_month_prev"
-                    style="@style/Widget.Material3.Button.IconButton"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:contentDescription="前の月"
-                    app:icon="@drawable/ic_md3_arrow_back"
-                    app:iconSize="20dp"
-                    app:iconTint="?attr/colorOnSurfaceVariant"
-                    tools:ignore="HardcodedText" />
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/tv_month_title"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:textAppearance="?attr/textAppearanceTitleMedium"
-                    android:textColor="?attr/colorOnSurface" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_month_next"
-                    style="@style/Widget.Material3.Button.IconButton"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:contentDescription="次の月"
-                    app:icon="@drawable/ic_md3_arrow_forward"
-                    app:iconSize="20dp"
-                    app:iconTint="?attr/colorOnSurfaceVariant"
-                    tools:ignore="HardcodedText" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_diary_today"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:text="今日"
-                    tools:ignore="HardcodedText" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/diary_weekday_row"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingStart="12dp"
-                android:paddingTop="4dp"
-                android:paddingEnd="12dp"
-                android:paddingBottom="4dp" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recycler_diary_month"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:clipToPadding="false"
-                android:overScrollMode="never"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingStart="20dp"
-                android:paddingTop="8dp"
-                android:paddingEnd="20dp"
-                android:paddingBottom="4dp"
-                android:text="記録のある日"
-                android:textAppearance="?attr/textAppearanceTitleSmall"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                tools:ignore="HardcodedText" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recycler_diary_dates"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:clipToPadding="false"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:paddingBottom="24dp" />
-        </LinearLayout>
-
-        <FrameLayout
-            android:id="@+id/library_notes_content"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical">
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/tv_library_notes_heading"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="20dp"
-                    android:paddingTop="12dp"
-                    android:paddingEnd="20dp"
-                    android:paddingBottom="8dp"
-                    android:textAppearance="?attr/textAppearanceTitleMedium"
-                    android:textColor="?attr/colorOnSurface" />
-
-                <FrameLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1">
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/recycler_library_notes"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:clipToPadding="false"
-                        android:paddingStart="12dp"
-                        android:paddingTop="4dp"
-                        android:paddingEnd="12dp"
-                        android:paddingBottom="96dp" />
-
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/tv_library_notes_empty"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:gravity="center"
-                        android:padding="32dp"
-                        android:textAppearance="?attr/textAppearanceBodyLarge"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        tools:text="まだエッセイはありません。\n右下の＋から追加できます。" />
-                </FrameLayout>
-            </LinearLayout>
-
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
-                android:id="@+id/fab_library_add_note"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="bottom|end"
-                android:layout_margin="20dp"
-                android:contentDescription="新しい記録を作成"
-                app:backgroundTint="?attr/colorPrimaryContainer"
-                app:srcCompat="@drawable/ic_md3_add"
-                app:tint="?attr/colorOnPrimaryContainer" />
-        </FrameLayout>
-    </FrameLayout>
-</LinearLayout>
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingTop="8dp"
+            android:text="……　日記帳はここから続く　……"
+            android:textColor="#FF6B1010"
+            android:textSize="11sp"
+            android:typeface="serif" />
+    </LinearLayout>
+</ScrollView>

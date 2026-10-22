@@ -39,7 +39,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="日記・写真・エッセイ・やりたい事リストを1つのZIPに保存します。Androidのファイル選択画面でGoogle Driveなどを選べます。Google Cloud Consoleへの登録やOAuthは不要です。\n\n新規作成または既存ファイルを選択できます。既存データはローカルを消さず更新日時でマージします。端末側データが急減した場合は上書きを止めます。複数端末のリアルタイム同期ではありません。"
+        android:text="日記本文と、日記に貼り付けた写真を1つのZIPに保存します。Androidのファイル選択画面でGoogle Driveなどを選べます。Google Cloud Consoleへの登録やOAuthは不要です。\n\n新しい保存先の作成または既存バックアップの選択ができます。復元時は端末にない日記や写真だけを追加し、端末側データが急減した場合は上書きを止めます。複数端末のリアルタイム同期ではありません。"
         android:textAppearance="?attr/textAppearanceBodyMedium"
         android:textColor="?attr/colorOnSurfaceVariant"
         tools:ignore="HardcodedText" />

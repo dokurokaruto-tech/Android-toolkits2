@@ -2,4 +2,6 @@
 <full-backup-content>
     <!-- SAF URI permissions are not portable across app/device restores; ask the user to choose again. -->
     <exclude domain="sharedpref" path="library_backup_file.xml" />
+    <!-- Retired note files are kept locally for safety but are no longer part of the diary feature. -->
+    <exclude domain="file" path="my_library/" />
 </full-backup-content>

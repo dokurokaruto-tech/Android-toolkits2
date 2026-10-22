@@ -48,10 +48,6 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
         <activity
-            android:name=".LibraryNoteEditorActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
-        <activity
             android:name=".AlbumDetailActivity"
             android:exported="false" />
         <activity

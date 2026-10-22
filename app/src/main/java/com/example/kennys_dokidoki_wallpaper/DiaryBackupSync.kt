@@ -17,7 +17,7 @@ import java.io.IOException
 import java.util.UUID
 
 /** SAFで選ばれた1つのバックアップファイルを更新する。Google OAuth/APIは使わない。 */
-internal object LibraryBackupSync {
+internal object DiaryBackupSync {
 
     private const val PREFS_NAME = "library_backup_file"
     private const val KEY_URI = "uri"
@@ -28,8 +28,10 @@ internal object LibraryBackupSync {
     private const val KEY_BACKED_UP_REVISION = "backed_up_revision"
     private const val KEY_COUNTS_VALID = "backup_counts_valid"
     private const val KEY_DIARY_COUNT = "backup_diary_count"
-    private const val KEY_ESSAY_COUNT = "backup_essay_count"
-    private const val KEY_WISH_LIST_COUNT = "backup_wish_list_count"
+    private const val KEY_RETIRED_RECORD_COUNT = "backup_retired_record_count"
+    // These old preference keys are read only to keep destructive-overwrite protection during migration.
+    private const val LEGACY_COUNT_A = "backup_essay_count"
+    private const val LEGACY_COUNT_B = "backup_wish_list_count"
     private const val KEY_IMAGE_COUNT = "backup_image_count"
     private const val KEY_PAYLOAD_BYTES = "backup_payload_bytes"
 
@@ -43,7 +45,7 @@ internal object LibraryBackupSync {
         val requiresOverwriteConfirmation: Boolean = false
     )
 
-    private data class StagedArchive(val file: File, val counts: LibraryBackupCounts)
+    private data class StagedArchive(val file: File, val counts: DiaryBackupCounts)
 
     fun selectedUri(context: Context): Uri? = preferences(context).getString(KEY_URI, null)
         ?.let { runCatching { Uri.parse(it) }.getOrNull() }
@@ -134,12 +136,19 @@ internal object LibraryBackupSync {
                 } else {
                     val input = resolver.openInputStream(uri)
                         ?: throw IOException("選択したバックアップファイルを開けませんでした。")
-                    input.use { LibraryBackupArchive.merge(appContext, it) }
+                    input.use { DiaryBackupArchive.merge(appContext, it) }
                 }
-                if (merge != null &&
-                    (merge.importedDiaries > 0 || merge.importedNotes > 0 || merge.importedImages > 0)
-                ) {
+                if (merge != null && (merge.importedDiaries > 0 || merge.importedImages > 0)) {
                     markDirty(appContext)
+                }
+                if (merge != null && merge.retiredRecords > 0) {
+                    if (tookNewPermission && !hadAnyPermission) {
+                        releasePermission(resolver, uri)
+                    }
+                    return@withLock Outcome(
+                        false,
+                        "選択したバックアップには現在のアプリで扱わない旧データが${merge.retiredRecords}件含まれています。安全のためファイルは変更しませんでした。日記専用の新しいバックアップを作成してください。"
+                    )
                 }
 
                 val revision = localRevision(appContext)
@@ -175,10 +184,10 @@ internal object LibraryBackupSync {
                 }
 
                 val message = if (createDistinctFile) {
-                    "バックアップを作成しました。日記やノートの保存後、このファイルを自動更新します。"
+                    "バックアップを作成しました。日記または写真の保存後、このファイルを自動更新します。"
                 } else {
-                    val result = merge ?: LibraryBackupArchive.MergeResult(0, 0, 0)
-                    "既存データを残したまま統合し、バックアップを更新しました。取り込み: 日記${result.importedDiaries}件・ノート${result.importedNotes}件・画像${result.importedImages}件。"
+                    val result = merge ?: DiaryBackupArchive.MergeResult(0, 0, 0)
+                    "既存の日記と写真を残したまま統合し、バックアップを更新しました。取り込み: 日記${result.importedDiaries}件・写真${result.importedImages}件。"
                 }
                 Outcome(true, message)
             } catch (error: Exception) {
@@ -231,7 +240,7 @@ internal object LibraryBackupSync {
             val warning = if (previousCounts == null) {
                 "この保存先の前回バックアップ件数を確認できません。"
             } else {
-                LibraryBackupSafetyPolicy.overwriteWarning(previousCounts, staged.counts)
+                DiaryBackupSafetyPolicy.overwriteWarning(previousCounts, staged.counts)
             }
             if (warning != null && !allowDestructiveOverwrite) {
                 val message = overwriteProtectionMessage(warning)
@@ -267,8 +276,9 @@ internal object LibraryBackupSync {
                 .remove(KEY_LAST_ERROR)
                 .remove(KEY_COUNTS_VALID)
                 .remove(KEY_DIARY_COUNT)
-                .remove(KEY_ESSAY_COUNT)
-                .remove(KEY_WISH_LIST_COUNT)
+                .remove(KEY_RETIRED_RECORD_COUNT)
+                .remove(LEGACY_COUNT_A)
+                .remove(LEGACY_COUNT_B)
                 .remove(KEY_IMAGE_COUNT)
                 .remove(KEY_PAYLOAD_BYTES)
                 .apply()
@@ -276,9 +286,9 @@ internal object LibraryBackupSync {
     }
 
     private fun stageArchive(context: Context): StagedArchive {
-        val file = File(context.cacheDir, "library-backup-${UUID.randomUUID()}.zip")
+        val file = File(context.cacheDir, "diary-backup-${UUID.randomUUID()}.zip")
         return try {
-            val counts = file.outputStream().use { LibraryBackupArchive.write(context, it) }
+            val counts = file.outputStream().use { DiaryBackupArchive.write(context, it) }
             StagedArchive(file, counts)
         } catch (error: Exception) {
             file.delete()
@@ -306,16 +316,16 @@ internal object LibraryBackupSync {
                     }
                 }
         }.getOrNull()
-        return name?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment ?: LibraryBackupArchive.SUGGESTED_FILE_NAME
+        return name?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment ?: DiaryBackupArchive.SUGGESTED_FILE_NAME
     }
 
     private fun overwriteWarningForExistingTarget(
         context: Context,
-        currentCounts: LibraryBackupCounts
+        currentCounts: DiaryBackupCounts
     ): String? {
         val previous = storedBackupCounts(context)
         if (previous != null) {
-            return LibraryBackupSafetyPolicy.overwriteWarning(previous, currentCounts)
+            return DiaryBackupSafetyPolicy.overwriteWarning(previous, currentCounts)
         }
         return if (currentCounts.totalRecords == 0 && currentCounts.images == 0) {
             "この保存先の前回バックアップ件数を確認できず、端末側にも記録がありません。"
@@ -325,25 +335,26 @@ internal object LibraryBackupSync {
     }
 
     private fun overwriteProtectionMessage(warning: String): String =
-        "$warning\n\n安全のため、クラウドファイルへの上書きを停止しました。消えたデータを戻す場合は「選択済みバックアップから復元」を実行してください。意図した削除なら、内容を確認してから手動バックアップの上書きを承認できます。"
+        "$warning\n\n安全のため、保存先ファイルへの上書きを停止しました。消えたデータを戻す場合は「選択済みバックアップから復元」を実行してください。意図した削除なら、内容を確認してから手動バックアップの上書きを承認できます。"
 
-    private fun storedBackupCounts(context: Context): LibraryBackupCounts? {
+    private fun storedBackupCounts(context: Context): DiaryBackupCounts? {
         val prefs = preferences(context)
         if (!prefs.getBoolean(KEY_COUNTS_VALID, false)) return null
-        return LibraryBackupCounts(
+        return DiaryBackupCounts(
             diaries = prefs.getInt(KEY_DIARY_COUNT, 0),
-            essays = prefs.getInt(KEY_ESSAY_COUNT, 0),
-            wishLists = prefs.getInt(KEY_WISH_LIST_COUNT, 0),
+            retiredRecords = prefs.getInt(KEY_RETIRED_RECORD_COUNT, 0) +
+                prefs.getInt(LEGACY_COUNT_A, 0) + prefs.getInt(LEGACY_COUNT_B, 0),
             images = prefs.getInt(KEY_IMAGE_COUNT, 0),
             payloadBytes = prefs.getLong(KEY_PAYLOAD_BYTES, 0L)
         )
     }
 
-    private fun SharedPreferences.Editor.putBackupCounts(counts: LibraryBackupCounts): SharedPreferences.Editor =
+    private fun SharedPreferences.Editor.putBackupCounts(counts: DiaryBackupCounts): SharedPreferences.Editor =
         putBoolean(KEY_COUNTS_VALID, true)
             .putInt(KEY_DIARY_COUNT, counts.diaries)
-            .putInt(KEY_ESSAY_COUNT, counts.essays)
-            .putInt(KEY_WISH_LIST_COUNT, counts.wishLists)
+            .putInt(KEY_RETIRED_RECORD_COUNT, counts.retiredRecords)
+            .putInt(LEGACY_COUNT_A, 0)
+            .putInt(LEGACY_COUNT_B, 0)
             .putInt(KEY_IMAGE_COUNT, counts.images)
             .putLong(KEY_PAYLOAD_BYTES, counts.payloadBytes)
 
