@@ -1,113 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:fillViewport="true"
-    android:overScrollMode="ifContentScrolls"
-    android:scrollbars="vertical">
+    android:orientation="vertical"
+    android:padding="12dp">
 
-    <LinearLayout
+    <com.example.kennys_dokidoki_wallpaper.DiaryColorWheelView
+        android:id="@+id/diary_palette_wheel"
+        android:layout_width="match_parent"
+        android:layout_height="260dp"
+        android:layout_gravity="center"
+        android:clickable="true"
+        android:focusable="true"
+        android:importantForAccessibility="yes" />
+
+    <TextView
+        android:id="@+id/diary_palette_preview"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="8dp"
+        android:background="#FFFF2020"
+        android:gravity="center"
+        android:text="見本 Aa"
+        android:textColor="#000000"
+        android:textSize="18sp"
+        android:typeface="serif" />
+
+    <TextView
+        android:id="@+id/diary_palette_hex"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="12dp">
-
-        <TextView
-            android:id="@+id/diary_palette_preview"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="#FFFF2020"
-            android:gravity="center"
-            android:text="見本 Aa"
-            android:textColor="#000000"
-            android:textSize="18sp"
-            android:typeface="serif" />
-
-        <TextView
-            android:id="@+id/diary_palette_hex"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:paddingTop="4dp"
-            android:paddingBottom="8dp"
-            android:text="#FFFF2020"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:typeface="monospace" />
-
-        <TextView
-            android:id="@+id/diary_palette_hue_label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="色相 0°"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
-
-        <View
-            android:id="@+id/diary_palette_hue_spectrum"
-            android:layout_width="match_parent"
-            android:layout_height="8dp"
-            android:layout_marginTop="3dp" />
-
-        <SeekBar
-            android:id="@+id/diary_palette_hue"
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:max="360"
-            android:progress="0" />
-
-        <TextView
-            android:id="@+id/diary_palette_saturation_label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="鮮やかさ 100%"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
-
-        <View
-            android:id="@+id/diary_palette_saturation_spectrum"
-            android:layout_width="match_parent"
-            android:layout_height="8dp"
-            android:layout_marginTop="3dp" />
-
-        <SeekBar
-            android:id="@+id/diary_palette_saturation"
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:max="100"
-            android:progress="100" />
-
-        <TextView
-            android:id="@+id/diary_palette_value_label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="明るさ 100%"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
-
-        <View
-            android:id="@+id/diary_palette_value_spectrum"
-            android:layout_width="match_parent"
-            android:layout_height="8dp"
-            android:layout_marginTop="3dp" />
-
-        <SeekBar
-            android:id="@+id/diary_palette_value"
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:max="100"
-            android:progress="100" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp"
-            android:paddingBottom="6dp"
-            android:text="色のプリセット"
-            android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-        <GridLayout
-            android:id="@+id/diary_palette_presets"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:alignmentMode="alignBounds"
-            android:columnCount="6"
-            android:useDefaultMargins="false" />
-    </LinearLayout>
-</ScrollView>
+        android:gravity="center"
+        android:paddingTop="4dp"
+        android:text="#FFFF2020"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:typeface="monospace" />
+</LinearLayout>

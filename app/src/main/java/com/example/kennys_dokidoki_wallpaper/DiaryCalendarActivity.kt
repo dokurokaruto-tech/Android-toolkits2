@@ -3,7 +3,6 @@ package com.example.kennys_dokidoki_wallpaper
 import android.app.Activity
 import android.app.Dialog
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -16,10 +15,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.GridLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
-import android.widget.SeekBar
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,15 +29,21 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textview.MaterialTextView
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import kotlin.math.roundToInt
 
 /** 黒地に赤字の、古い個人サイト風の日記ページ。 */
 class DiaryCalendarActivity : AppCompatActivity() {
 
     private lateinit var pageRoot: View
     private lateinit var miniGraph: DiaryContributionGraphView
+    private lateinit var diaryEntryScroll: ScrollView
+    private lateinit var selectedDateLabel: TextView
+    private lateinit var diaryBody: TextView
+    private lateinit var emptyDiary: TextView
+    private lateinit var photoCount: TextView
+    private lateinit var editDiaryLink: TextView
 
     private var selectedDate: LocalDate = LocalDate.now()
+    private var hasSelectedDate = false
     private var palette: DiaryPalette = DiaryPalette(0xFF000000.toInt(), 0xFFFF2020.toInt())
     private var entryLengths: Map<String, Int> = emptyMap()
 
@@ -57,7 +61,17 @@ class DiaryCalendarActivity : AppCompatActivity() {
 
         pageRoot = findViewById(R.id.diary_page_root)
         miniGraph = findViewById(R.id.diary_mini_graph)
-        selectedDate = LocalDate.now()
+        diaryEntryScroll = findViewById(R.id.diary_entry_scroll)
+        selectedDateLabel = findViewById(R.id.tv_diary_selected_date)
+        diaryBody = findViewById(R.id.tv_diary_body)
+        emptyDiary = findViewById(R.id.tv_diary_empty)
+        photoCount = findViewById(R.id.tv_diary_photo_count)
+        editDiaryLink = findViewById(R.id.btn_diary_edit)
+        selectedDate = savedInstanceState?.getString(KEY_SELECTED_DATE)
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?: LocalDate.now()
+        hasSelectedDate = savedInstanceState?.getBoolean(KEY_HAS_SELECTED_DATE) ?: false
+        diaryEntryScroll.visibility = if (hasSelectedDate) View.VISIBLE else View.GONE
 
         findViewById<TextView>(R.id.btn_diary_back).setOnClickListener { finish() }
         findViewById<TextView>(R.id.btn_diary_palette).setOnClickListener { showPaletteSettings() }
@@ -65,6 +79,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
         val openGraph = View.OnClickListener { showContributionDialog() }
         findViewById<View>(R.id.diary_mini_graph_panel).setOnClickListener(openGraph)
         miniGraph.setOnClickListener(openGraph)
+        editDiaryLink.setOnClickListener { openEditor(selectedDate) }
 
         setupMiniWeekdayLabels()
         palette = DiaryPaletteStore.load(this)
@@ -78,6 +93,12 @@ class DiaryCalendarActivity : AppCompatActivity() {
         lifecycleScope.launch {
             DiaryBackupSync.backupIfDirty(this@DiaryCalendarActivity)
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(KEY_SELECTED_DATE, dateKey(selectedDate))
+        outState.putBoolean(KEY_HAS_SELECTED_DATE, hasSelectedDate)
+        super.onSaveInstanceState(outState)
     }
 
     private fun setupMiniWeekdayLabels() {
@@ -102,12 +123,48 @@ class DiaryCalendarActivity : AppCompatActivity() {
             palette,
             selectedDate
         )
+        if (hasSelectedDate) refreshSelectedEntry()
+    }
+
+    private fun refreshSelectedEntry() {
+        val entry = DiaryStore.load(this, dateKey(selectedDate))
+        val hasText = entry.text.isNotBlank()
+        val hasPhotos = entry.photos.isNotEmpty()
+        selectedDateLabel.text = displayDate(selectedDate)
+
+        if (hasText) {
+            diaryBody.text = entry.text
+            diaryBody.visibility = View.VISIBLE
+            emptyDiary.visibility = View.GONE
+        } else {
+            diaryBody.text = ""
+            diaryBody.visibility = View.GONE
+            emptyDiary.text = if (hasPhotos) {
+                "本文はありません。写真が${entry.photos.size}枚あります。"
+            } else {
+                "この日の日記はまだありません。"
+            }
+            emptyDiary.visibility = View.VISIBLE
+        }
+
+        if (hasPhotos) {
+            photoCount.text = "写真：${entry.photos.size}枚"
+            photoCount.visibility = View.VISIBLE
+        } else {
+            photoCount.text = ""
+            photoCount.visibility = View.GONE
+        }
+        editDiaryLink.text = linkText(
+            if (hasText || hasPhotos) "[ この日の日記を編集する ]" else "[ この日に日記を書く ]"
+        )
+        diaryEntryScroll.visibility = View.VISIBLE
     }
 
     private fun selectDate(date: LocalDate) {
         selectedDate = date
+        hasSelectedDate = true
         refreshDiary()
-        openEditor(date)
+        diaryEntryScroll.post { diaryEntryScroll.scrollTo(0, 0) }
     }
 
     private fun openEditor(date: LocalDate) {
@@ -342,57 +399,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
         val content = layoutInflater.inflate(R.layout.dialog_diary_palette, null, false)
         val preview = content.findViewById<TextView>(R.id.diary_palette_preview)
         val hexLabel = content.findViewById<TextView>(R.id.diary_palette_hex)
-        val hueSeek = content.findViewById<SeekBar>(R.id.diary_palette_hue)
-        val saturationSeek = content.findViewById<SeekBar>(R.id.diary_palette_saturation)
-        val valueSeek = content.findViewById<SeekBar>(R.id.diary_palette_value)
-        val hueLabel = content.findViewById<TextView>(R.id.diary_palette_hue_label)
-        val saturationLabel = content.findViewById<TextView>(R.id.diary_palette_saturation_label)
-        val valueLabel = content.findViewById<TextView>(R.id.diary_palette_value_label)
-        val hueSpectrum = content.findViewById<View>(R.id.diary_palette_hue_spectrum)
-        val saturationSpectrum = content.findViewById<View>(R.id.diary_palette_saturation_spectrum)
-        val valueSpectrum = content.findViewById<View>(R.id.diary_palette_value_spectrum)
-        val presets = content.findViewById<GridLayout>(R.id.diary_palette_presets)
-        val sliderTint = ColorStateList.valueOf(
-            if (Color.luminance(palette.text) < 0.45f) Color.WHITE else palette.text
-        )
-        listOf(hueSeek, saturationSeek, valueSeek).forEach {
-            it.setProgressTintList(sliderTint)
-            it.setThumbTintList(sliderTint)
-        }
-
+        val colorWheel = content.findViewById<DiaryColorWheelView>(R.id.diary_palette_wheel)
         var selectedColor = currentColor
-        var syncingControls = false
-        var hsv = FloatArray(3)
-
-        fun updateLabels() {
-            hueLabel.text = "色相 ${hueSeek.progress}°"
-            saturationLabel.text = "鮮やかさ ${saturationSeek.progress}%"
-            valueLabel.text = "明るさ ${valueSeek.progress}%"
-        }
-
-        fun spectrum(vararg colors: Int): GradientDrawable =
-            GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, colors).apply {
-                cornerRadius = dp(4).toFloat()
-            }
-
-        fun updateSpectra() {
-            val hue = hueSeek.progress.toFloat()
-            val saturation = saturationSeek.progress / 100f
-            val brightness = valueSeek.progress / 100f
-            saturationSpectrum.background = spectrum(
-                Color.HSVToColor(floatArrayOf(hue, 0f, brightness)),
-                Color.HSVToColor(floatArrayOf(hue, 1f, brightness))
-            )
-            valueSpectrum.background = spectrum(
-                Color.HSVToColor(floatArrayOf(hue, saturation, 0f)),
-                Color.HSVToColor(floatArrayOf(hue, saturation, 1f))
-            )
-        }
-
-        hueSpectrum.background = spectrum(
-            Color.RED, Color.YELLOW, Color.GREEN, Color.CYAN,
-            Color.BLUE, Color.MAGENTA, Color.RED
-        )
 
         fun updatePreview(color: Int) {
             selectedColor = color
@@ -410,72 +418,9 @@ class DiaryCalendarActivity : AppCompatActivity() {
             hexLabel.text = String.format(java.util.Locale.US, "#%06X", color and 0xFFFFFF)
         }
 
-        fun setColor(color: Int) {
-            Color.colorToHSV(color, hsv)
-            syncingControls = true
-            hueSeek.progress = hsv[0].roundToInt().coerceIn(0, 360)
-            saturationSeek.progress = (hsv[1] * 100f).roundToInt().coerceIn(0, 100)
-            valueSeek.progress = (hsv[2] * 100f).roundToInt().coerceIn(0, 100)
-            syncingControls = false
-            updateLabels()
-            updateSpectra()
-            updatePreview(color)
-        }
-
-        fun updateFromControls() {
-            if (syncingControls) return
-            updateLabels()
-            updateSpectra()
-            updatePreview(
-                Color.HSVToColor(
-                    floatArrayOf(
-                        hueSeek.progress.toFloat(),
-                        saturationSeek.progress / 100f,
-                        valueSeek.progress / 100f
-                    )
-                )
-            )
-        }
-
-        val seekListener = object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                updateFromControls()
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-        }
-        hueSeek.setOnSeekBarChangeListener(seekListener)
-        saturationSeek.setOnSeekBarChangeListener(seekListener)
-        valueSeek.setOnSeekBarChangeListener(seekListener)
-
-        presets.removeAllViews()
-        DiaryPaletteStore.presets.forEach { choice ->
-            val swatch = View(this).apply {
-                contentDescription = choice.label
-                setTooltipText(choice.label)
-                isClickable = true
-                isFocusable = true
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    setColor(choice.color)
-                    val borderColor = if (Color.luminance(choice.color) < 0.45f) {
-                        Color.WHITE
-                    } else {
-                        Color.DKGRAY
-                    }
-                    setStroke(dp(1), borderColor)
-                }
-                setOnClickListener { setColor(choice.color) }
-            }
-            val layoutParams = GridLayout.LayoutParams().apply {
-                width = dp(34)
-                height = dp(34)
-                setMargins(dp(3), dp(3), dp(3), dp(3))
-            }
-            presets.addView(swatch, layoutParams)
-        }
-        setColor(currentColor)
+        colorWheel.setColor(currentColor)
+        colorWheel.setOnColorChangedListener(::updatePreview)
+        updatePreview(currentColor)
 
         MaterialAlertDialogBuilder(this)
             .setTitle(title)
@@ -489,6 +434,9 @@ class DiaryCalendarActivity : AppCompatActivity() {
         palette = DiaryPaletteStore.load(this)
         pageRoot.setBackgroundColor(palette.background)
         tintTextViews(pageRoot, palette.text)
+        diaryEntryScroll.setBackgroundColor(palette.background)
+        emptyDiary.setTextColor(palette.mutedText)
+        photoCount.setTextColor(palette.mutedText)
 
         findViewById<View>(R.id.diary_mini_graph_panel).setBackgroundColor(palette.background)
         miniGraph.show(
@@ -501,7 +449,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
         listOf(
             R.id.btn_diary_back,
             R.id.btn_diary_palette,
-            R.id.btn_diary_backup
+            R.id.btn_diary_backup,
+            R.id.btn_diary_edit
         ).forEach { findViewById<TextView>(it).apply {
             text = linkText(text.toString())
             setTextColor(palette.text)
@@ -716,6 +665,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val KEY_SELECTED_DATE = "selected_diary_date"
+        private const val KEY_HAS_SELECTED_DATE = "has_selected_diary_date"
         private const val MIN_GRAPH_YEAR = 2000
         private const val GRAPH_CELL_WIDTH_DP = 40
         private const val GRAPH_CELL_HEIGHT_DP = 36
