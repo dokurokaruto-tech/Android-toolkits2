@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:background="#000000"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="8dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -14,59 +14,23 @@
         android:orientation="horizontal">
 
         <TextView
-            android:id="@+id/tv_diary_graph_dialog_title"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="日記カレンダー"
-            android:textColor="#FFFF2020"
-            android:textSize="20sp"
-            android:typeface="serif" />
-
-        <TextView
-            android:id="@+id/btn_diary_graph_close"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:gravity="center"
-            android:minWidth="48dp"
-            android:paddingHorizontal="8dp"
-            android:text="[閉じる]"
-            android:textColor="#FFFF2020"
-            android:textSize="13sp"
-            android:typeface="monospace" />
-    </LinearLayout>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginBottom="8dp"
-        android:background="#FF6B1010" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="horizontal">
-
-        <TextView
             android:id="@+id/btn_diary_graph_previous_year"
             android:layout_width="wrap_content"
-            android:layout_height="48dp"
+            android:layout_height="44dp"
             android:gravity="center"
-            android:minWidth="76dp"
-            android:paddingHorizontal="8dp"
+            android:minWidth="68dp"
+            android:paddingHorizontal="4dp"
             android:text="&lt;&lt; 前年"
             android:textColor="#FFFF2020"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:typeface="monospace" />
 
         <TextView
             android:id="@+id/tv_diary_graph_year"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
             android:gravity="center"
-            android:minWidth="100dp"
             android:textColor="#FFFF2020"
             android:textSize="18sp"
             android:typeface="serif" />
@@ -74,30 +38,32 @@
         <TextView
             android:id="@+id/btn_diary_graph_next_year"
             android:layout_width="wrap_content"
-            android:layout_height="48dp"
+            android:layout_height="44dp"
             android:gravity="center"
-            android:minWidth="76dp"
-            android:paddingHorizontal="8dp"
+            android:minWidth="68dp"
+            android:paddingHorizontal="4dp"
             android:text="翌年 &gt;&gt;"
+            android:textColor="#FFFF2020"
+            android:textSize="12sp"
+            android:typeface="monospace" />
+
+        <TextView
+            android:id="@+id/btn_diary_graph_close"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:minWidth="48dp"
+            android:paddingStart="4dp"
+            android:text="[×]"
             android:textColor="#FFFF2020"
             android:textSize="13sp"
             android:typeface="monospace" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tv_diary_graph_instructions"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingTop="2dp"
-        android:paddingBottom="8dp"
-        android:text="日曜日から土曜日まで。日付をタップすると本文を表示します。"
-        android:textColor="#FFFF5555"
-        android:textSize="12sp"
-        android:typeface="serif" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
         android:orientation="horizontal">
 
         <LinearLayout
@@ -134,14 +100,4 @@
             </LinearLayout>
         </HorizontalScrollView>
     </LinearLayout>
-
-    <TextView
-        android:id="@+id/tv_diary_graph_legend"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingTop="10dp"
-        android:text="記録なし  ■ 短い日記  ■■ 長い日記"
-        android:textColor="#FFFF4444"
-        android:textSize="12sp"
-        android:typeface="monospace" />
 </LinearLayout>

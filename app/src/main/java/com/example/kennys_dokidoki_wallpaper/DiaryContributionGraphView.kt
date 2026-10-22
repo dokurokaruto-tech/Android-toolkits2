@@ -18,16 +18,20 @@ internal class DiaryContributionGraphView @JvmOverloads constructor(
     private var weeks: List<List<LocalDate>> = emptyList()
     private var entryLengths: Map<String, Int> = emptyMap()
     private var palette = DiaryPalette(0xFF000000.toInt(), 0xFFFF2020.toInt())
+    private var selectedDate: LocalDate? = null
 
     fun show(
         weeks: List<List<LocalDate>>,
         entryLengths: Map<String, Int>,
-        palette: DiaryPalette
+        palette: DiaryPalette,
+        selectedDate: LocalDate? = null
     ) {
         this.weeks = weeks
         this.entryLengths = entryLengths
         this.palette = palette
-        contentDescription = "過去${weeks.size}週間、日曜日から土曜日までの日記の記録。下のリンクから詳しい日付を選べます。"
+        this.selectedDate = selectedDate
+        val selected = selectedDate?.let { " 選択中: ${DiaryStore.dateKey(it.year, it.monthValue, it.dayOfMonth)}" }.orEmpty()
+        contentDescription = "日記の記録グラフ。過去${weeks.size}週間。$selected タップすると日付一覧を開きます。"
         requestLayout()
         invalidate()
     }
@@ -62,10 +66,18 @@ internal class DiaryContributionGraphView @JvmOverloads constructor(
                 val key = DiaryStore.dateKey(date.year, date.monthValue, date.dayOfMonth)
                 val count = entryLengths[key] ?: 0
                 val level = DiaryContributionPolicy.level(count, entryLengths.containsKey(key))
-                paint.color = palette.cellColor(level)
                 val left = startX + weekIndex * (cell + gap)
                 val top = startY + dayIndex * (cell + gap)
+                paint.style = Paint.Style.FILL
+                paint.color = palette.cellColor(level)
                 canvas.drawRect(left, top, left + cell, top + cell, paint)
+                if (date == selectedDate) {
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = dp(1f)
+                    paint.color = palette.text
+                    canvas.drawRect(left, top, left + cell, top + cell, paint)
+                    paint.style = Paint.Style.FILL
+                }
             }
         }
     }
