@@ -3,6 +3,7 @@ package com.example.kennys_dokidoki_wallpaper
 import android.app.Activity
 import android.app.Dialog
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -10,15 +11,20 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.TextWatcher
+import android.text.method.KeyListener
 import android.text.style.UnderlineSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -26,6 +32,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import com.google.android.material.textview.MaterialTextView
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -36,14 +44,27 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private lateinit var pageRoot: View
     private lateinit var miniGraph: DiaryContributionGraphView
     private lateinit var diaryEntryScroll: ScrollView
+    private lateinit var entryFadeOverlay: View
+    private lateinit var entryActions: LinearLayout
     private lateinit var selectedDateLabel: TextView
-    private lateinit var diaryBody: TextView
+    private lateinit var diaryEditor: TextInputEditText
+    private lateinit var diaryEditorLayout: TextInputLayout
+    private lateinit var diaryEditorKeyListener: KeyListener
     private lateinit var emptyDiary: TextView
     private lateinit var photoCount: TextView
     private lateinit var editDiaryLink: TextView
+    private lateinit var addPhotoLink: TextView
+    private lateinit var photoHint: TextView
+    private lateinit var photoCanvas: FrameLayout
+    private lateinit var photoLayer: DiaryPhotoLayer
 
     private var selectedDate: LocalDate = LocalDate.now()
     private var hasSelectedDate = false
+    private var isEditingEntry = false
+    private var isBindingDiaryText = false
+    private var photoLayerReady = false
+    private var currentEntry: DiaryEntry? = null
+    private var savedEntry: DiaryEntry? = null
     private var palette: DiaryPalette = DiaryPalette(0xFF000000.toInt(), 0xFFFF2020.toInt())
     private var entryLengths: Map<String, Int> = emptyMap()
 
@@ -55,6 +76,10 @@ class DiaryCalendarActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result -> handleBackupSelection(result, isNewFile = false) }
 
+    private val pickDiaryImage = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri -> handleDiaryImageSelection(uri) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_diary_calendar)
@@ -62,16 +87,43 @@ class DiaryCalendarActivity : AppCompatActivity() {
         pageRoot = findViewById(R.id.diary_page_root)
         miniGraph = findViewById(R.id.diary_mini_graph)
         diaryEntryScroll = findViewById(R.id.diary_entry_scroll)
+        entryFadeOverlay = findViewById(R.id.diary_entry_fade)
+        entryActions = findViewById(R.id.diary_entry_actions)
         selectedDateLabel = findViewById(R.id.tv_diary_selected_date)
-        diaryBody = findViewById(R.id.tv_diary_body)
+        diaryEditor = findViewById(R.id.et_diary_inline_text)
+        diaryEditorLayout = findViewById(R.id.til_diary_inline_text)
+        diaryEditorKeyListener = diaryEditor.keyListener
+            ?: android.text.method.TextKeyListener.getInstance()
         emptyDiary = findViewById(R.id.tv_diary_empty)
         photoCount = findViewById(R.id.tv_diary_photo_count)
         editDiaryLink = findViewById(R.id.btn_diary_edit)
+        addPhotoLink = findViewById(R.id.btn_diary_add_photo)
+        photoHint = findViewById(R.id.tv_diary_photo_hint)
+        photoCanvas = findViewById(R.id.diary_photo_canvas)
+        photoLayer = DiaryPhotoLayer(photoCanvas) { handle -> confirmDeletePhoto(handle) }
+
         selectedDate = savedInstanceState?.getString(KEY_SELECTED_DATE)
             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
             ?: LocalDate.now()
         hasSelectedDate = savedInstanceState?.getBoolean(KEY_HAS_SELECTED_DATE) ?: false
+        isEditingEntry = hasSelectedDate && (savedInstanceState?.getBoolean(KEY_IS_EDITING) ?: false)
         diaryEntryScroll.visibility = if (hasSelectedDate) View.VISIBLE else View.GONE
+        diaryEntryScroll.setOnScrollChangeListener { _, _, scrollY, _, _ -> updateEntryFade(scrollY) }
+
+        enableEntryPanelScrolling()
+        diaryEditor.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
+
+            override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {
+                if (isBindingDiaryText || !isEditingEntry) return
+                val entry = currentEntry ?: return
+                val updatedEntry = entry.copy(text = text?.toString().orEmpty())
+                currentEntry = updatedEntry
+                updateLiveContribution(updatedEntry)
+            }
+
+            override fun afterTextChanged(text: android.text.Editable?) = Unit
+        })
 
         findViewById<TextView>(R.id.btn_diary_back).setOnClickListener { finish() }
         findViewById<TextView>(R.id.btn_diary_palette).setOnClickListener { showPaletteSettings() }
@@ -79,7 +131,10 @@ class DiaryCalendarActivity : AppCompatActivity() {
         val openGraph = View.OnClickListener { showContributionDialog() }
         findViewById<View>(R.id.diary_mini_graph_panel).setOnClickListener(openGraph)
         miniGraph.setOnClickListener(openGraph)
-        editDiaryLink.setOnClickListener { openEditor(selectedDate) }
+        editDiaryLink.setOnClickListener {
+            if (isEditingEntry) finishInlineEditing() else beginInlineEditing()
+        }
+        addPhotoLink.setOnClickListener { pickDiaryImage.launch("image/*") }
 
         setupMiniWeekdayLabels()
         palette = DiaryPaletteStore.load(this)
@@ -95,9 +150,16 @@ class DiaryCalendarActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        persistCurrentEntry()
+        super.onPause()
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
+        persistCurrentEntry()
         outState.putString(KEY_SELECTED_DATE, dateKey(selectedDate))
         outState.putBoolean(KEY_HAS_SELECTED_DATE, hasSelectedDate)
+        outState.putBoolean(KEY_IS_EDITING, isEditingEntry)
         super.onSaveInstanceState(outState)
     }
 
@@ -115,63 +177,281 @@ class DiaryCalendarActivity : AppCompatActivity() {
         }
     }
 
+    private fun enableEntryPanelScrolling() {
+        var lastTouchY = 0f
+        diaryEditor.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    lastTouchY = event.y
+                    view.parent?.requestDisallowInterceptTouchEvent(
+                        view.canScrollVertically(-1) || view.canScrollVertically(1)
+                    )
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val deltaY = event.y - lastTouchY
+                    if (deltaY != 0f) {
+                        val direction = if (deltaY > 0f) -1 else 1
+                        view.parent?.requestDisallowInterceptTouchEvent(view.canScrollVertically(direction))
+                    }
+                    lastTouchY = event.y
+                }
+                android.view.MotionEvent.ACTION_UP,
+                android.view.MotionEvent.ACTION_CANCEL ->
+                    view.parent?.requestDisallowInterceptTouchEvent(false)
+            }
+            false
+        }
+    }
+
     private fun refreshDiary() {
         entryLengths = DiaryStore.textLengths(this)
+        if (hasSelectedDate) {
+            val key = dateKey(selectedDate)
+            if (currentEntry?.date != key || !isEditingEntry) {
+                loadSelectedEntry(key)
+            }
+            renderSelectedEntry()
+            if (isEditingEntry) currentEntry?.let { mergeLiveEntryLength(it) }
+        } else {
+            currentEntry = null
+            savedEntry = null
+            diaryEntryScroll.visibility = View.GONE
+            entryActions.visibility = View.GONE
+        }
+        renderMiniGraph()
+        updateEntryFade(diaryEntryScroll.scrollY)
+    }
+
+    private fun loadSelectedEntry(key: String) {
+        val entry = DiaryStore.load(this, key)
+        currentEntry = entry
+        savedEntry = entry
+        isBindingDiaryText = true
+        diaryEditor.setText(entry.text)
+        isBindingDiaryText = false
+        photoLayerReady = false
+        photoLayer.restore(emptyList())
+    }
+
+    private fun renderSelectedEntry() {
+        val entry = currentEntry ?: return
+        val hasText = entry.text.isNotBlank()
+        val hasPhotos = entry.photos.isNotEmpty()
+        selectedDateLabel.text = displayDate(selectedDate)
+        diaryEntryScroll.visibility = View.VISIBLE
+        entryActions.visibility = View.VISIBLE
+        diaryInputLayoutHint(isEditingEntry)
+        diaryEditorLayout.visibility = if (isEditingEntry || hasText) View.VISIBLE else View.GONE
+        setInlineEditorEditable(isEditingEntry)
+
+        if (isEditingEntry) {
+            emptyDiary.visibility = View.GONE
+            photoCount.visibility = View.GONE
+            addPhotoLink.visibility = View.VISIBLE
+            photoCanvas.visibility = if (hasPhotos) View.VISIBLE else View.GONE
+            photoHint.visibility = if (hasPhotos) View.VISIBLE else View.GONE
+            photoLayer.setInteractive(true)
+            editDiaryLink.text = linkText("[ 保存して読み取り表示へ ]")
+            if (!photoLayerReady) restorePhotoLayer(entry.photos)
+        } else {
+            emptyDiary.text = if (hasPhotos) {
+                "本文はありません。写真が${entry.photos.size}枚あります。"
+            } else {
+                "この日の日記はまだありません。"
+            }
+            emptyDiary.visibility = if (hasText) View.GONE else View.VISIBLE
+            photoCount.text = if (hasPhotos) "写真：${entry.photos.size}枚" else ""
+            photoCount.visibility = if (hasPhotos) View.VISIBLE else View.GONE
+            addPhotoLink.visibility = View.GONE
+            photoHint.visibility = View.GONE
+            photoCanvas.visibility = if (hasPhotos) View.VISIBLE else View.GONE
+            photoLayer.setInteractive(false)
+            editDiaryLink.text = linkText(
+                if (hasText || hasPhotos) "[ この日の日記を編集する ]" else "[ この日に日記を書く ]"
+            )
+            if (!photoLayerReady) restorePhotoLayer(entry.photos)
+        }
+    }
+
+    private fun diaryInputLayoutHint(editing: Boolean) {
+        diaryEditorLayout.hint = if (editing) "今日のできごと" else null
+    }
+
+    private fun setInlineEditorEditable(editable: Boolean) {
+        if (editable) {
+            diaryEditor.setTextIsSelectable(false)
+            diaryEditor.keyListener = diaryEditorKeyListener
+            diaryEditor.isFocusable = true
+            diaryEditor.isFocusableInTouchMode = true
+            diaryEditor.isCursorVisible = true
+            diaryEditor.isLongClickable = true
+        } else {
+            diaryEditor.clearFocus()
+            diaryEditor.keyListener = null
+            diaryEditor.setTextIsSelectable(true)
+            diaryEditor.isCursorVisible = false
+            diaryEditor.isLongClickable = true
+        }
+    }
+
+    private fun restorePhotoLayer(photos: List<DiaryPhoto>) {
+        photoLayerReady = photos.isEmpty()
+        photoLayer.restore(photos) {
+            photoLayerReady = true
+        }
+    }
+
+    private fun renderMiniGraph() {
         miniGraph.show(
             DiaryContributionPolicy.recentWeeks(LocalDate.now()),
             entryLengths,
             palette,
             selectedDate
         )
-        if (hasSelectedDate) refreshSelectedEntry()
     }
 
-    private fun refreshSelectedEntry() {
-        val entry = DiaryStore.load(this, dateKey(selectedDate))
-        val hasText = entry.text.isNotBlank()
-        val hasPhotos = entry.photos.isNotEmpty()
-        selectedDateLabel.text = displayDate(selectedDate)
-
-        if (hasText) {
-            diaryBody.text = entry.text
-            diaryBody.visibility = View.VISIBLE
-            emptyDiary.visibility = View.GONE
+    private fun mergeLiveEntryLength(entry: DiaryEntry) {
+        if (entry.date != dateKey(selectedDate)) return
+        val updated = entryLengths.toMutableMap()
+        if (entry.text.isNotBlank() || entry.photos.isNotEmpty()) {
+            updated[entry.date] = entry.text.length
         } else {
-            diaryBody.text = ""
-            diaryBody.visibility = View.GONE
-            emptyDiary.text = if (hasPhotos) {
-                "本文はありません。写真が${entry.photos.size}枚あります。"
-            } else {
-                "この日の日記はまだありません。"
-            }
-            emptyDiary.visibility = View.VISIBLE
+            updated.remove(entry.date)
         }
+        entryLengths = updated
+    }
 
-        if (hasPhotos) {
-            photoCount.text = "写真：${entry.photos.size}枚"
-            photoCount.visibility = View.VISIBLE
-        } else {
-            photoCount.text = ""
-            photoCount.visibility = View.GONE
-        }
-        editDiaryLink.text = linkText(
-            if (hasText || hasPhotos) "[ この日の日記を編集する ]" else "[ この日に日記を書く ]"
-        )
-        diaryEntryScroll.visibility = View.VISIBLE
+    private fun updateLiveContribution(entry: DiaryEntry) {
+        mergeLiveEntryLength(entry)
+        renderMiniGraph()
     }
 
     private fun selectDate(date: LocalDate) {
+        if (isEditingEntry) {
+            persistCurrentEntry()
+            isEditingEntry = false
+            hideDiaryKeyboard()
+        }
         selectedDate = date
         hasSelectedDate = true
         refreshDiary()
-        diaryEntryScroll.post { diaryEntryScroll.scrollTo(0, 0) }
+        diaryEntryScroll.post {
+            diaryEntryScroll.scrollTo(0, 0)
+            updateEntryFade(0)
+        }
     }
 
-    private fun openEditor(date: LocalDate) {
-        startActivity(
-            Intent(this, DiaryEditorActivity::class.java)
-                .putExtra(DiaryEditorActivity.EXTRA_DATE, dateKey(date))
+    private fun beginInlineEditing() {
+        if (!hasSelectedDate) return
+        isEditingEntry = true
+        renderSelectedEntry()
+        diaryEditor.requestFocus()
+        diaryEditor.setSelection(diaryEditor.text?.length ?: 0)
+        diaryEditor.post {
+            val keyboard = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            keyboard.showSoftInput(diaryEditor, InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+
+    private fun finishInlineEditing() {
+        persistCurrentEntry()
+        isEditingEntry = false
+        hideDiaryKeyboard()
+        entryLengths = DiaryStore.textLengths(this)
+        currentEntry?.let { mergeLiveEntryLength(it) }
+        renderSelectedEntry()
+        renderMiniGraph()
+    }
+
+    private fun hideDiaryKeyboard() {
+        val keyboard = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        keyboard.hideSoftInputFromWindow(diaryEditor.windowToken, 0)
+        diaryEditor.clearFocus()
+    }
+
+    private fun persistCurrentEntry(): DiaryEntry? {
+        val entry = currentEntry ?: return null
+        val latestText = if (isEditingEntry) diaryEditor.text?.toString().orEmpty() else entry.text
+        val latestPhotos = if (isEditingEntry && photoLayerReady) photoLayer.snapshot() else entry.photos
+        val updated = entry.copy(text = latestText, photos = latestPhotos)
+        currentEntry = updated
+        if (updated != savedEntry) {
+            DiaryStore.save(this, updated)
+            DiaryBackupSync.markDirty(this)
+            DiaryBackupSync.backupInBackground(this)
+            savedEntry = updated
+        }
+        return updated
+    }
+
+    private fun handleDiaryImageSelection(uri: android.net.Uri?) {
+        if (uri == null || !isEditingEntry) return
+        val fileName = runCatching {
+            contentResolver.openInputStream(uri)?.use { DiaryStore.importImage(this, it) }
+        }.getOrNull()
+        if (fileName == null) {
+            Toast.makeText(this, "画像を読み込めませんでした。", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val entry = currentEntry ?: DiaryStore.load(this, dateKey(selectedDate))
+        val photos = if (photoLayerReady) photoLayer.snapshot() else entry.photos
+        val newPhoto = DiaryPhoto(
+            fileName = fileName,
+            xRatio = (1f - DiaryLayoutPolicy.DEFAULT_WIDTH_RATIO) / 2f,
+            yRatio = 0.05f,
+            widthRatio = DiaryLayoutPolicy.DEFAULT_WIDTH_RATIO
         )
+        val updatedEntry = entry.copy(photos = photos + newPhoto)
+        currentEntry = updatedEntry
+        photoCanvas.visibility = View.VISIBLE
+        photoHint.visibility = View.VISIBLE
+        photoLayer.setInteractive(true)
+        restorePhotoLayer(updatedEntry.photos)
+        updateLiveContribution(updatedEntry)
+    }
+
+    private fun confirmDeletePhoto(handle: DiaryPhotoHandle) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("この画像を削除しますか？")
+            .setMessage("この日記から画像を取り除きます。")
+            .setPositiveButton("削除") { _, _ ->
+                photoLayer.remove(handle)
+                val entry = currentEntry ?: return@setPositiveButton
+                val updatedEntry = entry.copy(photos = photoLayer.snapshot())
+                currentEntry = updatedEntry
+                if (updatedEntry.photos.isEmpty()) {
+                    photoCanvas.visibility = View.GONE
+                    photoHint.visibility = View.GONE
+                }
+                updateLiveContribution(updatedEntry)
+                persistCurrentEntry()
+                DiaryStore.purgeUnusedImages(this)
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun updateEntryFadeBackground() {
+        val baseAlpha = Color.alpha(palette.background)
+        val coverAlphas = intArrayOf(255, 248, 215, 128, 40, 7, 0)
+        val positions = floatArrayOf(0f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1f)
+        val red = Color.red(palette.background)
+        val green = Color.green(palette.background)
+        val blue = Color.blue(palette.background)
+        val colors = coverAlphas.map { alpha ->
+            Color.argb(alpha * baseAlpha / 255, red, green, blue)
+        }.toIntArray()
+        entryFadeOverlay.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            colors
+        ).apply { setColors(colors, positions) }
+        updateEntryFade(diaryEntryScroll.scrollY)
+    }
+
+    private fun updateEntryFade(scrollY: Int) {
+        val progress = (scrollY / dp(24).toFloat()).coerceIn(0f, 1f)
+        entryFadeOverlay.alpha = progress * progress * (3f - 2f * progress)
     }
 
     private fun displayDate(date: LocalDate): String {
@@ -435,8 +715,15 @@ class DiaryCalendarActivity : AppCompatActivity() {
         pageRoot.setBackgroundColor(palette.background)
         tintTextViews(pageRoot, palette.text)
         diaryEntryScroll.setBackgroundColor(palette.background)
+        entryActions.setBackgroundColor(palette.background)
+        diaryEditor.setTextColor(palette.text)
+        diaryEditor.setHintTextColor(palette.mutedText)
+        diaryEditorLayout.setHintTextColor(ColorStateList.valueOf(palette.text))
         emptyDiary.setTextColor(palette.mutedText)
         photoCount.setTextColor(palette.mutedText)
+        photoHint.setTextColor(palette.mutedText)
+        photoCanvas.setBackgroundColor(Color.TRANSPARENT)
+        updateEntryFadeBackground()
 
         findViewById<View>(R.id.diary_mini_graph_panel).setBackgroundColor(palette.background)
         miniGraph.show(
@@ -450,7 +737,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
             R.id.btn_diary_back,
             R.id.btn_diary_palette,
             R.id.btn_diary_backup,
-            R.id.btn_diary_edit
+            R.id.btn_diary_edit,
+            R.id.btn_diary_add_photo
         ).forEach { findViewById<TextView>(it).apply {
             text = linkText(text.toString())
             setTextColor(palette.text)
@@ -598,6 +886,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
             showBackupOutcome(DiaryBackupSync.Outcome(false, "選択したファイルの場所を取得できませんでした。"))
             return
         }
+        if (isEditingEntry) finishInlineEditing()
         val grantFlags = data.flags
         lifecycleScope.launch {
             val outcome = DiaryBackupSync.connect(this@DiaryCalendarActivity, uri, grantFlags, isNewFile)
@@ -607,6 +896,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
     }
 
     private fun runManualBackup(allowDestructiveOverwrite: Boolean = false) {
+        if (isEditingEntry) persistCurrentEntry()
         lifecycleScope.launch {
             val outcome = DiaryBackupSync.backupNow(
                 this@DiaryCalendarActivity,
@@ -641,6 +931,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
             .setMessage("バックアップZIPから端末にない日記や写真を取り込みます。端末にあるデータは削除しません。復元後にバックアップを更新します。")
             .setNegativeButton("キャンセル", null)
             .setPositiveButton("復元して更新") { _, _ ->
+                if (isEditingEntry) finishInlineEditing()
                 lifecycleScope.launch {
                     val outcome = DiaryBackupSync.restoreNow(this@DiaryCalendarActivity)
                     refreshDiary()
@@ -667,6 +958,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
     companion object {
         private const val KEY_SELECTED_DATE = "selected_diary_date"
         private const val KEY_HAS_SELECTED_DATE = "has_selected_diary_date"
+        private const val KEY_IS_EDITING = "is_editing_diary_entry"
         private const val MIN_GRAPH_YEAR = 2000
         private const val GRAPH_CELL_WIDTH_DP = 40
         private const val GRAPH_CELL_HEIGHT_DP = 36

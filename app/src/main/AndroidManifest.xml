@@ -42,9 +42,6 @@
             android:exported="false" />
         <activity
             android:name=".DiaryCalendarActivity"
-            android:exported="false" />
-        <activity
-            android:name=".DiaryEditorActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
         <activity

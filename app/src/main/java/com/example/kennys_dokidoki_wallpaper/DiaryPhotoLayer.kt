@@ -23,11 +23,26 @@ class DiaryPhotoLayer(
 
     private val handles = mutableListOf<DiaryPhotoHandle>()
     private val longPress = Handler(Looper.getMainLooper())
+    private var restoreGeneration = 0
+    private var interactive = false
 
-    fun restore(photos: List<DiaryPhoto>) {
+    fun setInteractive(enabled: Boolean) {
+        if (interactive == enabled) return
+        interactive = enabled
+        handles.forEach { handle ->
+            if (enabled) bindGestures(handle) else handle.view.setOnTouchListener(null)
+        }
+    }
+
+    fun restore(photos: List<DiaryPhoto>, onRestored: (() -> Unit)? = null) {
+        val generation = ++restoreGeneration
         handles.forEach { canvas.removeView(it.view) }
         handles.clear()
-        canvas.post { photos.forEach { add(it) } }
+        canvas.post {
+            if (generation != restoreGeneration) return@post
+            photos.forEach { add(it) }
+            onRestored?.invoke()
+        }
     }
 
     /** 用紙のどこに置くかは比率で受け取り、実ピクセルへ直して配置する */
@@ -45,7 +60,7 @@ class DiaryPhotoLayer(
             .load(DiaryStore.imageFile(canvas.context, photo.fileName))
             .into(view)
 
-        bindGestures(handle)
+        if (interactive) bindGestures(handle)
         apply(handle)
     }
 
