@@ -36,7 +36,10 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.android.material.textview.MaterialTextView
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import java.io.File
 import java.time.LocalDate
+import java.time.ZoneId
 
 /** 黒地に赤字の、古い個人サイト風の日記ページ。 */
 class DiaryCalendarActivity : AppCompatActivity() {
@@ -45,7 +48,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private lateinit var miniGraph: DiaryContributionGraphView
     private lateinit var diaryEntryScroll: ScrollView
     private lateinit var entryFadeOverlay: View
-    private lateinit var entryActions: LinearLayout
+    private lateinit var entryBottomFadeOverlay: View
+    private lateinit var bottomMenu: LinearLayout
     private lateinit var selectedDateLabel: TextView
     private lateinit var diaryEditor: TextInputEditText
     private lateinit var diaryEditorLayout: TextInputLayout
@@ -53,20 +57,29 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private lateinit var emptyDiary: TextView
     private lateinit var photoCount: TextView
     private lateinit var editDiaryLink: TextView
+    private lateinit var saveDiaryButton: TextView
+    private lateinit var cancelDiaryButton: TextView
     private lateinit var addPhotoLink: TextView
     private lateinit var photoHint: TextView
     private lateinit var photoCanvas: FrameLayout
     private lateinit var photoLayer: DiaryPhotoLayer
 
-    private var selectedDate: LocalDate = LocalDate.now()
+    private var selectedDate: LocalDate = LocalDate.now(ZoneId.systemDefault())
     private var hasSelectedDate = false
     private var isEditingEntry = false
+    private var editStartedFromEmptyHome = false
     private var isBindingDiaryText = false
     private var photoLayerReady = false
     private var currentEntry: DiaryEntry? = null
     private var savedEntry: DiaryEntry? = null
     private var palette: DiaryPalette = DiaryPalette(0xFF000000.toInt(), 0xFFFF2020.toInt())
     private var entryLengths: Map<String, Int> = emptyMap()
+
+    private data class DiaryEditDraft(
+        val original: DiaryEntry,
+        val working: DiaryEntry,
+        val startedFromEmptyHome: Boolean
+    )
 
     private val createBackupFile = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -87,8 +100,9 @@ class DiaryCalendarActivity : AppCompatActivity() {
         pageRoot = findViewById(R.id.diary_page_root)
         miniGraph = findViewById(R.id.diary_mini_graph)
         diaryEntryScroll = findViewById(R.id.diary_entry_scroll)
-        entryFadeOverlay = findViewById(R.id.diary_entry_fade)
-        entryActions = findViewById(R.id.diary_entry_actions)
+        entryFadeOverlay = findViewById(R.id.diary_entry_top_fade)
+        entryBottomFadeOverlay = findViewById(R.id.diary_entry_bottom_fade)
+        bottomMenu = findViewById(R.id.diary_bottom_menu)
         selectedDateLabel = findViewById(R.id.tv_diary_selected_date)
         diaryEditor = findViewById(R.id.et_diary_inline_text)
         diaryEditorLayout = findViewById(R.id.til_diary_inline_text)
@@ -97,18 +111,34 @@ class DiaryCalendarActivity : AppCompatActivity() {
         emptyDiary = findViewById(R.id.tv_diary_empty)
         photoCount = findViewById(R.id.tv_diary_photo_count)
         editDiaryLink = findViewById(R.id.btn_diary_edit)
+        saveDiaryButton = findViewById(R.id.btn_diary_save)
+        cancelDiaryButton = findViewById(R.id.btn_diary_cancel_edit)
         addPhotoLink = findViewById(R.id.btn_diary_add_photo)
         photoHint = findViewById(R.id.tv_diary_photo_hint)
         photoCanvas = findViewById(R.id.diary_photo_canvas)
         photoLayer = DiaryPhotoLayer(photoCanvas) { handle -> confirmDeletePhoto(handle) }
 
+        val today = todayDate()
         selectedDate = savedInstanceState?.getString(KEY_SELECTED_DATE)
             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-            ?: LocalDate.now()
-        hasSelectedDate = savedInstanceState?.getBoolean(KEY_HAS_SELECTED_DATE) ?: false
-        isEditingEntry = hasSelectedDate && (savedInstanceState?.getBoolean(KEY_IS_EDITING) ?: false)
+            ?: today
+        isEditingEntry = savedInstanceState?.getBoolean(KEY_IS_EDITING) ?: false
+        editStartedFromEmptyHome =
+            savedInstanceState?.getBoolean(KEY_EDIT_STARTED_FROM_EMPTY_HOME) ?: false
+        val startupDraft = if (savedInstanceState == null) readEditDraft(dateKey(today)) else null
+        if (startupDraft != null) {
+            selectedDate = today
+            isEditingEntry = true
+            editStartedFromEmptyHome = startupDraft.startedFromEmptyHome
+        }
+        hasSelectedDate = savedInstanceState?.getBoolean(KEY_HAS_SELECTED_DATE)
+            ?: (!DiaryStore.load(this, dateKey(today)).isEmpty() || startupDraft != null)
+        isEditingEntry = hasSelectedDate && isEditingEntry
         diaryEntryScroll.visibility = if (hasSelectedDate) View.VISIBLE else View.GONE
-        diaryEntryScroll.setOnScrollChangeListener { _, _, scrollY, _, _ -> updateEntryFade(scrollY) }
+        diaryEntryScroll.setOnScrollChangeListener { _, _, scrollY, _, _ -> updateEntryFades(scrollY) }
+        diaryEntryScroll.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateEntryFades(diaryEntryScroll.scrollY)
+        }
 
         enableEntryPanelScrolling()
         diaryEditor.addTextChangedListener(object : TextWatcher {
@@ -120,6 +150,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
                 val updatedEntry = entry.copy(text = text?.toString().orEmpty())
                 currentEntry = updatedEntry
                 updateLiveContribution(updatedEntry)
+                diaryEntryScroll.post { updateEntryFades(diaryEntryScroll.scrollY) }
             }
 
             override fun afterTextChanged(text: android.text.Editable?) = Unit
@@ -131,9 +162,9 @@ class DiaryCalendarActivity : AppCompatActivity() {
         val openGraph = View.OnClickListener { showContributionDialog() }
         findViewById<View>(R.id.diary_mini_graph_panel).setOnClickListener(openGraph)
         miniGraph.setOnClickListener(openGraph)
-        editDiaryLink.setOnClickListener {
-            if (isEditingEntry) finishInlineEditing() else beginInlineEditing()
-        }
+        editDiaryLink.setOnClickListener { beginInlineEditing() }
+        saveDiaryButton.setOnClickListener { saveInlineEditing() }
+        cancelDiaryButton.setOnClickListener { cancelInlineEditing() }
         addPhotoLink.setOnClickListener { pickDiaryImage.launch("image/*") }
 
         setupMiniWeekdayLabels()
@@ -151,15 +182,16 @@ class DiaryCalendarActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        persistCurrentEntry()
+        if (isEditingEntry) writeEditDraft()
         super.onPause()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        persistCurrentEntry()
+        if (isEditingEntry) writeEditDraft()
         outState.putString(KEY_SELECTED_DATE, dateKey(selectedDate))
         outState.putBoolean(KEY_HAS_SELECTED_DATE, hasSelectedDate)
         outState.putBoolean(KEY_IS_EDITING, isEditingEntry)
+        outState.putBoolean(KEY_EDIT_STARTED_FROM_EMPTY_HOME, editStartedFromEmptyHome)
         super.onSaveInstanceState(outState)
     }
 
@@ -205,6 +237,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
 
     private fun refreshDiary() {
         entryLengths = DiaryStore.textLengths(this)
+        updateDiaryActionButtons()
         if (hasSelectedDate) {
             val key = dateKey(selectedDate)
             if (currentEntry?.date != key || !isEditingEntry) {
@@ -216,21 +249,30 @@ class DiaryCalendarActivity : AppCompatActivity() {
             currentEntry = null
             savedEntry = null
             diaryEntryScroll.visibility = View.GONE
-            entryActions.visibility = View.GONE
+            photoLayer.setInteractive(false)
+            entryFadeOverlay.alpha = 0f
+            entryBottomFadeOverlay.alpha = 0f
         }
         renderMiniGraph()
-        updateEntryFade(diaryEntryScroll.scrollY)
+        updateEntryFades(diaryEntryScroll.scrollY)
     }
 
     private fun loadSelectedEntry(key: String) {
-        val entry = DiaryStore.load(this, key)
+        val draft = if (isEditingEntry) readEditDraft(key) else null
+        val entry = draft?.working ?: DiaryStore.load(this, key)
         currentEntry = entry
-        savedEntry = entry
+        savedEntry = draft?.original ?: entry
         isBindingDiaryText = true
         diaryEditor.setText(entry.text)
         isBindingDiaryText = false
         photoLayerReady = false
         photoLayer.restore(emptyList())
+    }
+
+    private fun updateDiaryActionButtons() {
+        editDiaryLink.visibility = if (isEditingEntry) View.GONE else View.VISIBLE
+        saveDiaryButton.visibility = if (isEditingEntry) View.VISIBLE else View.GONE
+        cancelDiaryButton.visibility = if (isEditingEntry) View.VISIBLE else View.GONE
     }
 
     private fun renderSelectedEntry() {
@@ -239,7 +281,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
         val hasPhotos = entry.photos.isNotEmpty()
         selectedDateLabel.text = displayDate(selectedDate)
         diaryEntryScroll.visibility = View.VISIBLE
-        entryActions.visibility = View.VISIBLE
+        updateDiaryActionButtons()
         diaryInputLayoutHint(isEditingEntry)
         diaryEditorLayout.visibility = if (isEditingEntry || hasText) View.VISIBLE else View.GONE
         setInlineEditorEditable(isEditingEntry)
@@ -251,7 +293,6 @@ class DiaryCalendarActivity : AppCompatActivity() {
             photoCanvas.visibility = if (hasPhotos) View.VISIBLE else View.GONE
             photoHint.visibility = if (hasPhotos) View.VISIBLE else View.GONE
             photoLayer.setInteractive(true)
-            editDiaryLink.text = linkText("[ 保存して読み取り表示へ ]")
             if (!photoLayerReady) restorePhotoLayer(entry.photos)
         } else {
             emptyDiary.text = if (hasPhotos) {
@@ -266,11 +307,9 @@ class DiaryCalendarActivity : AppCompatActivity() {
             photoHint.visibility = View.GONE
             photoCanvas.visibility = if (hasPhotos) View.VISIBLE else View.GONE
             photoLayer.setInteractive(false)
-            editDiaryLink.text = linkText(
-                if (hasText || hasPhotos) "[ この日の日記を編集する ]" else "[ この日に日記を書く ]"
-            )
             if (!photoLayerReady) restorePhotoLayer(entry.photos)
         }
+        diaryEntryScroll.post { updateEntryFades(diaryEntryScroll.scrollY) }
     }
 
     private fun diaryInputLayoutHint(editing: Boolean) {
@@ -298,15 +337,17 @@ class DiaryCalendarActivity : AppCompatActivity() {
         photoLayerReady = photos.isEmpty()
         photoLayer.restore(photos) {
             photoLayerReady = true
+            diaryEntryScroll.post { updateEntryFades(diaryEntryScroll.scrollY) }
         }
     }
 
     private fun renderMiniGraph() {
+        val today = todayDate()
         miniGraph.show(
-            DiaryContributionPolicy.recentWeeks(LocalDate.now()),
+            DiaryContributionPolicy.recentWeeks(today),
             entryLengths,
             palette,
-            selectedDate
+            today
         )
     }
 
@@ -328,23 +369,68 @@ class DiaryCalendarActivity : AppCompatActivity() {
 
     private fun selectDate(date: LocalDate) {
         if (isEditingEntry) {
-            persistCurrentEntry()
-            isEditingEntry = false
-            hideDiaryKeyboard()
+            if (date == selectedDate) return
+            MaterialAlertDialogBuilder(this)
+                .setTitle("日記を編集中です")
+                .setMessage("編集内容を保存するか破棄してから、別の日付を表示できます。")
+                .setPositiveButton("保存して移動") { _, _ ->
+                    saveInlineEditing()
+                    showSelectedDate(date)
+                }
+                .setNeutralButton("破棄して移動") { _, _ ->
+                    cancelInlineEditing()
+                    showSelectedDate(date)
+                }
+                .setNegativeButton("編集を続ける", null)
+                .show()
+            return
         }
+        showSelectedDate(date)
+    }
+
+    private fun showSelectedDate(date: LocalDate) {
         selectedDate = date
         hasSelectedDate = true
+        isEditingEntry = false
+        editStartedFromEmptyHome = false
+        currentEntry = null
+        savedEntry = null
         refreshDiary()
         diaryEntryScroll.post {
             diaryEntryScroll.scrollTo(0, 0)
-            updateEntryFade(0)
+            updateEntryFades(0)
         }
     }
 
     private fun beginInlineEditing() {
-        if (!hasSelectedDate) return
+        if (!hasSelectedDate) {
+            selectedDate = todayDate()
+            hasSelectedDate = true
+            editStartedFromEmptyHome = true
+            currentEntry = null
+        }
+
         isEditingEntry = true
+        val key = dateKey(selectedDate)
+        val draft = readEditDraft(key)
+        if (draft != null) {
+            currentEntry = draft.working
+            savedEntry = draft.original
+            editStartedFromEmptyHome = draft.startedFromEmptyHome
+            isBindingDiaryText = true
+            diaryEditor.setText(draft.working.text)
+            isBindingDiaryText = false
+            photoLayerReady = false
+            photoLayer.restore(emptyList())
+        } else if (currentEntry?.date != key) {
+            loadSelectedEntry(key)
+        }
+        if (savedEntry == null) savedEntry = currentEntry
+
         renderSelectedEntry()
+        currentEntry?.let { mergeLiveEntryLength(it) }
+        renderMiniGraph()
+        diaryEntryScroll.post { updateEntryFades(diaryEntryScroll.scrollY) }
         diaryEditor.requestFocus()
         diaryEditor.setSelection(diaryEditor.text?.length ?: 0)
         diaryEditor.post {
@@ -353,14 +439,72 @@ class DiaryCalendarActivity : AppCompatActivity() {
         }
     }
 
-    private fun finishInlineEditing() {
-        persistCurrentEntry()
+    private fun saveInlineEditing() {
+        if (!isEditingEntry) return
+        val updated = currentEntrySnapshot() ?: return
+        val changed = updated != savedEntry
+        DiaryStore.save(this, updated)
+        if (changed) {
+            DiaryBackupSync.markDirty(this)
+            DiaryBackupSync.backupInBackground(this)
+        }
+        currentEntry = updated
+        savedEntry = updated
+        clearEditDraft(updated.date)
         isEditingEntry = false
         hideDiaryKeyboard()
+
+        val shouldReturnToEmptyHome = editStartedFromEmptyHome && updated.isEmpty()
+        editStartedFromEmptyHome = false
+        if (shouldReturnToEmptyHome) {
+            hasSelectedDate = false
+            currentEntry = null
+            savedEntry = null
+            diaryEntryScroll.visibility = View.GONE
+        } else {
+            hasSelectedDate = true
+        }
+        DiaryStore.purgeUnusedImages(this)
         entryLengths = DiaryStore.textLengths(this)
-        currentEntry?.let { mergeLiveEntryLength(it) }
-        renderSelectedEntry()
+        if (hasSelectedDate) currentEntry?.let { mergeLiveEntryLength(it) }
+        updateDiaryActionButtons()
+        if (hasSelectedDate) renderSelectedEntry()
         renderMiniGraph()
+        updateEntryFades(diaryEntryScroll.scrollY)
+    }
+
+    private fun cancelInlineEditing() {
+        if (!isEditingEntry) return
+        val original = savedEntry ?: DiaryStore.load(this, dateKey(selectedDate))
+        clearEditDraft(original.date)
+        currentEntry = original
+        savedEntry = original
+        isBindingDiaryText = true
+        diaryEditor.setText(original.text)
+        isBindingDiaryText = false
+        photoLayerReady = false
+        photoLayer.setInteractive(false)
+        photoLayer.restore(emptyList())
+        isEditingEntry = false
+        hideDiaryKeyboard()
+
+        val shouldReturnToEmptyHome = editStartedFromEmptyHome && original.isEmpty()
+        editStartedFromEmptyHome = false
+        if (shouldReturnToEmptyHome) {
+            hasSelectedDate = false
+            currentEntry = null
+            savedEntry = null
+            diaryEntryScroll.visibility = View.GONE
+        } else {
+            hasSelectedDate = true
+        }
+        DiaryStore.purgeUnusedImages(this)
+        entryLengths = DiaryStore.textLengths(this)
+        if (hasSelectedDate) currentEntry?.let { mergeLiveEntryLength(it) }
+        updateDiaryActionButtons()
+        if (hasSelectedDate) renderSelectedEntry()
+        renderMiniGraph()
+        updateEntryFades(diaryEntryScroll.scrollY)
     }
 
     private fun hideDiaryKeyboard() {
@@ -369,19 +513,49 @@ class DiaryCalendarActivity : AppCompatActivity() {
         diaryEditor.clearFocus()
     }
 
-    private fun persistCurrentEntry(): DiaryEntry? {
+    private fun currentEntrySnapshot(): DiaryEntry? {
         val entry = currentEntry ?: return null
         val latestText = if (isEditingEntry) diaryEditor.text?.toString().orEmpty() else entry.text
         val latestPhotos = if (isEditingEntry && photoLayerReady) photoLayer.snapshot() else entry.photos
-        val updated = entry.copy(text = latestText, photos = latestPhotos)
-        currentEntry = updated
-        if (updated != savedEntry) {
-            DiaryStore.save(this, updated)
-            DiaryBackupSync.markDirty(this)
-            DiaryBackupSync.backupInBackground(this)
-            savedEntry = updated
-        }
-        return updated
+        return entry.copy(text = latestText, photos = latestPhotos)
+    }
+
+    private fun editDraftFile(date: String): File = File(cacheDir, "diary-edit-$date.json")
+
+    private fun writeEditDraft() {
+        if (!isEditingEntry) return
+        val original = savedEntry ?: return
+        val working = currentEntrySnapshot() ?: return
+        val encoded = JSONObject()
+            .put("date", working.date)
+            .put("startedFromEmptyHome", editStartedFromEmptyHome)
+            .put("original", DiaryJson.encode(original))
+            .put("working", DiaryJson.encode(working))
+            .toString()
+        runCatching { AtomicFiles.writeUtf8(editDraftFile(working.date), encoded) }
+    }
+
+    private fun readEditDraft(date: String): DiaryEditDraft? {
+        val raw = AtomicFiles.readUtf8(editDraftFile(date)) ?: return null
+        val draft = runCatching {
+            val json = JSONObject(raw)
+            if (json.optString("date") != date || !json.has("original") || !json.has("working")) {
+                null
+            } else {
+                DiaryEditDraft(
+                    original = DiaryJson.decode(date, json.optString("original")),
+                    working = DiaryJson.decode(date, json.optString("working")),
+                    startedFromEmptyHome = json.optBoolean("startedFromEmptyHome", false)
+                )
+            }
+        }.getOrNull()
+        if (draft == null) clearEditDraft(date)
+        return draft
+    }
+
+    private fun clearEditDraft(date: String) {
+        editDraftFile(date).delete()
+        File(cacheDir, "diary-edit-$date.json.tmp").delete()
     }
 
     private fun handleDiaryImageSelection(uri: android.net.Uri?) {
@@ -425,8 +599,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
                     photoHint.visibility = View.GONE
                 }
                 updateLiveContribution(updatedEntry)
-                persistCurrentEntry()
-                DiaryStore.purgeUnusedImages(this)
+                diaryEntryScroll.post { updateEntryFades(diaryEntryScroll.scrollY) }
             }
             .setNegativeButton("キャンセル", null)
             .show()
@@ -446,12 +619,36 @@ class DiaryCalendarActivity : AppCompatActivity() {
             GradientDrawable.Orientation.TOP_BOTTOM,
             colors
         ).apply { setColors(colors, positions) }
-        updateEntryFade(diaryEntryScroll.scrollY)
+        entryBottomFadeOverlay.background = GradientDrawable(
+            GradientDrawable.Orientation.BOTTOM_TOP,
+            colors
+        ).apply { setColors(colors, positions) }
+        updateEntryFades(diaryEntryScroll.scrollY)
     }
 
-    private fun updateEntryFade(scrollY: Int) {
-        val progress = (scrollY / dp(24).toFloat()).coerceIn(0f, 1f)
-        entryFadeOverlay.alpha = progress * progress * (3f - 2f * progress)
+    private fun updateEntryFades(scrollY: Int) {
+        if (!hasSelectedDate || diaryEntryScroll.visibility != View.VISIBLE) {
+            entryFadeOverlay.alpha = 0f
+            entryBottomFadeOverlay.alpha = 0f
+            return
+        }
+        val topProgress = (scrollY.coerceAtLeast(0) / dp(24).toFloat()).coerceIn(0f, 1f)
+        entryFadeOverlay.alpha = easeInOut(topProgress)
+
+        val contentHeight = diaryEntryScroll.getChildAt(0)?.height ?: 0
+        val viewportHeight = (diaryEntryScroll.height - diaryEntryScroll.paddingTop - diaryEntryScroll.paddingBottom)
+            .coerceAtLeast(0)
+        val scrollRange = (contentHeight - viewportHeight).coerceAtLeast(0)
+        val distanceToBottom = (scrollRange - scrollY.coerceIn(0, scrollRange)).coerceAtLeast(0)
+        val bottomProgress = if (scrollRange == 0) 0f else {
+            (distanceToBottom / dp(44).toFloat()).coerceIn(0f, 1f)
+        }
+        entryBottomFadeOverlay.alpha = easeInOut(bottomProgress)
+    }
+
+    private fun easeInOut(progress: Float): Float {
+        val value = progress.coerceIn(0f, 1f)
+        return value * value * (3f - 2f * value)
     }
 
     private fun displayDate(date: LocalDate): String {
@@ -461,6 +658,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
 
     private fun dateKey(date: LocalDate): String =
         DiaryStore.dateKey(date.year, date.monthValue, date.dayOfMonth)
+
+    private fun todayDate(): LocalDate = LocalDate.now(ZoneId.systemDefault())
 
     private fun showContributionDialog() {
         val dialog = Dialog(this)
@@ -477,9 +676,10 @@ class DiaryCalendarActivity : AppCompatActivity() {
         val monthLabels = content.findViewById<LinearLayout>(R.id.diary_graph_month_labels)
         val weekColumns = content.findViewById<LinearLayout>(R.id.diary_graph_week_columns)
         val horizontalScroll = content.findViewById<HorizontalScrollView>(R.id.diary_graph_horizontal_scroll)
-        val currentYear = LocalDate.now().year
+        val today = todayDate()
+        val currentYear = today.year
         val minimumYear = minimumDiaryYear()
-        var shownYear = selectedDate.year.coerceIn(minimumYear, currentYear)
+        var shownYear = currentYear.coerceIn(minimumYear, currentYear)
 
         close.setOnClickListener { dialog.dismiss() }
         previousYear.setOnClickListener {
@@ -526,7 +726,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
         horizontalScroll: HorizontalScrollView,
         dialog: Dialog
     ) {
-        val today = LocalDate.now()
+        val today = todayDate()
         val weeks = DiaryContributionPolicy.yearWeeks(year)
         val cellWidth = dp(GRAPH_CELL_WIDTH_DP)
         val cellHeight = dp(GRAPH_CELL_HEIGHT_DP)
@@ -580,7 +780,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
                 if (date == null) {
                     cell.text = ""
                     cell.isEnabled = false
-                    cell.background = cellBackground(0, isSelected = false)
+                    cell.background = cellBackground(0, isToday = false)
                 } else {
                     val key = dateKey(date)
                     val count = entryLengths[key] ?: 0
@@ -594,7 +794,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
                     }
                     cell.setTooltipText(displayDate(date))
                     cell.setTextColor(if (level >= 3) palette.background else palette.text)
-                    cell.background = cellBackground(level, date == selectedDate)
+                    cell.background = cellBackground(level, date == today)
                     cell.isClickable = true
                     cell.isFocusable = true
                     cell.setOnClickListener {
@@ -608,11 +808,11 @@ class DiaryCalendarActivity : AppCompatActivity() {
         }
 
         horizontalScroll.post {
-            if (year == selectedDate.year) {
-                val selectedWeek = weeks.indexOfFirst { selectedDate in it.filterNotNull() }
-                if (selectedWeek >= 0) {
+            if (year == today.year) {
+                val todayWeek = weeks.indexOfFirst { today in it.filterNotNull() }
+                if (todayWeek >= 0) {
                     horizontalScroll.scrollTo(
-                        (selectedWeek * cellWidth - horizontalScroll.width / 2).coerceAtLeast(0),
+                        (todayWeek * cellWidth - horizontalScroll.width / 2).coerceAtLeast(0),
                         0
                     )
                 }
@@ -630,11 +830,11 @@ class DiaryCalendarActivity : AppCompatActivity() {
         return minOf(MIN_GRAPH_YEAR, firstSavedYear ?: MIN_GRAPH_YEAR).coerceAtLeast(1)
     }
 
-    private fun cellBackground(level: Int, isSelected: Boolean): GradientDrawable =
+    private fun cellBackground(level: Int, isToday: Boolean): GradientDrawable =
         GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             setColor(palette.cellColor(level))
-            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) palette.text else palette.border)
+            setStroke(dp(if (isToday) 2 else 1), if (isToday) palette.text else palette.border)
         }
 
     private fun styleDialogText(root: View) {
@@ -715,7 +915,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
         pageRoot.setBackgroundColor(palette.background)
         tintTextViews(pageRoot, palette.text)
         diaryEntryScroll.setBackgroundColor(palette.background)
-        entryActions.setBackgroundColor(palette.background)
+        bottomMenu.setBackgroundColor(palette.background)
         diaryEditor.setTextColor(palette.text)
         diaryEditor.setHintTextColor(palette.mutedText)
         diaryEditorLayout.setHintTextColor(ColorStateList.valueOf(palette.text))
@@ -726,11 +926,12 @@ class DiaryCalendarActivity : AppCompatActivity() {
         updateEntryFadeBackground()
 
         findViewById<View>(R.id.diary_mini_graph_panel).setBackgroundColor(palette.background)
+        val today = todayDate()
         miniGraph.show(
-            DiaryContributionPolicy.recentWeeks(LocalDate.now()),
+            DiaryContributionPolicy.recentWeeks(today),
             entryLengths,
             palette,
-            selectedDate
+            today
         )
 
         listOf(
@@ -738,6 +939,8 @@ class DiaryCalendarActivity : AppCompatActivity() {
             R.id.btn_diary_palette,
             R.id.btn_diary_backup,
             R.id.btn_diary_edit,
+            R.id.btn_diary_save,
+            R.id.btn_diary_cancel_edit,
             R.id.btn_diary_add_photo
         ).forEach { findViewById<TextView>(it).apply {
             text = linkText(text.toString())
@@ -886,8 +1089,23 @@ class DiaryCalendarActivity : AppCompatActivity() {
             showBackupOutcome(DiaryBackupSync.Outcome(false, "選択したファイルの場所を取得できませんでした。"))
             return
         }
-        if (isEditingEntry) finishInlineEditing()
         val grantFlags = data.flags
+        if (isEditingEntry) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("編集中の日記があります")
+                .setMessage("バックアップ先の設定前に、編集内容を保存して接続しますか？")
+                .setNegativeButton("キャンセル", null)
+                .setPositiveButton("保存して接続") { _, _ ->
+                    saveInlineEditing()
+                    connectBackupFile(uri, grantFlags, isNewFile)
+                }
+                .show()
+        } else {
+            connectBackupFile(uri, grantFlags, isNewFile)
+        }
+    }
+
+    private fun connectBackupFile(uri: android.net.Uri, grantFlags: Int, isNewFile: Boolean) {
         lifecycleScope.launch {
             val outcome = DiaryBackupSync.connect(this@DiaryCalendarActivity, uri, grantFlags, isNewFile)
             refreshDiary()
@@ -896,7 +1114,23 @@ class DiaryCalendarActivity : AppCompatActivity() {
     }
 
     private fun runManualBackup(allowDestructiveOverwrite: Boolean = false) {
-        if (isEditingEntry) persistCurrentEntry()
+        if (isEditingEntry) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("編集中の日記があります")
+                .setMessage("編集内容をバックアップに含めるには先に保存してください。保存済みの内容だけで更新することもできます。")
+                .setNegativeButton("戻る", null)
+                .setNeutralButton("保存せず更新") { _, _ -> performManualBackup(allowDestructiveOverwrite) }
+                .setPositiveButton("保存して更新") { _, _ ->
+                    saveInlineEditing()
+                    performManualBackup(allowDestructiveOverwrite)
+                }
+                .show()
+            return
+        }
+        performManualBackup(allowDestructiveOverwrite)
+    }
+
+    private fun performManualBackup(allowDestructiveOverwrite: Boolean) {
         lifecycleScope.launch {
             val outcome = DiaryBackupSync.backupNow(
                 this@DiaryCalendarActivity,
@@ -928,10 +1162,14 @@ class DiaryCalendarActivity : AppCompatActivity() {
     private fun confirmRestoreBackup() {
         MaterialAlertDialogBuilder(this)
             .setTitle("選択済みバックアップから復元")
-            .setMessage("バックアップZIPから端末にない日記や写真を取り込みます。端末にあるデータは削除しません。復元後にバックアップを更新します。")
+            .setMessage(
+                "バックアップZIPから端末にない日記や写真を取り込みます。端末にあるデータは削除しません。" +
+                    (if (isEditingEntry) "編集内容を先に保存し、復元後にバックアップを更新します。"
+                    else "復元後にバックアップを更新します。")
+            )
             .setNegativeButton("キャンセル", null)
             .setPositiveButton("復元して更新") { _, _ ->
-                if (isEditingEntry) finishInlineEditing()
+                if (isEditingEntry) saveInlineEditing()
                 lifecycleScope.launch {
                     val outcome = DiaryBackupSync.restoreNow(this@DiaryCalendarActivity)
                     refreshDiary()
@@ -959,6 +1197,7 @@ class DiaryCalendarActivity : AppCompatActivity() {
         private const val KEY_SELECTED_DATE = "selected_diary_date"
         private const val KEY_HAS_SELECTED_DATE = "has_selected_diary_date"
         private const val KEY_IS_EDITING = "is_editing_diary_entry"
+        private const val KEY_EDIT_STARTED_FROM_EMPTY_HOME = "edit_started_from_empty_diary_home"
         private const val MIN_GRAPH_YEAR = 2000
         private const val GRAPH_CELL_WIDTH_DP = 40
         private const val GRAPH_CELL_HEIGHT_DP = 36

@@ -18,20 +18,22 @@ internal class DiaryContributionGraphView @JvmOverloads constructor(
     private var weeks: List<List<LocalDate>> = emptyList()
     private var entryLengths: Map<String, Int> = emptyMap()
     private var palette = DiaryPalette(0xFF000000.toInt(), 0xFFFF2020.toInt())
-    private var selectedDate: LocalDate? = null
+    private var highlightedToday: LocalDate? = null
 
     fun show(
         weeks: List<List<LocalDate>>,
         entryLengths: Map<String, Int>,
         palette: DiaryPalette,
-        selectedDate: LocalDate? = null
+        today: LocalDate? = null
     ) {
         this.weeks = weeks
         this.entryLengths = entryLengths
         this.palette = palette
-        this.selectedDate = selectedDate
-        val selected = selectedDate?.let { " 選択中: ${DiaryStore.dateKey(it.year, it.monthValue, it.dayOfMonth)}" }.orEmpty()
-        contentDescription = "日記の記録グラフ。過去${weeks.size}週間。$selected タップすると日付一覧を開きます。"
+        this.highlightedToday = today
+        val todayLabel = today?.let {
+            " 今日: ${DiaryStore.dateKey(it.year, it.monthValue, it.dayOfMonth)}"
+        }.orEmpty()
+        contentDescription = "日記の記録グラフ。過去${weeks.size}週間。$todayLabel タップすると日付一覧を開きます。"
         requestLayout()
         invalidate()
     }
@@ -71,9 +73,9 @@ internal class DiaryContributionGraphView @JvmOverloads constructor(
                 paint.style = Paint.Style.FILL
                 paint.color = palette.cellColor(level)
                 canvas.drawRect(left, top, left + cell, top + cell, paint)
-                if (date == selectedDate) {
+                if (date == highlightedToday) {
                     paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = dp(1f)
+                    paint.strokeWidth = min(dp(2f), cell * 0.3f)
                     paint.color = palette.text
                     canvas.drawRect(left, top, left + cell, top + cell, paint)
                     paint.style = Paint.Style.FILL
