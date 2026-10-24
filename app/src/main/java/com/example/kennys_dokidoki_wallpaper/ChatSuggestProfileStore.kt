@@ -118,24 +118,29 @@ internal object ChatSuggestProfileStore {
         return true
     }
 
-    /** Switch to the profile linked to a newly selected user persona, if one exists. */
-    fun activateForPersona(context: Context, personaId: String?): Boolean {
+    /**
+     * Follow a persona-linked profile only when the persona actually changed.
+     * Do not call this while merely opening or reading Suggest settings: a saved manual
+     * profile selection must remain active until the user changes persona again.
+     */
+    fun activateForPersonaChange(
+        context: Context,
+        previousPersonaId: String?,
+        newPersonaId: String?
+    ): Boolean {
         val profiles = load(context)
         val currentId = activeId(context)
-        val current = profiles.firstOrNull { it.id == currentId }
-        val matching = if (personaId.isNullOrBlank()) {
-            if (current?.personaId == null) {
-                current
-            } else {
-                profiles.firstOrNull { it.personaId == null }
-            }
-        } else {
-            current?.takeIf { it.personaId == personaId }
-                ?: profiles.firstOrNull { it.personaId == personaId }
-                ?: current?.takeIf { it.personaId == null }
-                ?: profiles.firstOrNull { it.personaId == null }
-        } ?: return false
-        return activate(context, matching.id)
+        val nextId = ChatSuggestProfileSelectionPolicy.profileIdForPersonaChange(
+            profiles = profiles,
+            activeProfileId = currentId,
+            previousPersonaId = previousPersonaId,
+            newPersonaId = newPersonaId
+        ) ?: return false
+        if (nextId == currentId) {
+            return false
+        }
+        save(context, profiles, nextId)
+        return true
     }
 
     /** Target length is stored by stable persona ID; null is the shared no-persona fallback. */

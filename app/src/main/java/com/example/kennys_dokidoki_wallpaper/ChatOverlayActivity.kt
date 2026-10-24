@@ -1209,7 +1209,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             TagManager.loadTags(this)
             DataManager.loadData(this)
             UserPersonaManager.loadPersonas(this)
-            ChatSuggestProfileStore.activateForPersona(this, UserPersonaManager.activePersonaId)
             MemoryManager.loadMemories(this)
             loadCurrentSession()
         } catch (e: Exception) {
@@ -2195,7 +2194,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private fun showSuggestSettingsDialog() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         UserPersonaManager.loadPersonas(this)
-        ChatSuggestProfileStore.activateForPersona(this, UserPersonaManager.activePersonaId)
 
         val profiles = ChatSuggestProfileStore.load(this).toMutableList()
         val personas = UserPersonaManager.personas.toList()
@@ -4814,10 +4812,15 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             rvPersonas.adapter = UserPersonaAdapter(
                 UserPersonaManager.personas.toList(),
                 UserPersonaManager.activePersonaId,
-                { persona -> 
+                { persona ->
+                    val previousPersonaId = UserPersonaManager.activePersonaId
                     UserPersonaManager.setActivePersona(this, persona.id)
-                    ChatSuggestProfileStore.activateForPersona(this, persona.id)
-                    refreshList() 
+                    ChatSuggestProfileStore.activateForPersonaChange(
+                        this,
+                        previousPersonaId,
+                        UserPersonaManager.activePersonaId
+                    )
+                    refreshList()
                 },
                 { persona, anchor -> showPersonaOptionsDialog(persona, anchor) { refreshList() } }
             )
@@ -4828,8 +4831,13 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
 
         btnClear.setOnClickListener {
+            val previousPersonaId = UserPersonaManager.activePersonaId
             UserPersonaManager.setActivePersona(this, null)
-            ChatSuggestProfileStore.activateForPersona(this, null)
+            ChatSuggestProfileStore.activateForPersonaChange(
+                this,
+                previousPersonaId,
+                UserPersonaManager.activePersonaId
+            )
             refreshList()
         }
 
@@ -4978,8 +4986,13 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                         .setTitle("削除の確認")
                         .setMessage("『${persona.name}』を削除しますか？")
                         .setPositiveButton("削除") { _, _ ->
+                            val previousPersonaId = UserPersonaManager.activePersonaId
                             UserPersonaManager.removePersona(this, persona.id)
-                            ChatSuggestProfileStore.activateForPersona(this, UserPersonaManager.activePersonaId)
+                            ChatSuggestProfileStore.activateForPersonaChange(
+                                this,
+                                previousPersonaId,
+                                UserPersonaManager.activePersonaId
+                            )
                             onUpdate()
                         }
                         .setNegativeButton("キャンセル", null)
