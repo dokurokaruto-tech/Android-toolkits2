@@ -2270,7 +2270,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             setHintTextColor(android.graphics.Color.parseColor("#938F99"))
             setTextColor(android.graphics.Color.WHITE)
             textSize = 14f
-            singleLine = true
+            isSingleLine = true
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(android.graphics.Color.parseColor("#211F26"))
                 setStroke(2, android.graphics.Color.parseColor("#938F99"))
