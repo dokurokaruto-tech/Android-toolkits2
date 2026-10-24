@@ -599,7 +599,11 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private lateinit var chatInput: EditText
     private lateinit var btnSend: ImageButton
+    private lateinit var btnGenerateFirstUserLine: ImageButton
     private lateinit var btnOptions: ImageButton
+    private var firstUserLineGenerationJob: Job? = null
+    private var firstUserLineGenerationToken = 0L
+    private var isGeneratingFirstUserLine = false
     private lateinit var recyclerView: RecyclerView
     private val chatStick = ChatStickToBottom()
     private var userScrollingChat = false
@@ -1204,6 +1208,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         try {
             TagManager.loadTags(this)
             DataManager.loadData(this)
+            UserPersonaManager.loadPersonas(this)
+            ChatSuggestProfileStore.activateForPersona(this, UserPersonaManager.activePersonaId)
+            MemoryManager.loadMemories(this)
             loadCurrentSession()
         } catch (e: Exception) {
             Log.e("ChatOverlay", "loadCurrentSession failed", e)
@@ -1216,7 +1223,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         }
         btnSend = findViewById(R.id.btn_send)
         chatInput = findViewById(R.id.chat_input)
+        btnGenerateFirstUserLine = findViewById(R.id.btn_generate_first_user_line)
+        btnGenerateFirstUserLine.setOnClickListener { confirmFirstLine() }
         tvOpenRouterCounter = findViewById(R.id.tv_openrouter_counter)
+        updateFirstLineButton()
         openRouterBalanceLabel = OpenRouterBalanceLabel(tvOpenRouterCounter, this) {
             val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val engine = prefs.getString("chat_llm_engine", "CLOUD")
@@ -1472,22 +1482,184 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     /** 生成中は送信ボタンを停止ボタンに切り替える。場面ごとに必ずここから直す。 */
     private fun updateSendButtonForGeneration() {
-        if (!::btnSend.isInitialized) return
+        if (!::btnSend.isInitialized) {
+            return
+        }
         val stop = ChatInterruptPolicy.actionFor(
             ChatGenerationManager.isGenerating,
             ChatGenerationManager.activeSessionId,
             currentChatId
         ) == ChatInterruptPolicy.SendAction.STOP
-        if (stop == sendButtonInStopMode) return
-        sendButtonInStopMode = stop
-        inputGlow.setActive(stop)
-        if (stop) {
-            btnSend.setImageResource(R.drawable.ic_md3_gen_stop)
-            btnSend.contentDescription = getString(R.string.chat_stop_generation)
-        } else {
-            btnSend.setImageResource(R.drawable.ic_md3_send)
-            btnSend.contentDescription = getString(R.string.chat_send_message)
+        if (stop != sendButtonInStopMode) {
+            sendButtonInStopMode = stop
+            inputGlow.setActive(stop)
+            if (stop) {
+                btnSend.setImageResource(R.drawable.ic_md3_gen_stop)
+                btnSend.contentDescription = getString(R.string.chat_stop_generation)
+            } else {
+                btnSend.setImageResource(R.drawable.ic_md3_send)
+                btnSend.contentDescription = getString(R.string.chat_send_message)
+            }
         }
+        updateFirstLineButton()
+    }
+
+    private fun updateFirstLineButton() {
+        if (!::btnGenerateFirstUserLine.isInitialized) {
+            return
+        }
+        val hasUserMessage = displayMessages.any { it.node.isUser }
+        if (hasUserMessage) {
+            btnGenerateFirstUserLine.visibility = View.GONE
+            return
+        }
+        val enabled = !isGeneratingFirstUserLine && !ChatGenerationManager.isGenerating
+        btnGenerateFirstUserLine.visibility = View.VISIBLE
+        btnGenerateFirstUserLine.isEnabled = enabled
+        btnGenerateFirstUserLine.alpha = if (enabled) 1f else 0.45f
+    }
+
+    private fun confirmFirstLine() {
+        if (isGeneratingFirstUserLine || displayMessages.any { it.node.isUser }) {
+            return
+        }
+        val currentInput = chatInput.text?.toString().orEmpty()
+        if (currentInput.isBlank()) {
+            generateFirstLine(currentInput)
+            return
+        }
+        MaterialAlertDialogBuilder(md3Context)
+            .setTitle("最初のセリフを生成")
+            .setMessage("入力中の文章を生成したセリフに置き換えますか？")
+            .setPositiveButton("生成して置き換える") { _, _ -> generateFirstLine(currentInput) }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun generateFirstLine(inputAtRequest: String) {
+        if (isGeneratingFirstUserLine || ChatGenerationManager.isGenerating || displayMessages.any { it.node.isUser }) {
+            return
+        }
+        UserPersonaManager.loadPersonas(this)
+        MemoryManager.loadMemories(this)
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val profile = ChatSuggestProfileStore.active(this)
+        val engine = prefs.getString("chat_llm_engine", "CLOUD") ?: "CLOUD"
+        val userPersonaId = UserPersonaManager.activePersonaId
+        val sessionIdAtRequest = currentChatId
+        val imageUriAtRequest = currentImageEntry?.uri?.toString()
+        val history = ChatGenerationManager.recentHistory(chatTree, chatTree.currentNodeId)
+        val systemPrompt = buildString {
+            append(ChatInstructionPolicy.roleText(prefs.getString(ChatInstructionPolicy.ROLE_KEY, null)))
+            append("\n")
+            append(getUserPersonaPrompt())
+            append(getActiveImageTagsPrompt())
+            append(getMemoriesPrompt())
+            append("\n\n【今回の生成タスク】キャラクターとして返答するのではなく、ユーザー本人が会話へ送る最初の発言だけを代筆する。")
+        }
+        val request = ChatFirstUserLinePolicy.buildRequest(profile.name, profile.instructions)
+        val token = ++firstUserLineGenerationToken
+        isGeneratingFirstUserLine = true
+        updateFirstLineButton()
+
+        firstUserLineGenerationJob = coroutineScope.launch {
+            try {
+                if (engine == "LOCAL" && !LlmInferenceEngine.isModelLoaded()) {
+                    val loadError = withContext(Dispatchers.IO) {
+                        LlmInferenceEngine.autoLoadModelDetailed(this@ChatOverlayActivity)
+                    }
+                    if (loadError != null) {
+                        Toast.makeText(
+                            this@ChatOverlayActivity,
+                            "ローカルモデルを読み込めませんでした。\n$loadError",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@launch
+                    }
+                }
+
+                val raw = ChatSuggestionRetry.generateRaw(
+                    context = this@ChatOverlayActivity,
+                    systemPrompt = systemPrompt,
+                    history = history,
+                    request = request
+                )
+                if (token != firstUserLineGenerationToken) {
+                    return@launch
+                }
+                if (currentChatId != sessionIdAtRequest ||
+                    currentImageEntry?.uri?.toString() != imageUriAtRequest ||
+                    UserPersonaManager.activePersonaId != userPersonaId ||
+                    ChatSuggestProfileStore.active(this@ChatOverlayActivity).id != profile.id
+                ) {
+                    return@launch
+                }
+                val generated = ChatFirstUserLinePolicy.cleanGeneratedLine(raw)
+                if (generated == null) {
+                    Toast.makeText(
+                        this@ChatOverlayActivity,
+                        "最初のセリフを生成できませんでした。エンジンやAPIキーを確認してください。",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
+                }
+                insertFirstLine(generated, inputAtRequest)
+            } catch (cancel: kotlinx.coroutines.CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                Log.e("ChatOverlay", "Initial user line generation failed", error)
+                Toast.makeText(
+                    this@ChatOverlayActivity,
+                    "最初のセリフを生成できませんでした。",
+                    Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                if (token == firstUserLineGenerationToken) {
+                    firstUserLineGenerationJob = null
+                    isGeneratingFirstUserLine = false
+                    updateFirstLineButton()
+                }
+            }
+        }
+    }
+
+    private fun insertFirstLine(generated: String, inputAtRequest: String) {
+        val currentInput = chatInput.text?.toString().orEmpty()
+        if (currentInput == inputAtRequest) {
+            setFirstLine(generated)
+            return
+        }
+        MaterialAlertDialogBuilder(md3Context)
+            .setTitle("入力欄が変更されました")
+            .setMessage("生成中に入力した文章があります。生成文で置き換えるか、末尾へ追加できます。")
+            .setPositiveButton("置き換える") { _, _ -> setFirstLine(generated) }
+            .setNeutralButton("末尾に追加") { _, _ ->
+                val latest = chatInput.text?.toString().orEmpty()
+                setFirstLine(if (latest.isBlank()) generated else "$latest\n$generated")
+            }
+            .setNegativeButton("入力を残す", null)
+            .show()
+    }
+
+    private fun setFirstLine(text: String) {
+        chatInput.setText(text)
+        chatInput.setSelection(chatInput.text?.length ?: 0)
+        chatInput.requestFocus()
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+            ?.showSoftInput(chatInput, InputMethodManager.SHOW_IMPLICIT)
+        Toast.makeText(
+            this,
+            "最初のセリフを入力欄に入れました。確認・編集してから送信してください。",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    private fun cancelFirstLine() {
+        firstUserLineGenerationToken++
+        firstUserLineGenerationJob?.cancel()
+        firstUserLineGenerationJob = null
+        isGeneratingFirstUserLine = false
+        updateFirstLineButton()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -2012,10 +2184,16 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private fun showSuggestSettingsDialog() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val isSuggestEnabled = prefs.getBoolean("chat_suggest_reply", true)
-        val customInstructions = prefs.getString("chat_suggest_custom_instructions", "") ?: ""
+        val profiles = ChatSuggestProfileStore.load(this).toMutableList()
+        UserPersonaManager.loadPersonas(this)
+        ChatSuggestProfileStore.activateForPersona(this, UserPersonaManager.activePersonaId)
+        val personas = UserPersonaManager.personas.toList()
+        var selectedProfileIndex = profiles.indexOfFirst {
+            it.id == ChatSuggestProfileStore.active(this).id
+        }.coerceAtLeast(0)
+        var bindingProfile = false
 
         val dialog = MaterialAlertDialogBuilder(md3Context).create()
-
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
@@ -2039,7 +2217,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             isFillViewport = true
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
-
         val scrollContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -2049,40 +2226,74 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             gravity = android.view.Gravity.CENTER_VERTICAL
             setPadding(0, 16, 0, 16)
         }
-        val labelText = TextView(this).apply {
+        switchRow.addView(TextView(this).apply {
             text = "サジェスト返信を有効にする"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 15f
             setTypeface(null, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
+        })
         val suggestSwitch = androidx.appcompat.widget.SwitchCompat(this).apply {
             isChecked = isSuggestEnabled
         }
-        switchRow.addView(labelText)
         switchRow.addView(suggestSwitch)
         scrollContent.addView(switchRow)
 
         scrollContent.addView(TextView(this).apply {
-            text = "サジェスト指示・例文設定"
+            text = "サジェスト設定プロフィール"
             setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
             textSize = 13f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 24, 0, 8)
         })
-
         scrollContent.addView(TextView(this).apply {
-            text = "ノアちゃんが選択肢を作るときに意識してほしいルールや例文を自由に書いてね♡\n例：『語尾に「〜にゃ」をつけさせて』『甘やかす返答を多めにして』など！"
+            text = "キャラクターや場面に合わせて口調・例文を切り替えられます。ペルソナと連動すると、ペルソナ変更時にこのプロフィールへ自動で切り替わります。"
             setTextColor(android.graphics.Color.parseColor("#CAC4D0"))
             textSize = 12f
-            setPadding(0, 0, 0, 16)
+            setPadding(0, 0, 0, 12)
         })
 
-        val editText = android.widget.EditText(this).apply {
-            hint = "例：もっと甘々なセリフにして、時々ツンツンした選択肢も混ぜてほしいな〜♡"
+        val profileLabels = profiles.map { it.name }.toMutableList()
+        val profileAdapter = android.widget.ArrayAdapter(
+            md3Context,
+            android.R.layout.simple_spinner_item,
+            profileLabels
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val profileSpinner = android.widget.Spinner(md3Context).apply {
+            adapter = profileAdapter
+            layoutParams = LinearLayout.LayoutParams(0, 48.dp(), 1f)
+        }
+        val profileNameInput = EditText(this).apply {
+            hint = "プロフィール名（例：放課後・ツンデレ）"
             setHintTextColor(android.graphics.Color.parseColor("#938F99"))
             setTextColor(android.graphics.Color.WHITE)
-            setText(customInstructions)
+            textSize = 14f
+            singleLine = true
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.parseColor("#211F26"))
+                setStroke(2, android.graphics.Color.parseColor("#938F99"))
+                cornerRadius = 16f
+            }
+            setPadding(24, 16, 24, 16)
+        }
+        val personaLabels = (listOf("連動しない") + personas.map { it.name }).toMutableList()
+        val personaSpinner = android.widget.Spinner(md3Context).apply {
+            adapter = android.widget.ArrayAdapter(
+                md3Context,
+                android.R.layout.simple_spinner_item,
+                personaLabels
+            ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                48.dp()
+            )
+        }
+        val instructionInput = EditText(this).apply {
+            hint = "例：語尾に「〜にゃ」をつける。例文：今日は会えてうれしいな。"
+            setHintTextColor(android.graphics.Color.parseColor("#938F99"))
+            setTextColor(android.graphics.Color.WHITE)
             textSize = 14f
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(android.graphics.Color.parseColor("#211F26"))
@@ -2095,10 +2306,165 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             maxLines = 8
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
-        scrollContent.addView(editText)
+
+        fun refreshProfileLabels() {
+            profileLabels.clear()
+            profileLabels.addAll(profiles.map { it.name })
+            profileAdapter.notifyDataSetChanged()
+        }
+
+        fun captureCurrentProfile() {
+            if (selectedProfileIndex !in profiles.indices) {
+                return
+            }
+            val current = profiles[selectedProfileIndex]
+            val personaPosition = personaSpinner.selectedItemPosition
+            val linkedPersonaId = personas.getOrNull(personaPosition - 1)?.id
+                ?.takeIf { personaPosition > 0 }
+            profiles[selectedProfileIndex] = current.copy(
+                name = profileNameInput.text?.toString().orEmpty().trim().ifBlank { current.name },
+                instructions = instructionInput.text?.toString().orEmpty(),
+                personaId = linkedPersonaId
+            )
+        }
+
+        fun bindSelectedProfile() {
+            val profile = profiles.getOrNull(selectedProfileIndex)
+            if (profile == null) {
+                return
+            }
+            bindingProfile = true
+            profileSpinner.setSelection(selectedProfileIndex, false)
+            profileNameInput.setText(profile.name)
+            instructionInput.setText(profile.instructions)
+            val personaPosition = profile.personaId?.let { id ->
+                personas.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.plus(1)
+            } ?: 0
+            personaSpinner.setSelection(personaPosition, false)
+            bindingProfile = false
+        }
+
+        val profileControls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        profileControls.addView(profileSpinner)
+        val addProfileButton = Button(this).apply {
+            text = "+"
+            contentDescription = "Suggestプロフィールを追加"
+            setTextColor(android.graphics.Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(48.dp(), 48.dp()).apply { leftMargin = 8.dp() }
+        }
+        profileControls.addView(addProfileButton)
+        val deleteProfileButton = Button(this).apply {
+            text = "削除"
+            setTextColor(android.graphics.Color.parseColor("#F2B8B5"))
+            layoutParams = LinearLayout.LayoutParams(72.dp(), 48.dp()).apply { leftMargin = 4.dp() }
+        }
+        profileControls.addView(deleteProfileButton)
+        scrollContent.addView(profileControls)
+
+        scrollContent.addView(TextView(this).apply {
+            text = "プロフィール名"
+            setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
+            textSize = 12f
+            setPadding(0, 16, 0, 6)
+        })
+        scrollContent.addView(profileNameInput)
+        scrollContent.addView(TextView(this).apply {
+            text = "連動するユーザーペルソナ"
+            setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
+            textSize = 12f
+            setPadding(0, 16, 0, 6)
+        })
+        scrollContent.addView(personaSpinner)
+        scrollContent.addView(TextView(this).apply {
+            text = "口調・例文（初回セリフ生成にも使用）"
+            setTextColor(android.graphics.Color.parseColor("#D0BCFF"))
+            textSize = 12f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(0, 20, 0, 8)
+        })
+        scrollContent.addView(TextView(this).apply {
+            text = "返信候補の口調や例文として使う文章です。保存した文は初回のユーザーセリフ生成にも指示としてそのまま反映されます。"
+            setTextColor(android.graphics.Color.parseColor("#CAC4D0"))
+            textSize = 12f
+            setPadding(0, 0, 0, 12)
+        })
+        scrollContent.addView(instructionInput)
+
+        profileSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            override fun onItemSelected(
+                parent: android.widget.AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                if (bindingProfile || position !in profiles.indices || position == selectedProfileIndex) {
+                    return
+                }
+                captureCurrentProfile()
+                selectedProfileIndex = position
+                bindSelectedProfile()
+            }
+        }
+        personaSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            override fun onItemSelected(
+                parent: android.widget.AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) = Unit
+        }
+
+        addProfileButton.setOnClickListener {
+            val nameInput = EditText(md3Context).apply {
+                hint = "プロフィール名"
+                setTextColor(android.graphics.Color.WHITE)
+                setPadding(24, 16, 24, 16)
+            }
+            MaterialAlertDialogBuilder(md3Context)
+                .setTitle("Suggestプロフィールを追加")
+                .setView(nameInput)
+                .setNegativeButton("キャンセル", null)
+                .setPositiveButton("追加") { _, _ ->
+                    captureCurrentProfile()
+                    val name = nameInput.text?.toString().orEmpty().trim()
+                        .ifBlank { "プロフィール ${profiles.size + 1}" }
+                    profiles += ChatSuggestProfile(
+                        name = name,
+                        personaId = UserPersonaManager.activePersonaId
+                    )
+                    selectedProfileIndex = profiles.lastIndex
+                    refreshProfileLabels()
+                    bindSelectedProfile()
+                }
+                .show()
+        }
+        deleteProfileButton.setOnClickListener {
+            if (profiles.size <= 1) {
+                Toast.makeText(this, "最後のプロフィールは削除できません。", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            captureCurrentProfile()
+            MaterialAlertDialogBuilder(md3Context)
+                .setTitle("プロフィールの削除")
+                .setMessage("「${profiles[selectedProfileIndex].name}」を削除しますか？")
+                .setNegativeButton("キャンセル", null)
+                .setPositiveButton("削除") { _, _ ->
+                    profiles.removeAt(selectedProfileIndex)
+                    selectedProfileIndex = selectedProfileIndex.coerceAtMost(profiles.lastIndex)
+                    refreshProfileLabels()
+                    bindSelectedProfile()
+                }
+                .show()
+        }
 
         scroll.addView(scrollContent)
         mainLayout.addView(scroll)
+        bindSelectedProfile()
 
         val buttonRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2116,9 +2482,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 rightMargin = 16
             }
-            setOnClickListener {
-                dialog.dismiss()
-            }
+            setOnClickListener { dialog.dismiss() }
         }
         val btnSave = Button(this).apply {
             text = "保存するよ〜♡"
@@ -2131,17 +2495,24 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             }
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
-                val isChecked = suggestSwitch.isChecked
-                val textVal = editText.text.toString().trim()
-                prefs.edit()
-                    .putBoolean("chat_suggest_reply", isChecked)
-                    .putString("chat_suggest_custom_instructions", textVal)
-                    .apply()
+                captureCurrentProfile()
+                val selected = profiles[selectedProfileIndex]
+                val profilesToSave = profiles.mapIndexed { index, profile ->
+                    if (index != selectedProfileIndex && selected.personaId != null && profile.personaId == selected.personaId) {
+                        profile.copy(personaId = null)
+                    } else {
+                        profile
+                    }
+                }
+                ChatSuggestProfileStore.save(this@ChatOverlayActivity, profilesToSave, selected.id)
+                prefs.edit().putBoolean("chat_suggest_reply", suggestSwitch.isChecked).apply()
 
                 Toast.makeText(this@ChatOverlayActivity, "サジェスト設定を保存したよ〜♡", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
                 showMainMenu()
-                adapter.notifyDataSetChanged()
+                if (::adapter.isInitialized) {
+                    adapter.notifyDataSetChanged()
+                }
             }
         }
         buttonRow.addView(btnCancel)
@@ -2333,6 +2704,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             adapter.notifyDataSetChanged()
             if (state != null) lm?.onRestoreInstanceState(state)
         }
+        updateFirstLineButton()
     }
 
     private fun addNodeToTree(newNode: ChatNode) {
@@ -2495,6 +2867,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     override fun onDestroy() {
+        cancelFirstLine()
         ChatReplyNotifications.leave(replyNoticeOwner)
         super.onDestroy()
         ChatGenerationManager.unregisterListener(this)
@@ -2654,6 +3027,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private var lastLoadedImageUri: String? = null
 
     private fun loadCurrentSession() {
+        cancelFirstLine()
         val notifiedSession = replySessionPinned
         lastLoadScheduledViewportRestore = false
         persistCurrentChatLink()
@@ -3571,6 +3945,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
     private fun submitOutgoingUserMessage(text: String) {
         if (text.isEmpty()) return
+        cancelFirstLine()
 
         hideKeyboard()
         if (findViewById<View>(R.id.extra_menu_scroll).visibility == View.VISIBLE) {
@@ -4297,7 +4672,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 true
             }
             ChatInstructionPolicy.Kind.SUGGEST_EXTRA -> {
-                prefs.edit().putString("chat_suggest_custom_instructions", body).apply()
+                ChatSuggestProfileStore.updateActiveInstructions(this, body)
                 true
             }
         }
@@ -4523,6 +4898,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 UserPersonaManager.activePersonaId,
                 { persona -> 
                     UserPersonaManager.setActivePersona(this, persona.id)
+                    ChatSuggestProfileStore.activateForPersona(this, persona.id)
                     refreshList() 
                 },
                 { persona, anchor -> showPersonaOptionsDialog(persona, anchor) { refreshList() } }
@@ -4535,6 +4911,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
 
         btnClear.setOnClickListener {
             UserPersonaManager.setActivePersona(this, null)
+            ChatSuggestProfileStore.activateForPersona(this, null)
             refreshList()
         }
 
@@ -4684,6 +5061,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                         .setMessage("『${persona.name}』を削除しますか？")
                         .setPositiveButton("削除") { _, _ ->
                             UserPersonaManager.removePersona(this, persona.id)
+                            ChatSuggestProfileStore.activateForPersona(this, UserPersonaManager.activePersonaId)
                             onUpdate()
                         }
                         .setNegativeButton("キャンセル", null)
@@ -4697,11 +5075,16 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     /** 共通の行を1本文だけ直す。ここでの編集は、その文を使っている全ペルソナへ返る。 */
-    private fun showDetailEditDialog(line: PersonaPoolEntry, onSave: (String) -> Unit) {
+    private fun showDetailEditDialog(
+        line: PersonaPoolEntry,
+        onSave: (String) -> Unit,
+        onDelete: () -> Unit
+    ) {
         val (_, detailView) = Md3PopupDialog.inflate(this, R.layout.dialog_edit_instruction)
         val etDetail = detailView.findViewById<EditText>(R.id.et_instruction_detail)
         val btnCancel = detailView.findViewById<View>(R.id.btn_cancel_instruction)
         val btnSave = detailView.findViewById<View>(R.id.btn_save_instruction)
+        val btnDelete = detailView.findViewById<View>(R.id.btn_delete_instruction)
 
         detailView.findViewById<TextView>(R.id.tv_dialog_title).setText(R.string.persona_pool_entry_edit)
         detailView.findViewById<TextView>(R.id.tv_detail_hint).setText(R.string.persona_pool_entry_hint)
@@ -4717,6 +5100,18 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             val content = etDetail.text.toString()
             onSave(content)
             detailDialog.dismiss()
+        }
+
+        btnDelete.setOnClickListener {
+            MaterialAlertDialogBuilder(md3Context)
+                .setTitle("共通指示書を削除")
+                .setMessage("この指示書を共有一覧と、すべてのペルソナから削除します。よろしいですか？")
+                .setNegativeButton("キャンセル", null)
+                .setPositiveButton("削除") { _, _ ->
+                    onDelete()
+                    detailDialog.dismiss()
+                }
+                .show()
         }
 
         detailDialog.show()
@@ -4765,12 +5160,20 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 adapter.paint()
             },
             onEdit = { line ->
-                showDetailEditDialog(line) { body ->
-                    if (!PersonaPool.update(this, line.id, body)) {
-                        toastPersonaDuplicate()
+                showDetailEditDialog(
+                    line = line,
+                    onSave = { body ->
+                        if (!PersonaPool.update(this, line.id, body)) {
+                            toastPersonaDuplicate()
+                        }
+                        sync()
+                    },
+                    onDelete = {
+                        UserPersonaManager.removeSharedInstruction(this, line.id)
+                        off.remove(line.id)
+                        sync()
                     }
-                    sync()
-                }
+                )
             },
             onAddTo = { group -> addSharedLine(group, sync) },
             onArrange = { order ->

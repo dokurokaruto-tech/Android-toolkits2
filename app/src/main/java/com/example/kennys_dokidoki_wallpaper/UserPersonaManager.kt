@@ -149,6 +149,20 @@ object UserPersonaManager {
         alignWithPool(context, emptyMap(), defaultOn = true)
     }
 
+    /** Delete a shared instruction everywhere before syncing so stale persona rows cannot recreate it. */
+    internal fun removeSharedInstruction(context: Context, lineId: String) {
+        loadPersonas(context)
+        val nextPool = PersonaPool.all().toMutableList()
+        val removed = PersonaLineAligner.removeSharedLine(nextPool, personas, lineId)
+        if (removed.poolChanged) {
+            PersonaPool.replace(context, nextPool)
+        }
+        if (removed.personasChanged) {
+            savePersonas(context)
+        }
+        syncWithRegistry(context)
+    }
+
     private fun alignWithPool(context: Context, legacyCategory: Map<String, String>, defaultOn: Boolean) {
         val result = PersonaLineAligner.align(PersonaPool.working(), personas, legacyCategory, defaultOn)
         PersonaPool.replace(context, PersonaPool.working())

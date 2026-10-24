@@ -234,6 +234,16 @@
                 android:src="@drawable/ic_md3_add"
                 app:tint="#E6E1E5" />
 
+            <ImageButton
+                android:id="@+id/btn_generate_first_user_line"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="最初のユーザーセリフを生成"
+                android:src="@drawable/ic_md3_auto_awesome"
+                android:visibility="gone"
+                app:tint="#E6E1E5" />
+
             <EditText
                 android:id="@+id/chat_input"
                 android:layout_width="0dp"

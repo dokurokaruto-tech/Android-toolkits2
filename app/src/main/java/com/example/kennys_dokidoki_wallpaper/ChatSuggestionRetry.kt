@@ -32,13 +32,25 @@ internal object ChatSuggestionRetry {
         systemPrompt: String,
         history: List<ChatNode>,
         rules: String
+    ): String? = generateRaw(
+        context = context,
+        systemPrompt = systemPrompt + "\n\n" + rules,
+        history = history,
+        request = RETRY_INSTRUCTION
+    )
+
+    /** Runs a one-off text request through the currently selected cloud or local engine. */
+    suspend fun generateRaw(
+        context: Context,
+        systemPrompt: String,
+        history: List<ChatNode>,
+        request: String
     ): String? {
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val engine = prefs.getString("chat_llm_engine", "CLOUD") ?: "CLOUD"
-        val system = systemPrompt + "\n\n" + rules
-        val messages = history.map { it.copy() } + ChatNode(text = RETRY_INSTRUCTION, isUser = true)
+        val messages = history.map { it.copy() } + ChatNode(text = request, isUser = true)
         return runCatching {
-            if (engine == "LOCAL") local(system, messages) else cloud(context, system, messages)
+            if (engine == "LOCAL") local(systemPrompt, messages) else cloud(context, systemPrompt, messages)
         }.getOrNull()
     }
 

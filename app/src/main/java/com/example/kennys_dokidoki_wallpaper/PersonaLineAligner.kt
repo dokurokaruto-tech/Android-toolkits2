@@ -16,6 +16,22 @@ object PersonaLineAligner {
     /** 書き換えが起きたかどうか。保存は呼び手がまとめる。 */
     data class Result(val poolChanged: Boolean, val personasChanged: Boolean)
 
+    /** Remove a shared row from the registry and every persona before the next alignment. */
+    internal fun removeSharedLine(
+        pool: MutableList<PersonaPoolEntry>,
+        personas: List<UserPersona>,
+        lineId: String
+    ): Result {
+        val poolChanged = pool.removeAll { it.id == lineId }
+        var personasChanged = false
+        personas.forEach { persona ->
+            if (persona.items.removeAll { it.id == lineId }) {
+                personasChanged = true
+            }
+        }
+        return Result(poolChanged, personasChanged)
+    }
+
     /**
      * @param legacyCategory 旧形式でペルソナ側が残していた「行のid → 枠」。拾えた分だけ預かる。
      * @param defaultOn どのペルソナにも無かった行を点けるかどうか。
@@ -37,7 +53,10 @@ object PersonaLineAligner {
                 if (body.isEmpty()) {
                     return@forEach
                 }
-                val entry = pool.firstOrNull { it.body.trim() == body }
+                // Stable IDs represent shared rows. Prefer that identity over stale copied text,
+                // otherwise the old body can be re-created as a new ungrouped row after an edit.
+                val entry = pool.firstOrNull { it.id == item.id }
+                    ?: pool.firstOrNull { it.body.trim() == body }
                     ?: newLine(item, body, taken, legacyCategory).also {
                         pool.add(it)
                         taken += it.id

@@ -46,15 +46,19 @@ class PersonaLineAlignerTest {
     }
 
     @Test
-    fun editedCopyKeepsItsOwnText() {
-        // 手元だけ直した文は、別の行として残り、元の行は他のペルソナが使い続ける
-        val pool = mutableListOf(entry("p1", "甘える", "c1"))
-        val persona = persona("A", item("p1", "甘えてくる"))
+    fun editedSharedLineDoesNotRecreateItsStaleBodyAsAnOtherRow() {
+        val pool = mutableListOf(entry("p1", "編集後の文", "c1"))
+        val first = persona("A", item("p1", "編集前の文"))
+        val second = persona("B", item("p1", "編集前の文", on = false))
 
-        PersonaLineAligner.align(pool, listOf(persona), defaultOn = false)
+        PersonaLineAligner.align(pool, listOf(first, second), defaultOn = false)
 
-        assertEquals(listOf("甘える", "甘えてくる"), pool.map { it.body })
-        assertEquals(listOf("甘えてくる"), persona.items.filter { it.isEnabled }.map { it.content })
+        assertEquals(listOf("編集後の文"), pool.map { it.body })
+        assertEquals(listOf("p1"), first.items.map { it.id })
+        assertEquals(listOf("編集後の文"), first.items.map { it.content })
+        assertEquals(listOf("p1"), second.items.map { it.id })
+        assertEquals(listOf("編集後の文"), second.items.map { it.content })
+        assertEquals(false, second.items.single().isEnabled)
     }
 
     @Test
@@ -62,8 +66,10 @@ class PersonaLineAlignerTest {
         val pool = mutableListOf(entry("p1", "甘える"))
         val first = persona("A", item("p1", "甘える"))
         val second = persona("B", item("p1", "甘える"))
-        pool.removeAt(0)
+        val removed = PersonaLineAligner.removeSharedLine(pool, listOf(first, second), "p1")
 
+        assertTrue(removed.poolChanged)
+        assertTrue(removed.personasChanged)
         PersonaLineAligner.align(pool, listOf(first, second), defaultOn = true)
 
         assertTrue(first.items.isEmpty())
