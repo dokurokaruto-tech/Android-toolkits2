@@ -2,7 +2,15 @@ package com.example.kennys_dokidoki_wallpaper
 
 /** Prompt/result handling for composing the user's first chat message without sending it. */
 internal object ChatFirstUserLinePolicy {
-    fun buildRequest(profileName: String, savedInstructions: String): String = buildString {
+    const val DEFAULT_TARGET_CHARACTERS = 40
+    const val MIN_TARGET_CHARACTERS = 5
+    const val MAX_TARGET_CHARACTERS = 500
+
+    fun buildRequest(
+        profileName: String,
+        savedInstructions: String,
+        targetCharacters: Int = DEFAULT_TARGET_CHARACTERS
+    ): String = buildString {
         append("キャラクターに送る、ユーザー側の最初の発言を1つだけ作成してください。")
         append("会話履歴にキャラクターの初回挨拶がある場合は、それに自然につながる内容にしてください。")
         append("ユーザー本人の発言として一人称・視点を保ち、キャラクターの返事は作らないでください。")
@@ -16,7 +24,10 @@ internal object ChatFirstUserLinePolicy {
             append(savedInstructions)
             append("\n【保存文ここまで】")
         }
-        append("\n\n【最終出力】ユーザーの発言本文を1つだけ出力し、返信候補・A/B/C形式・キャラクターの返答・解説は付けないでください。")
+        append("\n\n【文字数の目標】日本語で約")
+        append(targetCharacters.coerceIn(MIN_TARGET_CHARACTERS, MAX_TARGET_CHARACTERS))
+        append("文字を目安にしてください。目標に近づけつつ、会話として自然で読みやすい発言を優先してください。")
+        append("\n【最終出力】ユーザーの発言本文を1つだけ出力し、返信候補・A/B/C形式・キャラクターの返答・解説は付けないでください。")
     }
 
     fun cleanGeneratedLine(raw: String?): String? {

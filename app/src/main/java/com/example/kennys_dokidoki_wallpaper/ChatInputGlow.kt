@@ -5,8 +5,8 @@ import android.view.View
 import android.view.animation.LinearInterpolator
 
 /**
- * 生成中だけチャット入力枠を虹色に光らせる。
- * 表示/非表示はフェードで切り替え、点灯中は色が横に流れ続ける。
+ * 生成中だけチャット入力枠を虹色に光らせる。初回セリフ生成では星形のきらめきも表示する。
+ * 表示/非表示はフェードで切り替え、点灯中は色ときらめきが動き続ける。
  */
 internal class ChatInputGlow(private val target: View) {
     private companion object {
@@ -37,6 +37,10 @@ internal class ChatInputGlow(private val target: View) {
         target.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
             drawable.setBounds(0, 0, v.width, v.height)
         }
+    }
+
+    fun setSparklesEnabled(enabled: Boolean) {
+        drawable.sparklesEnabled = enabled
     }
 
     fun setActive(on: Boolean) {

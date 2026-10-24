@@ -23,6 +23,8 @@ internal object ChatSuggestProfileStore {
     private const val KEY_PROFILES = "chat_suggest_profiles"
     private const val KEY_ACTIVE_PROFILE_ID = "chat_suggest_active_profile_id"
     private const val KEY_LEGACY_INSTRUCTIONS = "chat_suggest_custom_instructions"
+    private const val KEY_FIRST_LINE_TARGET_LENGTHS = "chat_first_user_line_target_lengths"
+    private const val NO_PERSONA_TARGET_KEY = "__no_persona__"
 
     fun load(context: Context): List<ChatSuggestProfile> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -134,6 +136,41 @@ internal object ChatSuggestProfileStore {
                 ?: profiles.firstOrNull { it.personaId == null }
         } ?: return false
         return activate(context, matching.id)
+    }
+
+    /** Target length is stored by stable persona ID; null is the shared no-persona fallback. */
+    fun loadTargetCharacters(context: Context): Map<String?, Int> {
+        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_FIRST_LINE_TARGET_LENGTHS, null)
+            ?: return emptyMap()
+        return runCatching {
+            val json = JSONObject(raw)
+            buildMap<String?, Int> {
+                val keys = json.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = json.optInt(key, Int.MIN_VALUE)
+                    if (value in ChatFirstUserLinePolicy.MIN_TARGET_CHARACTERS..ChatFirstUserLinePolicy.MAX_TARGET_CHARACTERS) {
+                        put(if (key == NO_PERSONA_TARGET_KEY) null else key, value)
+                    }
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    fun targetCharacters(context: Context, personaId: String?): Int =
+        loadTargetCharacters(context)[personaId] ?: ChatFirstUserLinePolicy.DEFAULT_TARGET_CHARACTERS
+
+    fun saveTargetCharacters(context: Context, targets: Map<String?, Int>) {
+        val json = JSONObject()
+        targets.forEach { (personaId, value) ->
+            if (value in ChatFirstUserLinePolicy.MIN_TARGET_CHARACTERS..ChatFirstUserLinePolicy.MAX_TARGET_CHARACTERS) {
+                json.put(personaId ?: NO_PERSONA_TARGET_KEY, value)
+            }
+        }
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_FIRST_LINE_TARGET_LENGTHS, json.toString())
+            .apply()
     }
 
     /** Keeps edits made in the instruction browser attached to the currently selected profile. */

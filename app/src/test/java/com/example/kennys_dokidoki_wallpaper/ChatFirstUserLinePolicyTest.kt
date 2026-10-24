@@ -15,6 +15,21 @@ class ChatFirstUserLinePolicyTest {
         assertTrue(request.contains(saved))
         assertTrue(request.contains("ユーザー側の最初の発言を1つだけ"))
         assertTrue(request.contains("キャラクターの返事は作らない"))
+        assertTrue(request.contains("約40文字"))
+    }
+
+    @Test
+    fun requestIncludesThePersonaSpecificTargetLength() {
+        val request = ChatFirstUserLinePolicy.buildRequest("放課後", "", 72)
+
+        assertTrue(request.contains("約72文字"))
+    }
+
+    @Test
+    fun requestClampsTargetLengthToSupportedRange() {
+        val request = ChatFirstUserLinePolicy.buildRequest("放課後", "", 900)
+
+        assertTrue(request.contains("約500文字"))
     }
 
     @Test
