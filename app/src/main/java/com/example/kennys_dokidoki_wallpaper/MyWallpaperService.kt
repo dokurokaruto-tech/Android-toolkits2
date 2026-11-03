@@ -84,6 +84,19 @@ class MyWallpaperService : WallpaperService() {
         private var engineVisible = true
         private var needsReload = false
         private var activeRenderMode = WallpaperRenderMode.IMAGE
+        private var activeArtworkId = ThreeJsArtworkCatalog.DEFAULT_ARTWORK_ID
+        private val renderSelectionHandler = Handler(Looper.getMainLooper())
+        private val renderSelectionRunnable = Runnable {
+            val nextMode = currentWallpaperRenderMode()
+            val nextArtworkId = ThreeJsArtworkCatalog.selectedId(this@MyWallpaperService)
+            val modeChanged = nextMode != activeRenderMode
+            val artworkChanged = nextArtworkId != activeArtworkId
+            activeRenderMode = nextMode
+            activeArtworkId = nextArtworkId
+            if (modeChanged || (nextMode == WallpaperRenderMode.THREE_JS && artworkChanged)) {
+                applySelectedWallpaperRenderMode()
+            }
+        }
 
         private var currentBitmap: Bitmap? = null
         private var previousBitmap: Bitmap? = null
@@ -203,6 +216,7 @@ class MyWallpaperService : WallpaperService() {
             activeRenderMode = WallpaperRenderMode.fromPreference(
                 wallpaperPrefs.getString(WallpaperRenderMode.KEY, null)
             )
+            activeArtworkId = ThreeJsArtworkCatalog.selectedId(this@MyWallpaperService)
             wallpaperPrefs.registerOnSharedPreferenceChangeListener(this)
 
             val filter = IntentFilter().apply {
@@ -216,6 +230,7 @@ class MyWallpaperService : WallpaperService() {
 
         override fun onDestroy() {
             super.onDestroy()
+            renderSelectionHandler.removeCallbacksAndMessages(null)
             goQuiet()
             engineJob.cancel()
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -228,11 +243,9 @@ class MyWallpaperService : WallpaperService() {
         }
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-            if (key == WallpaperRenderMode.KEY) {
-                Handler(Looper.getMainLooper()).post {
-                    activeRenderMode = currentWallpaperRenderMode()
-                    applySelectedWallpaperRenderMode()
-                }
+            if (key == WallpaperRenderMode.KEY || key == ThreeJsArtworkCatalog.KEY_SELECTED_ARTWORK) {
+                renderSelectionHandler.removeCallbacks(renderSelectionRunnable)
+                renderSelectionHandler.post(renderSelectionRunnable)
                 return
             }
             if (currentWallpaperRenderMode() == WallpaperRenderMode.THREE_JS) return
@@ -971,7 +984,14 @@ class MyWallpaperService : WallpaperService() {
             if (threeJsRenderer?.matches(renderWidth, renderHeight) == true) return
 
             stopThreeJsRenderer()
-            val renderer = ThreeJsWallpaperRenderer(this@MyWallpaperService, surface, renderWidth, renderHeight)
+            val artwork = ThreeJsArtworkCatalog.selected(this@MyWallpaperService)
+            val renderer = ThreeJsWallpaperRenderer(
+                this@MyWallpaperService,
+                surface,
+                renderWidth,
+                renderHeight,
+                artwork
+            )
             if (renderer.start()) {
                 threeJsRenderer = renderer
             } else {

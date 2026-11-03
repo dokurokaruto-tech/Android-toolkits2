@@ -42,6 +42,9 @@
             android:name=".MainActivity"
             android:exported="false" />
         <activity
+            android:name=".ThreeJsWallpaperGalleryActivity"
+            android:exported="false" />
+        <activity
             android:name=".DiaryCalendarActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

@@ -1,29 +1,26 @@
 # Three.js live wallpaper foundation
 
-The built-in r110 bundle lives together under
-`app/src/main/assets/wallpaper/threejs/r110/`:
+The built-in r110 bundle lives under `app/src/main/assets/wallpaper/threejs/r110/`:
 
 - `three.r110.min.js` is the bundled Three.js engine.
 - `app.r110.js` is the Three.js Editor `APP.Player` runtime.
-- `index.html` loads both in that order and provides a small generated scene to
-  smoke-test the WebGL rendering path.
+- `app.json` is the selected Editor project, including its scene, camera, scripts,
+  and embedded texture data.
+- `index.html` loads the runtime pair and asks the native asset bridge for the
+  selected project's JSON.
 
-The app's **設定 → ライブ壁紙の描画方式** choice selects either the existing image
-renderer or this built-in Three.js renderer. In Three.js mode,
+In **設定 → Three.js壁紙を選ぶ**, a dark grid shows a live, briefly rendered
+thumbnail for each item in `ThreeJsArtworkCatalog`. Choosing an artwork stores
+its ID and switches the live wallpaper to Three.js. The existing image renderer
+remains available under **ライブ壁紙の描画方式**. In Three.js mode,
 `MyWallpaperService` hosts a local-only `WebView` on a `Presentation` backed by a
-virtual display targeting the wallpaper surface. The two JavaScript files are
-therefore an app-owned runtime bundle; neither is exposed as a separate user
-wallpaper or imported as a user library.
+virtual display targeting the wallpaper surface.
 
-## Scene data limitation
-
-The attached `app.r110.js` is a generic player, not an art-specific scene. Its
-`load(json)` method needs a Three.js Editor project JSON containing at least a
-scene and camera. No such project JSON was supplied with the two runtime files,
-so `index.html` currently generates a simple animated torus-knot scene strictly
-as a rendering smoke test. Replacing that smoke-test scene with a particular
-artwork will require the corresponding project JSON (and any textures or other
-referenced assets) plus a bundle-loading path.
+The attached `app.r110.js` is a generic player; it is not itself a scene. The
+provided `app.json` supplies the scene data it needs. Its textures are embedded
+as data URLs, so this artwork has no external image-file dependencies. To add
+more built-in artwork, add a catalog entry and its project JSON asset; the engine
+and player remain shared app resources rather than per-art files.
 
 Three.js r110 is MIT-licensed; the license notice is retained beside the bundled
 engine.

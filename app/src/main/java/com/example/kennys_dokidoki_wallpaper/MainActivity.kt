@@ -3155,6 +3155,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             addView(createSettingsRow("ライブ壁紙の描画方式", "画像セット、またはアプリ内蔵 Three.js r110 を選択") {
                 showWallpaperRenderModeDialog()
             })
+            addView(createSettingsRow("Three.js壁紙を選ぶ", "アートのプレビュー一覧から選択して適用") {
+                startActivity(Intent(this@MainActivity, ThreeJsWallpaperGalleryActivity::class.java))
+            })
             addView(createSettingsRow("タップ操作のカスタム設定") { startActivity(Intent(this@MainActivity, TapSettingsActivity::class.java)) })
             addView(createSettingsRow("PC生成エージェントの接続設定", "URL / APIキー / 接続テスト") { showServerUrlDialog() })
             addView(createSettingsRow("PC接続の失敗ログ", "原因コードと確認手順を表示・コピー") {
@@ -3227,7 +3230,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         MaterialAlertDialogBuilder(this)
             .setTitle("ライブ壁紙の描画方式")
-            .setMessage("Three.js本体とAPP.Playerはアプリに組み込み済みです。Three.jsを選ぶと、現在は組み込みの動作確認シーンを表示します。")
+            .setMessage("Three.js本体とAPP.Playerはアプリ内蔵です。Three.js壁紙一覧からアートを選ぶと、その作品がライブ壁紙に使われます。")
             .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
                 val selectedMode = modes.getOrElse(which) { WallpaperRenderMode.IMAGE }
                 wallpaperPrefs.edit()

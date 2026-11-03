@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <meta name="color-scheme" content="dark">
-    <title>Built-in Three.js wallpaper</title>
+    <title>Three.js wallpaper artwork</title>
     <style>
         html, body, #wallpaper, #player-root, #player-root > div {
             width: 100%;
@@ -35,7 +35,7 @@
 <body>
 <div id="wallpaper">
     <div id="player-root"></div>
-    <div id="status">Three.js を起動しています…</div>
+    <div id="status">Three.js アートを読み込んでいます…</div>
 </div>
 <script>
 (function () {
@@ -47,59 +47,35 @@
 
     function showError(error) {
         var detail = error && error.message ? error.message : String(error || 'unknown error');
-        status.textContent = 'Three.js 壁紙を起動できませんでした。\n' + detail;
+        status.textContent = 'Three.js アートを起動できませんでした。\n' + detail;
         status.style.display = 'grid';
         console.error('Three.js wallpaper failed:', error);
     }
 
     try {
-        if (!window.THREE || !window.APP || !window.APP.Player) {
-            throw new Error('内蔵ランタイムの読み込みに失敗しました');
+        if (!window.THREE || !window.APP || !window.APP.Player || !window.ThreeJsAssets) {
+            throw new Error('内蔵ランタイムまたはプロジェクトが読み込めません');
         }
 
-        // APP.Player is the generic Three.js Editor runtime. Its input is a project
-        // JSON, so this small generated scene is only an in-app rendering smoke test.
-        var scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x070a13);
-        scene.fog = new THREE.Fog(0x070a13, 9, 22);
-
-        var ambient = new THREE.AmbientLight(0xffffff, 0.72);
-        scene.add(ambient);
-
-        var keyLight = new THREE.PointLight(0x9e7bff, 2.2, 24);
-        keyLight.position.set(3, 4, 6);
-        scene.add(keyLight);
-
-        var fillLight = new THREE.PointLight(0x42d9ee, 1.5, 22);
-        fillLight.position.set(-4, -2, 4);
-        scene.add(fillLight);
-
-        var knot = new THREE.Mesh(
-            new THREE.TorusKnotGeometry(1.25, 0.34, 144, 18, 2, 3),
-            new THREE.MeshStandardMaterial({
-                color: 0xb9a0ff,
-                metalness: 0.48,
-                roughness: 0.24
-            })
-        );
-        scene.add(knot);
-
-        var camera = new THREE.PerspectiveCamera(42, 1, 0.1, 50);
-        camera.position.set(0, 0, 7.5);
-        camera.lookAt(0, 0, 0);
-
-        var project = {
-            project: { shadows: false, vr: false },
-            scene: scene.toJSON(),
-            camera: camera.toJSON(),
-            scripts: {}
-        };
-        project.scripts[knot.uuid] = [{
-            source: 'function update(event) {\n' +
-                '  this.rotation.x = Math.sin(event.time * 0.00022) * 0.28;\n' +
-                '  this.rotation.y = event.time * 0.00032;\n' +
-                '}'
-        }];
+        var jsonLength = window.ThreeJsAssets.getProjectJsonLength();
+        var jsonChunks = [];
+        var chunkSize = 48 * 1024;
+        var offset = 0;
+        while (offset < jsonLength) {
+            var packet = window.ThreeJsAssets.getProjectJsonChunk(offset, chunkSize);
+            var separator = packet.indexOf('\n');
+            if (separator < 0) throw new Error('プロジェクトJSONの読み込みに失敗しました');
+            var nextOffset = Number(packet.substring(0, separator));
+            if (!isFinite(nextOffset) || nextOffset <= offset) {
+                throw new Error('プロジェクトJSONの読み込み位置が不正です');
+            }
+            jsonChunks.push(packet.substring(separator + 1));
+            offset = nextOffset;
+        }
+        var project = JSON.parse(jsonChunks.join(''));
+        if (!project || !project.scene || !project.camera) {
+            throw new Error('app.json にシーンまたはカメラがありません');
+        }
 
         player = new APP.Player();
         window.threeWallpaperPlayer = player;
@@ -117,6 +93,13 @@
         resize();
         player.play();
         status.style.display = 'none';
+
+        // Gallery thumbnails render briefly, then hold a still frame to save power.
+        if (window.ThreeJsAssets.isPreviewMode()) {
+            window.setTimeout(function () {
+                if (player) player.stop();
+            }, 1400);
+        }
     } catch (error) {
         showError(error);
     }
