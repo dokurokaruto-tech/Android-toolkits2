@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebView
+import android.webkit.WebViewClient
 
 /**
  * Hosts the bundled Three.js Editor player in a presentation on a virtual display
