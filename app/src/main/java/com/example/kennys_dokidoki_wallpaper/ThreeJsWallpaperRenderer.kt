@@ -147,7 +147,7 @@ internal class ThreeJsWallpaperRenderer(
             if (oldPresentation?.isShowing == true) oldPresentation.dismiss()
             (oldWebView?.parent as? ViewGroup)?.removeView(oldWebView)
             oldWebView?.webChromeClient = null
-            oldWebView?.webViewClient = null
+            oldWebView?.webViewClient = WebViewClient()
             oldWebView?.destroy()
         } catch (error: Exception) {
             Log.w(TAG, "Error while releasing the Three.js wallpaper renderer", error)
