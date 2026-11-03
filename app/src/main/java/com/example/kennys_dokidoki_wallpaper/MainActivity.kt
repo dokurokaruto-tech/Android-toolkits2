@@ -3152,6 +3152,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun setupSettingsLayout() {
         settingsLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(32, 32, 32, 32)
+            addView(createSettingsRow("ライブ壁紙の描画方式", "画像セット、またはアプリ内蔵 Three.js r110 を選択") {
+                showWallpaperRenderModeDialog()
+            })
             addView(createSettingsRow("タップ操作のカスタム設定") { startActivity(Intent(this@MainActivity, TapSettingsActivity::class.java)) })
             addView(createSettingsRow("PC生成エージェントの接続設定", "URL / APIキー / 接続テスト") { showServerUrlDialog() })
             addView(createSettingsRow("PC接続の失敗ログ", "原因コードと確認手順を表示・コピー") {
@@ -3212,6 +3215,28 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
          findViewById<android.widget.FrameLayout>(R.id.nav_host_content).addView(settingsLayout)
          settingsLayout.visibility = View.GONE
+    }
+
+    private fun showWallpaperRenderModeDialog() {
+        val wallpaperPrefs = getSharedPreferences(WallpaperRenderMode.PREFERENCES_NAME, Context.MODE_PRIVATE)
+        val modes = WallpaperRenderMode.values()
+        val labels = arrayOf("画像セット（従来）", "Three.js（アプリ内蔵）")
+        val selectedIndex = modes.indexOf(WallpaperRenderMode.fromPreference(
+            wallpaperPrefs.getString(WallpaperRenderMode.KEY, null)
+        ))
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("ライブ壁紙の描画方式")
+            .setMessage("Three.js本体とAPP.Playerはアプリに組み込み済みです。Three.jsを選ぶと、現在は組み込みの動作確認シーンを表示します。")
+            .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
+                val selectedMode = modes.getOrElse(which) { WallpaperRenderMode.IMAGE }
+                wallpaperPrefs.edit()
+                    .putString(WallpaperRenderMode.KEY, selectedMode.preferenceValue)
+                    .apply()
+                dialog.dismiss()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
     }
 
     private fun showAutoRestoreDialog() {

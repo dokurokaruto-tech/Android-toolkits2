@@ -78,10 +78,12 @@ class MyWallpaperService : WallpaperService() {
         private val engineJob = Job()
         private val engineScope = CoroutineScope(Dispatchers.Main + engineJob)
         private var isLoading = false
+        private var imageLoadVersion = 0L
 
         // 見えていない間は描かない・抱えない。再表示された時に読み直す。
         private var engineVisible = true
         private var needsReload = false
+        private var activeRenderMode = WallpaperRenderMode.IMAGE
 
         private var currentBitmap: Bitmap? = null
         private var previousBitmap: Bitmap? = null
@@ -90,6 +92,7 @@ class MyWallpaperService : WallpaperService() {
         
         private var imageEntries = mutableListOf<ImageEntry>()
         private var currentImageIndex = 0
+        private var threeJsRenderer: ThreeJsWallpaperRenderer? = null
 
         private var tapCount: Int = 0
         private val tapTimeout: Long = 350L
@@ -158,6 +161,10 @@ class MyWallpaperService : WallpaperService() {
                     }
                     "com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED" -> {
                         Handler(Looper.getMainLooper()).post {
+                            if (currentWallpaperRenderMode() == WallpaperRenderMode.THREE_JS) {
+                                if (engineVisible) startThreeJsRenderer()
+                                return@post
+                            }
                             if (!engineVisible) {
                                 needsReload = true
                                 return@post
@@ -192,7 +199,10 @@ class MyWallpaperService : WallpaperService() {
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             settingsPrefs.registerOnSharedPreferenceChangeListener(this)
             
-            val wallpaperPrefs = getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE)
+            val wallpaperPrefs = getSharedPreferences(WallpaperRenderMode.PREFERENCES_NAME, Context.MODE_PRIVATE)
+            activeRenderMode = WallpaperRenderMode.fromPreference(
+                wallpaperPrefs.getString(WallpaperRenderMode.KEY, null)
+            )
             wallpaperPrefs.registerOnSharedPreferenceChangeListener(this)
 
             val filter = IntentFilter().apply {
@@ -211,15 +221,25 @@ class MyWallpaperService : WallpaperService() {
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             settingsPrefs.unregisterOnSharedPreferenceChangeListener(this)
             
-            val wallpaperPrefs = getSharedPreferences("wallpaper_prefs", Context.MODE_PRIVATE)
+            val wallpaperPrefs = getSharedPreferences(WallpaperRenderMode.PREFERENCES_NAME, Context.MODE_PRIVATE)
             wallpaperPrefs.unregisterOnSharedPreferenceChangeListener(this)
             
             applicationContext.unregisterReceiver(tapReceiver)
         }
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+            if (key == WallpaperRenderMode.KEY) {
+                Handler(Looper.getMainLooper()).post {
+                    activeRenderMode = currentWallpaperRenderMode()
+                    applySelectedWallpaperRenderMode()
+                }
+                return
+            }
+            if (currentWallpaperRenderMode() == WallpaperRenderMode.THREE_JS) return
+
             if (key == "active_album_name" || key == "active_album_name_homescreen" || key == "active_album_name_chat" || key == "is_chat_active" || key == "active_image_index" || key == "all_images" || key == "image_sets" || key == DataManager.KEY_REVISION) {
                 Handler(Looper.getMainLooper()).post {
+                    if (currentWallpaperRenderMode() == WallpaperRenderMode.THREE_JS) return@post
                     // 見えていない時の設定変更は次に表示される時まで寝かせる。
                     if (!engineVisible) {
                         needsReload = true
@@ -253,6 +273,10 @@ class MyWallpaperService : WallpaperService() {
 
         override fun onTouchEvent(event: MotionEvent?) {
             super.onTouchEvent(event)
+            if (activeRenderMode == WallpaperRenderMode.THREE_JS) {
+                event?.let { threeJsRenderer?.dispatchTouchEvent(it) }
+                return
+            }
             event?.let {
                 when (it.action) {
                     MotionEvent.ACTION_DOWN -> {
@@ -756,14 +780,24 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun loadAndSetCurrentBitmap(entry: ImageEntry, onReady: (() -> Unit)? = null) {
+            val requestVersion = ++imageLoadVersion
             isLoading = true
             engineScope.launch(Dispatchers.IO) {
                 val bmp = decodeBitmap(entry.displayUri)
                 withContext(Dispatchers.Main) {
+                    if (requestVersion != imageLoadVersion) {
+                        bmp?.recycle()
+                        return@withContext
+                    }
                     isLoading = false
                     // 読み込み中に隠れていたら捨てて、再表示に読み直す。
                     if (!engineVisible) {
+                        bmp?.recycle()
                         needsReload = true
+                        return@withContext
+                    }
+                    if (currentWallpaperRenderMode() == WallpaperRenderMode.THREE_JS) {
+                        bmp?.recycle()
                         return@withContext
                     }
                     if (bmp != null) { currentBitmap = bmp; currentEntry = entry; onReady?.invoke() }
@@ -772,13 +806,23 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun prepareCrossfade(nextEntry: ImageEntry, onReady: (Bitmap) -> Unit) {
+            val requestVersion = ++imageLoadVersion
             isLoading = true
             engineScope.launch(Dispatchers.IO) {
                 val nextBitmap = decodeBitmap(nextEntry.displayUri)
                 withContext(Dispatchers.Main) {
+                    if (requestVersion != imageLoadVersion) {
+                        nextBitmap?.recycle()
+                        return@withContext
+                    }
                     isLoading = false
                     if (!engineVisible) {
+                        nextBitmap?.recycle()
                         needsReload = true
+                        return@withContext
+                    }
+                    if (currentWallpaperRenderMode() == WallpaperRenderMode.THREE_JS) {
+                        nextBitmap?.recycle()
                         return@withContext
                     }
                     if (nextBitmap != null) onReady(nextBitmap)
@@ -859,7 +903,10 @@ class MyWallpaperService : WallpaperService() {
             super.onVisibilityChanged(visible)
             engineVisible = visible
             if (visible) {
-                if (needsReload || currentBitmap == null) {
+                if (activeRenderMode == WallpaperRenderMode.THREE_JS) {
+                    needsReload = false
+                    startThreeJsRenderer()
+                } else if (needsReload || currentBitmap == null) {
                     reloadCurrent()
                 } else {
                     draw()
@@ -871,6 +918,9 @@ class MyWallpaperService : WallpaperService() {
 
         /** 非表示になった。アニメーションとコールバックを止め、ビットマップも手放す。 */
         private fun goQuiet() {
+            stopThreeJsRenderer()
+            imageLoadVersion += 1
+            isLoading = false
             animator?.cancel()
             animator = null
             textAnimator?.cancel()
@@ -893,10 +943,82 @@ class MyWallpaperService : WallpaperService() {
             needsReload = true
         }
 
+        private fun currentWallpaperRenderMode(): WallpaperRenderMode =
+            WallpaperRenderMode.fromPreference(
+                getSharedPreferences(WallpaperRenderMode.PREFERENCES_NAME, Context.MODE_PRIVATE)
+                    .getString(WallpaperRenderMode.KEY, null)
+            )
+
+        private fun applySelectedWallpaperRenderMode() {
+            goQuiet()
+            if (!engineVisible) return
+
+            if (activeRenderMode == WallpaperRenderMode.THREE_JS) {
+                startThreeJsRenderer()
+            } else {
+                reloadCurrent()
+            }
+        }
+
+        private fun startThreeJsRenderer(width: Int = 0, height: Int = 0) {
+            if (!engineVisible || activeRenderMode != WallpaperRenderMode.THREE_JS) return
+
+            val frame = surfaceHolder.surfaceFrame
+            val renderWidth = width.takeIf { it > 0 } ?: frame.width()
+            val renderHeight = height.takeIf { it > 0 } ?: frame.height()
+            val surface = surfaceHolder.surface
+            if (renderWidth <= 0 || renderHeight <= 0 || !surface.isValid) return
+            if (threeJsRenderer?.matches(renderWidth, renderHeight) == true) return
+
+            stopThreeJsRenderer()
+            val renderer = ThreeJsWallpaperRenderer(this@MyWallpaperService, surface, renderWidth, renderHeight)
+            if (renderer.start()) {
+                threeJsRenderer = renderer
+            } else {
+                renderer.release()
+                drawThreeJsFallback()
+            }
+        }
+
+        private fun stopThreeJsRenderer() {
+            val renderer = threeJsRenderer
+            threeJsRenderer = null
+            renderer?.release()
+        }
+
+        private fun drawThreeJsFallback() {
+            if (!engineVisible || !surfaceHolder.surface.isValid) return
+            val canvas: Canvas = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) surfaceHolder.lockHardwareCanvas() else surfaceHolder.lockCanvas()
+            } catch (e: Exception) {
+                null
+            } ?: return
+            try {
+                canvas.drawColor(Color.rgb(7, 10, 19))
+                val density = applicationContext.resources.displayMetrics.density
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    textAlign = Paint.Align.CENTER
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    textSize = 16f * density
+                }
+                canvas.drawText("Three.js 壁紙を起動できませんでした", canvas.width / 2f, canvas.height / 2f, paint)
+                paint.textSize = 12f * density
+                paint.alpha = 190
+                canvas.drawText("端末の WebView / WebGL を確認してください", canvas.width / 2f, canvas.height / 2f + 26f * density, paint)
+            } finally {
+                surfaceHolder.unlockCanvasAndPost(canvas)
+            }
+        }
+
         private fun reloadCurrent() {
             needsReload = false
             if (!engineVisible) {
                 needsReload = true
+                return
+            }
+            if (activeRenderMode == WallpaperRenderMode.THREE_JS) {
+                startThreeJsRenderer()
                 return
             }
             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
@@ -909,15 +1031,33 @@ class MyWallpaperService : WallpaperService() {
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
-            if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
+            if (!engineVisible) return
+            if (activeRenderMode == WallpaperRenderMode.THREE_JS) {
+                startThreeJsRenderer()
+            } else if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                 val entry = imageEntries[currentImageIndex]
                 currentEntry = entry
                 loadAndSetCurrentBitmap(entry) { showSetNameText(); draw() }
             } else draw()
         }
 
-        private fun draw() {
+        override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+            super.onSurfaceChanged(holder, format, width, height)
             if (!engineVisible) return
+            if (activeRenderMode == WallpaperRenderMode.THREE_JS) {
+                startThreeJsRenderer(width, height)
+            } else {
+                draw()
+            }
+        }
+
+        override fun onSurfaceDestroyed(holder: SurfaceHolder) {
+            stopThreeJsRenderer()
+            super.onSurfaceDestroyed(holder)
+        }
+
+        private fun draw() {
+            if (!engineVisible || activeRenderMode == WallpaperRenderMode.THREE_JS) return
             val canvas: Canvas = try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) surfaceHolder.lockHardwareCanvas() else surfaceHolder.lockCanvas()
             } catch (e: Exception) { null } ?: return
