@@ -17,12 +17,15 @@ object ThreeJsWorkStore {
     private const val WORKS_DIR_NAME = "works"
     private const val THUMBS_DIR_NAME = "thumbs"
     private const val MANIFEST_FILE_NAME = "manifest.json"
+    private const val THUMB_VERSION_FILE = ".thumb_ver"
+    private const val THUMB_CACHE_VERSION = "2"
     private const val DATE_LABEL_PATTERN = "yy MM dd"
     private const val DATA_URI_BASE64_MARKER = ";base64,"
     private val lock = Any()
 
     fun loadWorks(context: Context): List<ThreeJsWork> {
         synchronized(lock) {
+            ensureThumbVersionLocked(context)
             return loadManifestLocked(context).works.toList()
         }
     }
@@ -252,8 +255,34 @@ object ThreeJsWorkStore {
     fun clearAllThumbnails(context: Context) {
         synchronized(lock) {
             val dir = File(storeDir(context), THUMBS_DIR_NAME)
-            dir.listFiles()?.forEach { it.delete() }
+            dir.listFiles()?.forEach { file ->
+                if (file.name != THUMB_VERSION_FILE) {
+                    file.delete()
+                }
+            }
         }
+    }
+
+    private fun ensureThumbVersionLocked(context: Context) {
+        val dir = File(storeDir(context), THUMBS_DIR_NAME)
+        dir.mkdirs()
+        val marker = File(dir, THUMB_VERSION_FILE)
+        val current = runCatching {
+            if (marker.isFile) {
+                marker.readText(Charsets.UTF_8).trim()
+            } else {
+                ""
+            }
+        }.getOrDefault("")
+        if (current == THUMB_CACHE_VERSION) {
+            return
+        }
+        dir.listFiles()?.forEach { file ->
+            if (file.name != THUMB_VERSION_FILE) {
+                file.delete()
+            }
+        }
+        runCatching { marker.writeText(THUMB_CACHE_VERSION, Charsets.UTF_8) }
     }
 
     private fun storeDir(context: Context): File {

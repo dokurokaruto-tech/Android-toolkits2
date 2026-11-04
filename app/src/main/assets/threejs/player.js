@@ -7,6 +7,7 @@
   var MAX_PIXEL_RATIO = 2;
   var MAX_FRAME_DELTA_MS = 100;
   var FALLBACK_TICK_MS = 66;
+  var CLEAR_BLACK = 0x000000;
   var THUMB_SIZE_PX = 512;
   var THUMB_WARMUP_STEPS = 12;
   var THUMB_STEP_MS = 120;
@@ -134,6 +135,44 @@
     return true;
   }
 
+  function installPmremClearGuard() {
+    if (
+      !THREE.PMREMGenerator ||
+      !THREE.PMREMGenerator.prototype ||
+      THREE.PMREMGenerator.prototype.__rgbeClearGuarded
+    ) {
+      return;
+    }
+    var proto = THREE.PMREMGenerator.prototype;
+    var origFromScene = proto.fromScene;
+    if (typeof origFromScene !== "function") {
+      return;
+    }
+    proto.fromScene = function (envScene) {
+      var r = this._renderer;
+      var needsZeroRgbeClear = Boolean(
+        r &&
+          envScene &&
+          !envScene.background &&
+          typeof r.getClearColor === "function" &&
+          typeof r.getClearAlpha === "function" &&
+          typeof r.setClearColor === "function"
+      );
+      if (!needsZeroRgbeClear) {
+        return origFromScene.apply(this, arguments);
+      }
+      var savedColor = r.getClearColor().clone();
+      var savedAlpha = r.getClearAlpha();
+      r.setClearColor(CLEAR_BLACK, 0);
+      try {
+        return origFromScene.apply(this, arguments);
+      } finally {
+        r.setClearColor(savedColor, savedAlpha);
+      }
+    };
+    proto.__rgbeClearGuarded = true;
+  }
+
   function resetRendererState() {
     if (!renderer) {
       return;
@@ -144,7 +183,7 @@
     renderer.toneMappingExposure = 1.0;
     renderer.physicallyCorrectLights = false;
     renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.setClearColor(0x0a0a0c, 1);
+    renderer.setClearColor(CLEAR_BLACK, 1);
   }
 
   function applyProjectConfig(project) {
@@ -294,7 +333,7 @@
           var handlerNames = Object.keys(handlers);
           for (var k = 0; k < handlerNames.length; k++) {
             var name = handlerNames[k];
-            if (handlers[name] !== undefined && events[name] !== undefined) {
+            if (typeof handlers[name] === "function" && events[name] !== undefined) {
               events[name].push(handlers[name].bind(targetObject));
             }
           }
@@ -766,6 +805,7 @@
   };
 
   function initPlayer() {
+    installPmremClearGuard();
     createRenderer();
     window.addEventListener("resize", applyViewportSize);
     window.ThreeWallpaperPlayer = playerApi;

@@ -747,6 +747,124 @@ vm.runInContext(hookCode, sandbox);
         self.assertIn("ThreeJsWorkStore.workOrFirst(appContext, workId)", driver_src)
         self.assertIn("ThreeJsAssetHost.interceptRequest(appContext, request)", driver_src)
 
+    def test_pmrem_work_36_uses_zero_rgbe_clear_without_white_blowout(self):
+        node_script = r"""
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const assetsDir = process.argv[1];
+const threeCode = fs.readFileSync(path.join(assetsDir, 'three.min.js'), 'utf8');
+const playerCode = fs.readFileSync(path.join(assetsDir, 'player.js'), 'utf8');
+const work36Json = fs.readFileSync(path.join(assetsDir, 'works/36.json'), 'utf8');
+
+const pmremCubeUvClears = [];
+let currentRenderTarget = null;
+let clearColor = null;
+let clearAlpha = 1;
+
+const sandbox = {
+  console,
+  Math,
+  Date,
+  Promise,
+  JSON,
+  Object,
+  Array,
+  String,
+  Number,
+  Boolean,
+  Function,
+  Float32Array,
+  Uint8Array,
+  performance: { now: () => 500 },
+  devicePixelRatio: 2,
+  innerWidth: 1080,
+  innerHeight: 2400,
+  location: { search: '' },
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  requestAnimationFrame: () => 1,
+  cancelAnimationFrame: () => {},
+  setTimeout: () => 1,
+  clearTimeout: () => {},
+  document: {
+    body: { appendChild: () => {}, removeChild: () => {} },
+    createElementNS: () => ({ style: {}, addEventListener: () => {} }),
+    createElement: () => ({ style: {}, addEventListener: () => {} })
+  }
+};
+sandbox.window = sandbox;
+sandbox.self = sandbox;
+
+vm.createContext(sandbox);
+vm.runInContext(threeCode, sandbox);
+
+const THREE = sandbox.THREE;
+clearColor = new THREE.Color(0x000000);
+
+THREE.WebGLRenderer = function FakePmremRenderer() {
+  this.domElement = { style: {}, parentNode: null, addEventListener: () => {} };
+  this.shadowMap = { enabled: false, type: 0 };
+  this.toneMapping = THREE.NoToneMapping;
+  this.toneMappingExposure = 1;
+  this.physicallyCorrectLights = false;
+  this.outputEncoding = THREE.sRGBEncoding;
+  this.autoClear = true;
+  this.setPixelRatio = () => {};
+  this.setSize = () => {};
+  this.getContext = () => ({ isContextLost: () => false });
+  this.compile = () => {};
+  this.getRenderTarget = () => currentRenderTarget;
+  this.setRenderTarget = (rt) => { currentRenderTarget = rt; };
+  this.getClearColor = () => clearColor;
+  this.getClearAlpha = () => clearAlpha;
+  this.setClearColor = (col, alpha) => {
+    clearColor = (col && col.isColor) ? col.clone() : new THREE.Color(col);
+    if (alpha !== undefined) clearAlpha = alpha;
+  };
+  this.render = (scn, _cam) => {
+    if (currentRenderTarget && currentRenderTarget.texture &&
+        currentRenderTarget.texture.name === 'PMREM.cubeUv' &&
+        scn && scn.children && scn.children.length === 4) {
+      pmremCubeUvClears.push({
+        r: clearColor.r,
+        g: clearColor.g,
+        b: clearColor.b,
+        a: clearAlpha
+      });
+    }
+  };
+  this.dispose = () => {};
+};
+
+vm.runInContext(playerCode, sandbox);
+
+// Load 36.json via playerApi
+sandbox.ThreeWallpaperPlayer.loadWorkJson(work36Json, '36');
+
+if (pmremCubeUvClears.length !== 6) {
+  throw new Error('Expected 6 cubeUV face renders for 36.json PMREM, got ' + pmremCubeUvClears.length);
+}
+for (const c of pmremCubeUvClears) {
+  const rgbeRadiance = Math.max(c.r, c.g, c.b) * Math.pow(2, c.a * 255 - 128);
+  if (c.r !== 0 || c.g !== 0 || c.b !== 0 || c.a !== 0 || rgbeRadiance !== 0) {
+    throw new Error('Non-zero RGBE clear during PMREM fromScene: ' + JSON.stringify(c) + ' -> ' + rgbeRadiance);
+  }
+}
+if (clearColor.getHex() !== 0x000000 || clearAlpha !== 1) {
+  throw new Error('Expected renderer clearColor restored to (0x000000, 1) after PMREM');
+}
+sandbox.ThreeWallpaperPlayer.stop();
+"""
+        proc = subprocess.run(
+            ["node", "-e", node_script, str(ASSETS_DIR)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr or proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
