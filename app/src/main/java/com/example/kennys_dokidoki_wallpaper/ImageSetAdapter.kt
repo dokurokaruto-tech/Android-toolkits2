@@ -15,6 +15,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.signature.ObjectKey
 import com.google.android.material.button.MaterialButton
 
 class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
@@ -55,11 +56,24 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
         val density = holder.itemView.context.resources.displayMetrics.density
 
         if (set.sourceKind == WallpaperSourceKind.THREE_JS) {
-            holder.count.text = "${ThreeJsCatalog.BUILT_IN_WORKS.size}作品 [three.js]\n(内蔵コレクション)"
-            Glide.with(holder.thumbnail.context).clear(holder.thumbnail)
-            holder.thumbnail.setBackgroundColor(0xFF141824.toInt())
-            holder.thumbnail.scaleType = ImageView.ScaleType.CENTER_INSIDE
-            holder.thumbnail.setImageResource(R.drawable.ic_three_js_cube)
+            val works = ThreeJsWorkStore.loadWorks(context)
+            holder.count.text = "${works.size}作品 [three.js]\n(登録コレクション)"
+            val storedWorkId = prefs.getString(ThreeJsPolicy.prefKeyForAlbum(set.name), null)
+            val previewWork = ThreeJsWorkStore.workOrFirst(context, storedWorkId)
+            val thumbFile = previewWork?.let { ThreeJsWorkStore.thumbnailFile(context, it.id) }
+            if (thumbFile != null && thumbFile.isFile && thumbFile.length() > 0L) {
+                holder.thumbnail.setBackgroundColor(0xFF0A0A0C.toInt())
+                holder.thumbnail.scaleType = ImageView.ScaleType.CENTER_CROP
+                Glide.with(holder.thumbnail.context)
+                    .load(thumbFile)
+                    .signature(ObjectKey(thumbFile.lastModified()))
+                    .into(holder.thumbnail)
+            } else {
+                Glide.with(holder.thumbnail.context).clear(holder.thumbnail)
+                holder.thumbnail.setBackgroundColor(0xFF141824.toInt())
+                holder.thumbnail.scaleType = ImageView.ScaleType.CENTER_INSIDE
+                holder.thumbnail.setImageResource(R.drawable.ic_three_js_cube)
+            }
             holder.iconCropped.visibility = View.GONE
         } else {
             val matchDesc = if (set.matchMode == MatchMode.ALL) "[完全一致]" else "[部分一致]"
@@ -182,7 +196,8 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
 
             val nextThreeWork = if (isThreeJs) {
                 val prevId = prefs.getString(ThreeJsPolicy.prefKeyForAlbum(set.name), null)
-                ThreeJsPolicy.pickNextRandomWork(ThreeJsCatalog.BUILT_IN_WORKS, prevId)
+                val registeredWorks = ThreeJsWorkStore.loadWorks(it.context)
+                ThreeJsPolicy.pickNextRandomWork(registeredWorks, prevId)
             } else {
                 null
             }

@@ -61,7 +61,6 @@ class ThreeJsWallpaperDriver(
         private const val TAG = "ThreeJsWallpaperDriver"
         private const val DISPLAY_NAME = "KennysThreeJsWallpaper"
         private const val BRIDGE_NAME = "AndroidThreeBridge"
-        private const val HTTPS_SCHEME = "https"
         private const val UTF8 = "UTF-8"
         private const val BLANK_URL = "about:blank"
         private const val MAX_QUEUE_IMAGES = 4
@@ -109,7 +108,7 @@ class ThreeJsWallpaperDriver(
 
     // Activate or resume the Three.js pipeline without recreating windows on resume.
     fun showWork(workId: String, surfaceWidth: Int, surfaceHeight: Int) {
-        val work = ThreeJsCatalog.workOrDefault(workId)
+        val work = ThreeJsWorkStore.workOrFirst(appContext, workId) ?: return
         val dims = ThreeJsPolicy.computeRenderSize(surfaceWidth, surfaceHeight)
         activeWorkId = work.id
         active = true
@@ -631,37 +630,7 @@ class ThreeJsWallpaperDriver(
     }
 
     private fun interceptAssetRequest(request: WebResourceRequest): WebResourceResponse? {
-        val uri = request.url ?: return notFoundResponse()
-        if (uri.scheme == "data") {
-            return null
-        }
-
-        val isLocalAsset = uri.scheme == HTTPS_SCHEME && uri.host == ThreeJsCatalog.VIRTUAL_HOST
-        if (!isLocalAsset) {
-            return notFoundResponse()
-        }
-
-        val relPath = (uri.path ?: "").trimStart('/')
-        if (relPath.isEmpty() || relPath.contains("..")) {
-            return notFoundResponse()
-        }
-
-        val assetPath = "${ThreeJsCatalog.ASSET_DIR}/$relPath"
-        return try {
-            val stream = appContext.assets.open(assetPath)
-            WebResourceResponse(mimeTypeFor(relPath), UTF8, stream)
-        } catch (_: Throwable) {
-            notFoundResponse()
-        }
-    }
-
-    private fun mimeTypeFor(path: String): String {
-        return when {
-            path.endsWith(".html", ignoreCase = true) -> "text/html"
-            path.endsWith(".js", ignoreCase = true) -> "application/javascript"
-            path.endsWith(".json", ignoreCase = true) -> "application/json"
-            else -> "application/octet-stream"
-        }
+        return ThreeJsAssetHost.interceptRequest(appContext, request)
     }
 
     private fun notFoundResponse(): WebResourceResponse {

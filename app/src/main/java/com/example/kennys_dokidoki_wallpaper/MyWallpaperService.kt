@@ -1017,8 +1017,9 @@ class MyWallpaperService : WallpaperService() {
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val prefKey = ThreeJsPolicy.prefKeyForAlbum(set.name)
             val storedId = settingsPrefs.getString(prefKey, null)
-            val work = ThreeJsCatalog.findById(storedId)
-                ?: ThreeJsPolicy.pickNextRandomWork(ThreeJsCatalog.BUILT_IN_WORKS, null)
+            val registeredWorks = ThreeJsWorkStore.loadWorks(applicationContext)
+            val work = ThreeJsWorkStore.findWork(applicationContext, storedId)
+                ?: ThreeJsPolicy.pickNextRandomWork(registeredWorks, null)
                 ?: return
 
             if (storedId != work.id) {
@@ -1035,8 +1036,9 @@ class MyWallpaperService : WallpaperService() {
             val prefKey = ThreeJsPolicy.prefKeyForAlbum(set.name)
             val currentId = threeJsDriver?.currentWorkId()
                 ?: settingsPrefs.getString(prefKey, null)
+            val registeredWorks = ThreeJsWorkStore.loadWorks(applicationContext)
             val nextWork = ThreeJsPolicy.pickNextRandomWork(
-                ThreeJsCatalog.BUILT_IN_WORKS,
+                registeredWorks,
                 currentId
             ) ?: return
 
@@ -1105,8 +1107,9 @@ class MyWallpaperService : WallpaperService() {
             if (targetSet.sourceKind == WallpaperSourceKind.THREE_JS) {
                 val prefKey = ThreeJsPolicy.prefKeyForAlbum(targetSet.name)
                 val prevId = settingsPrefs.getString(prefKey, null)
-                val chosen = ThreeJsCatalog.findById(prevId)
-                    ?: ThreeJsPolicy.pickNextRandomWork(ThreeJsCatalog.BUILT_IN_WORKS, null)
+                val registeredWorks = ThreeJsWorkStore.loadWorks(applicationContext)
+                val chosen = ThreeJsWorkStore.findWork(applicationContext, prevId)
+                    ?: ThreeJsPolicy.pickNextRandomWork(registeredWorks, null)
                     ?: return
 
                 settingsPrefs.edit()

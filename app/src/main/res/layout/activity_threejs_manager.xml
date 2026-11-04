@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/threejs_manager_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0B0B0D">
+
+    <!-- Offscreen 2x2 container used by ThreeJsThumbnailCapturer to render 512x512 WebGL thumbnails -->
+    <FrameLayout
+        android:id="@+id/threejs_offscreen_capturer_host"
+        android:layout_width="2dp"
+        android:layout_height="2dp"
+        android:layout_gravity="bottom|end" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="10dp">
+
+            <ImageButton
+                android:id="@+id/btn_threejs_back"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="戻る"
+                android:src="@android:drawable/ic_menu_revert"
+                app:tint="#B8B8C4" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.06"
+                    android:text="three.js"
+                    android:textColor="#E6E6EE"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txt_threejs_work_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="0 works"
+                    android:textColor="#6B6B75"
+                    android:textSize="10.5sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btn_threejs_import_file"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginEnd="8dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="+ JSON"
+                android:textColor="#DCDCE6"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/btn_threejs_open_browser"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginEnd="4dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="Browser"
+                android:textColor="#DCDCE6"
+                android:textSize="12sp" />
+
+            <ImageButton
+                android:id="@+id/btn_threejs_overflow"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="その他メニュー"
+                android:src="@android:drawable/ic_menu_more"
+                app:tint="#9A9AA6" />
+
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#18181E" />
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recycler_threejs_works"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="28dp" />
+
+            <TextView
+                android:id="@+id/txt_threejs_empty_state"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:lineSpacingExtra="6dp"
+                android:padding="24dp"
+                android:text="登録された three.js 作品がありません\n右上の [+ JSON] または [Browser] から追加できます"
+                android:textColor="#6B6B75"
+                android:textSize="12.5sp"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+</FrameLayout>

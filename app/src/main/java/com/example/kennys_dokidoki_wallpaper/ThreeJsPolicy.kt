@@ -14,10 +14,24 @@ enum class WallpaperSourceKind {
     }
 }
 
+enum class ThreeJsWorkOrigin {
+    BUILT_IN,
+    USER;
+
+    companion object {
+        fun fromStored(raw: String?): ThreeJsWorkOrigin {
+            return entries.firstOrNull { it.name == raw } ?: USER
+        }
+    }
+}
+
 data class ThreeJsWork(
     val id: String,
     val title: String,
-    val assetPath: String
+    val assetPath: String?,
+    val dateLabel: String = "",
+    val origin: ThreeJsWorkOrigin = ThreeJsWorkOrigin.BUILT_IN,
+    val updatedAtMs: Long = 0L
 )
 
 enum class TagSelectionState {
@@ -31,34 +45,41 @@ data class RenderDimensions(
 )
 
 /**
- * Built-in Three.js works shipped inside APK assets.
+ * Built-in Three.js works shipped inside APK assets as the initial seed catalog.
  *
- *   ImageSet(THREE_JS) ---> ThreeJsCatalog.BUILT_IN_WORKS
- *                                 |
- *                  +--------------+--------------+
- *                  |              |              |
- *               32.json        36.json        38.json
+ *   ImageSet(THREE_JS) ---> ThreeJsWorkStore ---> Built-in + User Works
+ *                                                       |
+ *                                        +--------------+--------------+
+ *                                        |              |              |
+ *                                     32.json        36.json        38.json
  */
 object ThreeJsCatalog {
     const val ASSET_DIR = "threejs"
     const val VIRTUAL_HOST = "threejs.appassets.local"
     const val PLAYER_URL = "https://threejs.appassets.local/player.html"
+    const val CAPTURE_URL = "https://threejs.appassets.local/player.html?capture=1"
 
     val BUILT_IN_WORKS: List<ThreeJsWork> = listOf(
         ThreeJsWork(
             id = "32",
-            title = "Work 32",
-            assetPath = "threejs/works/32.json"
+            title = "032",
+            assetPath = "threejs/works/32.json",
+            dateLabel = "19 12 28",
+            origin = ThreeJsWorkOrigin.BUILT_IN
         ),
         ThreeJsWork(
             id = "36",
-            title = "Work 36",
-            assetPath = "threejs/works/36.json"
+            title = "036",
+            assetPath = "threejs/works/36.json",
+            dateLabel = "20 01 04",
+            origin = ThreeJsWorkOrigin.BUILT_IN
         ),
         ThreeJsWork(
             id = "38",
-            title = "Work 38",
-            assetPath = "threejs/works/38.json"
+            title = "038",
+            assetPath = "threejs/works/38.json",
+            dateLabel = "21 03 10",
+            origin = ThreeJsWorkOrigin.BUILT_IN
         )
     )
 
@@ -140,11 +161,27 @@ object ThreeJsPolicy {
         return "$PREF_WORK_PREFIX$albumName"
     }
 
-    fun setItemCount(kind: WallpaperSourceKind, activeImageCount: Int): Int {
+    fun setItemCount(
+        kind: WallpaperSourceKind,
+        activeImageCount: Int,
+        threeWorkCount: Int = ThreeJsCatalog.BUILT_IN_WORKS.size
+    ): Int {
         if (kind == WallpaperSourceKind.THREE_JS) {
-            return ThreeJsCatalog.BUILT_IN_WORKS.size
+            return threeWorkCount
         }
         return activeImageCount
+    }
+
+    // Format gallery caption in the understated "038 ~ 21 03 10" style.
+    fun formatTileCaption(displayOrder: Int, work: ThreeJsWork): String {
+        val label = work.title.trim().ifEmpty {
+            displayOrder.coerceAtLeast(1).toString().padStart(3, '0')
+        }
+        val sub = work.dateLabel.trim()
+        if (sub.isEmpty()) {
+            return label
+        }
+        return "$label ~ $sub"
     }
 
     // Clamp offscreen render resolution to MAX_RENDER_EDGE_PX while preserving aspect ratio.

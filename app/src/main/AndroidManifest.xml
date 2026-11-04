@@ -93,6 +93,14 @@
             android:name=".TapSettingsActivity"
             android:exported="false" />
         <activity
+            android:name=".ThreeJsManagerActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ThreeJsBrowserActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
             android:name=".ThumbnailFolderActivity"
             android:exported="false" />
         <activity

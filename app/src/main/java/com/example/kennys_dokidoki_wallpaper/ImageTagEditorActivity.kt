@@ -544,7 +544,7 @@ class ImageTagEditorActivity : AppCompatActivity() {
 
     private fun styleThreeJsButton(button: AppCompatButton, kind: WallpaperSourceKind) {
         val density = resources.displayMetrics.density
-        val count = ThreeJsCatalog.BUILT_IN_WORKS.size
+        val count = ThreeJsWorkStore.workCount(this)
         val isThreeOn = kind == WallpaperSourceKind.THREE_JS
 
         val bgColor = if (isThreeOn) {
@@ -564,9 +564,9 @@ class ImageTagEditorActivity : AppCompatActivity() {
         }
 
         button.text = if (isThreeOn) {
-            "three.js 作品モード: ON（内蔵${count}作品・タグ選択無効）"
+            "three.js 作品モード: ON（登録${count}作品・タグ選択無効）"
         } else {
-            "three.js の作品を表示する（内蔵${count}作品）"
+            "three.js の作品を表示する（登録${count}作品）"
         }
         button.setTextColor(textColor)
         button.backgroundTintList = null

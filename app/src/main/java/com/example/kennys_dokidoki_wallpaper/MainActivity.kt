@@ -3150,9 +3150,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun setupSettingsLayout() {
-        settingsLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(32, 32, 32, 32)
+        val rowsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 32)
             addView(createSettingsRow("タップ操作のカスタム設定") { startActivity(Intent(this@MainActivity, TapSettingsActivity::class.java)) })
+            addView(createSettingsRow("three.js の管理", "作品のサムネイル一覧・名前とJSONの編集・ファイル追加・Web探索") {
+                startActivity(Intent(this@MainActivity, ThreeJsManagerActivity::class.java))
+            })
             addView(createSettingsRow("PC生成エージェントの接続設定", "URL / APIキー / 接続テスト") { showServerUrlDialog() })
             addView(createSettingsRow("PC接続の失敗ログ", "原因コードと確認手順を表示・コピー") {
                 AgentConnectionUi.showLog(this@MainActivity)
@@ -3210,8 +3214,30 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             })
         }
-         findViewById<android.widget.FrameLayout>(R.id.nav_host_content).addView(settingsLayout)
-         settingsLayout.visibility = View.GONE
+
+        val scrollWrapper = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(
+                rowsContainer,
+                android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        settingsLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                scrollWrapper,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        findViewById<android.widget.FrameLayout>(R.id.nav_host_content).addView(settingsLayout)
+        settingsLayout.visibility = View.GONE
     }
 
     private fun showAutoRestoreDialog() {

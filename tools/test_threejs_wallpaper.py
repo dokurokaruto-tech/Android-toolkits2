@@ -365,6 +365,11 @@ class ThreeJsKotlinWiringTest(unittest.TestCase):
     def test_new_kotlin_files_follow_function_length_and_no_boolean_params(self):
         checked_files = [
             SRC_DIR / "ThreeJsPolicy.kt",
+            SRC_DIR / "ThreeJsInspectorPolicy.kt",
+            SRC_DIR / "ThreeJsWorkStore.kt",
+            SRC_DIR / "ThreeJsThumbnailCapturer.kt",
+            SRC_DIR / "ThreeJsManagerActivity.kt",
+            SRC_DIR / "ThreeJsBrowserActivity.kt",
             SRC_DIR / "ThreeJsWallpaperDriver.kt",
         ]
         fun_pattern = re.compile(r"\bfun\s+([A-Za-z0-9_]+)\s*\(([^)]*)\)")
@@ -382,6 +387,365 @@ class ThreeJsKotlinWiringTest(unittest.TestCase):
                     params,
                     f"Function {fn_name} in {file_path.name} uses a Boolean parameter",
                 )
+
+
+class ThreeJsManagerAndBrowserTest(unittest.TestCase):
+    def test_player_supports_thumbnails_scene_json_and_geometry_json(self):
+        node_script = r"""
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const assetsDir = process.argv[1];
+const threeCode = fs.readFileSync(path.join(assetsDir, 'three.min.js'), 'utf8');
+const playerCode = fs.readFileSync(path.join(assetsDir, 'player.js'), 'utf8');
+
+class FakeImage {
+  constructor() {
+    this.width = 64;
+    this.height = 64;
+    this.tagName = 'IMG';
+    this._src = '';
+    this._onload = null;
+  }
+  addEventListener(type, cb) {
+    if (type === 'load') this._onload = cb;
+  }
+  removeEventListener() {}
+  set src(val) {
+    this._src = val;
+    Promise.resolve().then(() => {
+      if (this._onload) this._onload({});
+    });
+  }
+  get src() { return this._src; }
+}
+
+let rendererOptions = null;
+let renderSizes = [];
+const capturedThumbs = {};
+let capturerReady = false;
+let rafMap = new Map();
+let rafSeq = 1;
+
+const sandbox = {
+  console,
+  Math,
+  Date,
+  Promise,
+  JSON,
+  Object,
+  Array,
+  String,
+  Number,
+  Boolean,
+  Function,
+  Float32Array,
+  Uint16Array,
+  Uint32Array,
+  Uint8Array,
+  Int32Array,
+  performance: { now: () => 1000 },
+  devicePixelRatio: 2,
+  innerWidth: 1080,
+  innerHeight: 2400,
+  location: { search: '?capture=1' },
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  requestAnimationFrame: (cb) => {
+    const id = rafSeq++;
+    rafMap.set(id, cb);
+    return id;
+  },
+  cancelAnimationFrame: (id) => rafMap.delete(id),
+  setTimeout: () => 1,
+  clearTimeout: () => {},
+  Image: FakeImage,
+  document: {
+    body: { appendChild: () => {}, removeChild: () => {} },
+    createElementNS: (_ns, tag) => {
+      if (tag === 'img') return new FakeImage();
+      return {
+        style: {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        toDataURL: (mime) => `data:${mime || 'image/jpeg'};base64,FAKEJPEGDATA`
+      };
+    },
+    createElement: (tag) => {
+      if (tag === 'img') return new FakeImage();
+      return {
+        style: {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        toDataURL: (mime) => `data:${mime || 'image/jpeg'};base64,FAKEJPEGDATA`
+      };
+    }
+  },
+  AndroidThreeThumbBridge: {
+    onCapturerReady: () => { capturerReady = true; },
+    onThumbCaptured: (id, dataUrl) => { capturedThumbs[id] = dataUrl; },
+    onThumbFailed: (id, reason) => { throw new Error(`Thumb failed for ${id}: ${reason}`); }
+  },
+  fetch: (url) => {
+    const rel = url.replace(/^\//, '');
+    const text = fs.readFileSync(path.join(assetsDir, rel), 'utf8');
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(JSON.parse(text))
+    });
+  }
+};
+sandbox.window = sandbox;
+sandbox.self = sandbox;
+
+vm.createContext(sandbox);
+vm.runInContext(threeCode, sandbox);
+
+sandbox.THREE.WebGLRenderer = function FakeRenderer(opts) {
+  rendererOptions = opts;
+  this.domElement = {
+    style: {},
+    parentNode: null,
+    addEventListener: () => {},
+    toDataURL: (mime) => `data:${mime};base64,CAPTURED_THUMB_BYTES`
+  };
+  this.shadowMap = { enabled: false, type: 0 };
+  this.toneMapping = 0;
+  this.toneMappingExposure = 1;
+  this.physicallyCorrectLights = false;
+  this.outputEncoding = 0;
+  this.setPixelRatio = () => {};
+  this.setSize = (w, h) => { renderSizes.push([w, h]); };
+  this.setClearColor = () => {};
+  this.getContext = () => ({ isContextLost: () => false });
+  this.render = (scn, cam) => {
+    if (!scn || !cam) throw new Error('Missing scene or camera');
+  };
+  this.dispose = () => {};
+};
+
+vm.runInContext(playerCode, sandbox);
+
+const hostWait = (ms) => new Promise(r => setTimeout(r, ms));
+
+(async () => {
+  if (!capturerReady) throw new Error('Expected onCapturerReady');
+  if (!rendererOptions || rendererOptions.preserveDrawingBuffer !== true) {
+    throw new Error('Expected preserveDrawingBuffer=true in capture mode');
+  }
+
+  for (const id of ['32', '36', '38']) {
+    sandbox.ThreeWallpaperPlayer.captureWorkThumbnail(id);
+    await hostWait(20);
+    if (!capturedThumbs[id] || !capturedThumbs[id].startsWith('data:image/jpeg;base64,')) {
+      throw new Error('Missing captured thumbnail for ' + id);
+    }
+  }
+  const has512 = renderSizes.some(([w, h]) => w === 512 && h === 512);
+  if (!has512) throw new Error('Expected 512x512 thumbnail viewport');
+
+  // Standalone Scene/Object JSON (no camera, no project)
+  const sceneOnlyJson = {
+    metadata: { version: 4.5, type: 'Object' },
+    geometries: [{ uuid: 'g-box', type: 'BoxBufferGeometry', width: 2, height: 2, depth: 2 }],
+    materials: [{ uuid: 'm-std', type: 'MeshStandardMaterial', color: 0xff5533 }],
+    object: {
+      uuid: 'root-scene',
+      type: 'Scene',
+      children: [{ uuid: 'mesh-1', type: 'Mesh', geometry: 'g-box', material: 'm-std' }]
+    }
+  };
+  sandbox.ThreeWallpaperPlayer.loadWorkJson(sceneOnlyJson, 'user_scene');
+  await hostWait(15);
+  const frameSnap = sandbox.ThreeWallpaperPlayer.captureCurrentFrame();
+  if (!frameSnap.startsWith('data:image/jpeg;base64,')) {
+    throw new Error('Expected captureCurrentFrame() JPEG data URL');
+  }
+
+  // Standalone BufferGeometry JSON
+  const geometryOnlyJson = {
+    metadata: { version: 4.5, type: 'BufferGeometry' },
+    data: {
+      attributes: {
+        position: {
+          itemSize: 3,
+          type: 'Float32Array',
+          array: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+          normalized: false
+        }
+      }
+    }
+  };
+  sandbox.ThreeWallpaperPlayer.loadWorkJson(geometryOnlyJson, 'user_geo');
+  await hostWait(15);
+  sandbox.ThreeWallpaperPlayer.stop();
+})().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
+"""
+        proc = subprocess.run(
+            ["node", "-e", node_script, str(ASSETS_DIR)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr or proc.stdout)
+
+    def test_browser_devtools_js_hooks_capture_fetch_xhr_and_dom_json(self):
+        browser_src = (SRC_DIR / "ThreeJsBrowserActivity.kt").read_text(encoding="utf-8")
+        hook_script = browser_src.split('DEVTOOLS_HOOK_SCRIPT = """', 1)[1].split('""".trimIndent()', 1)[0]
+        scan_script = browser_src.split('DOM_JSON_SCAN_SCRIPT = """', 1)[1].split('""".trimIndent()', 1)[0]
+        # Unescape Kotlin raw-string have no backslash escapes, so pass directly to Node!
+        node_test = r"""
+const vm = require('vm');
+const hookCode = process.argv[1];
+const scanCode = process.argv[2];
+
+const captured = [];
+let detectedRev = null;
+
+class FakeXHR {
+  open(method, url) {
+    this._m = method;
+    this._u = url;
+  }
+  getResponseHeader(name) {
+    return name.toLowerCase() === 'content-type' ? 'application/json' : '';
+  }
+  addEventListener(ev, fn) {
+    if (ev === 'load') this._onload = fn;
+  }
+  send() {
+    this.status = 200;
+    this.responseType = '';
+    this.responseText = '{"metadata":{"type":"App"},"camera":{},"scene":{}}';
+    if (this._onload) this._onload();
+  }
+}
+
+const sandbox = {
+  URL,
+  JSON,
+  String,
+  RegExp,
+  THREE: { REVISION: '128' },
+  location: { href: 'https://showcase.example/gallery/index.html' },
+  setTimeout: (fn) => { fn(); return 1; },
+  fetch: (url) => Promise.resolve({
+    url: new URL(url, 'https://showcase.example/gallery/index.html').href,
+    status: 200,
+    headers: { get: () => 'application/json; charset=utf-8' },
+    clone: () => ({
+      text: () => Promise.resolve('{"metadata":{"type":"Object"},"object":{"type":"Scene"}}')
+    })
+  }),
+  XMLHttpRequest: FakeXHR,
+  performance: {
+    getEntriesByType: () => [
+      { name: 'https://showcase.example/gallery/038/app.json' },
+      { name: 'https://showcase.example/gallery/three.min.js' }
+    ]
+  },
+  document: {
+    baseURI: 'https://showcase.example/gallery/index.html',
+    querySelectorAll: (sel) => {
+      if (sel === 'iframe') return [];
+      if (sel.startsWith('a[href]')) {
+        return [
+          { getAttribute: (k) => (k === 'href' ? './models/robot.json' : null) },
+          { getAttribute: (k) => (k === 'href' ? './readme.html' : null) }
+        ];
+      }
+      if (sel === 'script:not([src])') {
+        return [{ textContent: 'loader.load("scenes/nebula.json?v=2");' }];
+      }
+      return [];
+    }
+  },
+  AndroidDevToolsBridge: {
+    onJsResponseCaptured: (url, method, status, ct, body) => {
+      captured.push({ url, method, status, ct, body });
+    },
+    onThreeDetected: (rev) => { detectedRev = rev; }
+  }
+};
+sandbox.window = sandbox;
+
+vm.createContext(sandbox);
+vm.runInContext(hookCode, sandbox);
+
+(async () => {
+  await sandbox.window.fetch('039/app.json');
+  const xhr = new sandbox.XMLHttpRequest();
+  xhr.open('GET', '040/app.json');
+  xhr.send();
+  await new Promise(r => setTimeout(r, 10));
+
+  if (detectedRev !== '128') {
+    throw new Error('Expected THREE r128 detection, got ' + detectedRev);
+  }
+  if (captured.length !== 2) {
+    throw new Error('Expected 2 captured fetch/XHR JSON responses, got ' + captured.length);
+  }
+  const scannedJson = JSON.parse(vm.runInContext(scanCode, sandbox));
+  if (scannedJson.length !== 3) {
+    throw new Error('Expected 3 scanned JSON URLs, got ' + JSON.stringify(scannedJson));
+  }
+})().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
+"""
+        proc = subprocess.run(
+            ["node", "-e", node_test, hook_script, scan_script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr or proc.stdout)
+
+    def test_settings_manifest_store_and_gallery_wiring(self):
+        manifest = ET.parse(ROOT / "app/src/main/AndroidManifest.xml").getroot()
+        activity_names = {
+            node.get(ANDROID_NS + "name") for node in manifest.iter("activity")
+        }
+        self.assertIn(".ThreeJsManagerActivity", activity_names)
+        self.assertIn(".ThreeJsBrowserActivity", activity_names)
+
+        main_src = (SRC_DIR / "MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("private lateinit var settingsLayout: LinearLayout", main_src)
+        self.assertIn("ThreeJsManagerActivity::class.java", main_src)
+        self.assertIn('createSettingsRow("three.js の管理"', main_src)
+
+        mgr_src = (SRC_DIR / "ThreeJsManagerActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("ThreeJsBrowserActivity::class.java", mgr_src)
+        self.assertIn("ActivityResultContracts.OpenDocument()", mgr_src)
+        self.assertIn("ThreeJsWorkStore.renameWork", mgr_src)
+        self.assertIn("ThreeJsWorkStore.updateWorkJson", mgr_src)
+        self.assertIn("ThreeJsWorkStore.deleteWork", mgr_src)
+        self.assertIn("ThreeJsInspectorPolicy.compactForEditor", mgr_src)
+        self.assertIn("ThreeJsInspectorPolicy.expandFromEditor", mgr_src)
+
+        browser_src = (SRC_DIR / "ThreeJsBrowserActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("ThreeJsInspectorPolicy.DEFAULT_BROWSER_URL", browser_src)
+        self.assertIn("ThreeJsWorkStore.addUserWork", browser_src)
+        self.assertIn("shouldInterceptRequest", browser_src)
+        self.assertIn("onConsoleMessage", browser_src)
+
+        tile_xml = (ROOT / "app/src/main/res/layout/item_threejs_work_tile.xml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('layout_constraintDimensionRatio="1:1"', tile_xml)
+
+        service_src = (SRC_DIR / "MyWallpaperService.kt").read_text(encoding="utf-8")
+        self.assertIn("ThreeJsWorkStore.loadWorks(applicationContext)", service_src)
+
+        driver_src = (SRC_DIR / "ThreeJsWallpaperDriver.kt").read_text(encoding="utf-8")
+        self.assertIn("ThreeJsWorkStore.workOrFirst(appContext, workId)", driver_src)
+        self.assertIn("ThreeJsAssetHost.interceptRequest(appContext, request)", driver_src)
 
 
 if __name__ == "__main__":
