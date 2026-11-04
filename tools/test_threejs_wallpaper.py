@@ -151,8 +151,10 @@ class FakeImage {
   removeEventListener() {}
   set src(v) {
     this._src = v;
-    if (this._onload) this._onload({});
-    if (this.onload) this.onload({});
+    Promise.resolve().then(() => {
+      if (this._onload) this._onload({});
+      if (this.onload) this.onload({});
+    });
   }
   get src() { return this._src; }
 }
@@ -200,6 +202,7 @@ const sandbox = {
     rafMap.delete(id);
   },
   fetch(relPath) {
+    sandbox.fetchCount = (sandbox.fetchCount || 0) + 1;
     const text = fs.readFileSync(path.join(assetsDir, relPath), 'utf8');
     return Promise.resolve({
       ok: true,
@@ -237,10 +240,20 @@ function stepFrames(count) {
     throw new Error('Expected AndroidThreeBridge.onPlayerReady once, got ' + bridgeReady);
   }
   for (const id of ['32', '36', '38', '32']) {
-    sandbox.ThreeWallpaperPlayer.loadWork(id);
+    sandbox.ThreeWallpaperPlayer.activateWork(id);
     await new Promise(r => setTimeout(r, 15));
     stepFrames(25);
   }
+  const fetchesBeforePause = sandbox.fetchCount;
+  sandbox.ThreeWallpaperPlayer.pause();
+  if (rafMap.size !== 0) {
+    throw new Error('Expected 0 pending rAF callbacks after pause(), got ' + rafMap.size);
+  }
+  sandbox.ThreeWallpaperPlayer.activateWork('32');
+  if (sandbox.fetchCount !== fetchesBeforePause) {
+    throw new Error('Expected resume of same work without re-fetch');
+  }
+  stepFrames(10);
   sandbox.ThreeWallpaperPlayer.resize(720, 1600);
   stepFrames(5);
   sandbox.ThreeWallpaperPlayer.stop();
@@ -314,8 +327,19 @@ class ThreeJsKotlinWiringTest(unittest.TestCase):
         self.assertIn("if (activeSet != null && activeSet.sourceKind == WallpaperSourceKind.THREE_JS)", service_src)
         self.assertIn("advanceRandomThreeJsWork(activeSet)", service_src)
         self.assertIn("ThreeJsPolicy.pickNextRandomWork(", service_src)
-        self.assertIn("threeJsDriver?.stop()", service_src)
+        self.assertIn("threeJsDriver?.pause()", service_src)
+        self.assertIn("teardownThreeJsDriver()", service_src)
         self.assertNotIn("pauseTimers", driver_src)
+
+        quiet_block = service_src.split("private fun goQuiet()", 1)[1].split("private fun reloadCurrent()", 1)[0]
+        self.assertIn("threeJsDriver?.pause()", quiet_block)
+        self.assertNotIn("threeJsDriver?.stop()", quiet_block)
+
+        self.assertIn("setCancelable(false)", driver_src)
+        self.assertIn("FLAG_NOT_FOCUSABLE", driver_src)
+        self.assertIn("FLAG_NOT_TOUCHABLE", driver_src)
+        self.assertIn("FLAG_ALT_FOCUSABLE_IM", driver_src)
+        self.assertIn("vd.resize(width, height", driver_src)
 
     def test_new_kotlin_files_follow_function_length_and_no_boolean_params(self):
         checked_files = [

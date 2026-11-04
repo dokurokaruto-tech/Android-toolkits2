@@ -197,6 +197,7 @@ class MyWallpaperService : WallpaperService() {
         override fun onDestroy() {
             super.onDestroy()
             goQuiet()
+            teardownThreeJsDriver()
             engineJob.cancel()
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             settingsPrefs.unregisterOnSharedPreferenceChangeListener(this)
@@ -837,7 +838,7 @@ class MyWallpaperService : WallpaperService() {
             textAnimator?.cancel()
             textAnimator = null
             clearToolFinder()
-            threeJsDriver?.stop()
+            threeJsDriver?.pause()
             tapHandler.removeCallbacksAndMessages(null)
             textHandler.removeCallbacksAndMessages(null)
             holdRunnable = null
@@ -866,7 +867,7 @@ class MyWallpaperService : WallpaperService() {
                 activateThreeJsSet(activeSet)
                 return
             }
-            threeJsDriver?.stop()
+            teardownThreeJsDriver()
             activeSourceKind = WallpaperSourceKind.IMAGES
             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                 currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
@@ -880,8 +881,13 @@ class MyWallpaperService : WallpaperService() {
             super.onSurfaceCreated(holder)
             val activeSet = resolveActiveSet()
             if (activeSet != null && activeSet.sourceKind == WallpaperSourceKind.THREE_JS) {
-                activateThreeJsSet(activeSet)
-                showSetNameText()
+                activeSourceKind = WallpaperSourceKind.THREE_JS
+                if (engineVisible) {
+                    activateThreeJsSet(activeSet)
+                    showSetNameText()
+                } else {
+                    needsReload = true
+                }
                 return
             }
             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
@@ -979,6 +985,11 @@ class MyWallpaperService : WallpaperService() {
             return created
         }
 
+        private fun teardownThreeJsDriver() {
+            threeJsDriver?.stop()
+            threeJsDriver = null
+        }
+
         private fun resolveActiveSet(): ImageSet? {
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val activeSetName = getActiveSetName(settingsPrefs) ?: return null
@@ -1048,7 +1059,7 @@ class MyWallpaperService : WallpaperService() {
             } else {
                 null
             }
-            threeJsDriver?.stop()
+            teardownThreeJsDriver()
             activeSourceKind = WallpaperSourceKind.IMAGES
 
             if (!loadActiveAlbumAndIndex() || imageEntries.isEmpty()) {
@@ -1127,7 +1138,7 @@ class MyWallpaperService : WallpaperService() {
             }
 
             prepareCrossfade(nextEntry) { nextBitmap ->
-                threeJsDriver?.stop()
+                teardownThreeJsDriver()
                 activeSourceKind = WallpaperSourceKind.IMAGES
 
                 val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED").apply {

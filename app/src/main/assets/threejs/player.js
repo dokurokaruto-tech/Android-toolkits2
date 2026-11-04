@@ -1,38 +1,36 @@
 (function () {
   "use strict";
 
-  var DEFAULT_FOV = 50;
   var PORTRAIT_REF_ASPECT = 0.72;
   var MAX_PORTRAIT_FOV = 72;
-  var MAX_PIXEL_RATIO = 1.5;
-  var DEG_TO_HALF_RAD = Math.PI / 360;
-  var HALF_RAD_TO_DEG = 360 / Math.PI;
-  var CLEAR_BLACK = 0x000000;
+  var DEFAULT_FOV = 50;
+  var MAX_PIXEL_RATIO = 2;
+  var MAX_FRAME_DELTA_MS = 100;
 
-  var SCRIPT_EVENTS = [
-    "init",
-    "start",
-    "stop",
-    "keydown",
-    "keyup",
-    "mousedown",
-    "mouseup",
-    "mousemove",
-    "touchstart",
-    "touchend",
-    "touchmove",
-    "update"
+  var SCRIPT_ARG_NAMES =
+    "player,renderer,scene,camera," +
+    "init,start,stop,keydown,keyup,mousedown,mouseup,mousemove," +
+    "touchstart,touchend,touchmove,update";
+
+  var SCRIPT_RETURN_EXPR =
+    "\nreturn { init: init, start: start, stop: stop, " +
+    "keydown: keydown, keyup: keyup, mousedown: mousedown, mouseup: mouseup, " +
+    "mousemove: mousemove, touchstart: touchstart, touchend: touchend, " +
+    "touchmove: touchmove, update: update };";
+
+  var TONE_MAPPINGS = [
+    THREE.NoToneMapping,
+    THREE.LinearToneMapping,
+    THREE.ReinhardToneMapping,
+    THREE.CineonToneMapping,
+    THREE.ACESFilmicToneMapping
   ];
 
-  var MATERIAL_MAP_KEYS = [
-    "map",
-    "alphaMap",
-    "bumpMap",
-    "normalMap",
-    "roughnessMap",
-    "metalnessMap",
-    "emissiveMap",
-    "aoMap"
+  var SHADOW_TYPES = [
+    THREE.BasicShadowMap,
+    THREE.PCFShadowMap,
+    THREE.PCFSoftShadowMap,
+    THREE.VSMShadowMap
   ];
 
   var renderer = null;
@@ -40,44 +38,51 @@
   var camera = null;
   var baseCameraFov = DEFAULT_FOV;
   var activeEvents = createEmptyEvents();
-  var loadToken = 0;
-  var rafId = null;
   var isRunning = false;
   var prevTime = 0;
+  var elapsedMs = 0;
+  var loadToken = 0;
+  var rafId = null;
+  var activeWorkId = null;
 
   function createEmptyEvents() {
-    var map = {};
-    for (var i = 0; i < SCRIPT_EVENTS.length; i++) {
-      map[SCRIPT_EVENTS[i]] = [];
-    }
-    return map;
+    return {
+      init: [],
+      start: [],
+      stop: [],
+      keydown: [],
+      keyup: [],
+      mousedown: [],
+      mouseup: [],
+      mousemove: [],
+      touchstart: [],
+      touchend: [],
+      touchmove: [],
+      update: []
+    };
   }
 
-  // Widen vertical FOV on tall portrait screens so horizontal framing stays intact.
-  function computeEffectiveFov(baseFov, aspect) {
-    if (!baseFov || aspect <= 0 || aspect >= PORTRAIT_REF_ASPECT) {
-      return baseFov || DEFAULT_FOV;
+  function computeEffectiveFov(rawFov, aspect) {
+    if (!(aspect > 0) || aspect >= PORTRAIT_REF_ASPECT) {
+      return rawFov;
     }
-
-    var halfRad = baseFov * DEG_TO_HALF_RAD;
-    var adaptedRad = Math.atan(Math.tan(halfRad) * (PORTRAIT_REF_ASPECT / aspect));
-    var adaptedDeg = adaptedRad * HALF_RAD_TO_DEG;
-    return Math.min(adaptedDeg, MAX_PORTRAIT_FOV);
+    var halfRad = THREE.MathUtils.degToRad(rawFov * 0.5);
+    var scaledRad = Math.atan((Math.tan(halfRad) * PORTRAIT_REF_ASPECT) / aspect);
+    var adjusted = THREE.MathUtils.radToDeg(scaledRad * 2);
+    return Math.min(adjusted, Math.max(rawFov, MAX_PORTRAIT_FOV));
   }
 
-  // Reset WebGLRenderer state so settings from a previous work never leak.
   function resetRendererState() {
     if (!renderer) {
       return;
     }
-
     renderer.shadowMap.enabled = false;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.NoToneMapping;
-    renderer.toneMappingExposure = 1;
+    renderer.toneMappingExposure = 1.0;
     renderer.physicallyCorrectLights = false;
-    renderer.xr.enabled = false;
-    renderer.setClearColor(CLEAR_BLACK, 1);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.setClearColor(0x000000, 1);
   }
 
   function applyProjectConfig(project) {
@@ -87,163 +92,164 @@
     }
 
     if (project.shadows !== undefined) {
-      renderer.shadowMap.enabled = project.shadows === true;
+      renderer.shadowMap.enabled = Boolean(project.shadows);
     }
-    if (project.shadowType !== undefined) {
-      renderer.shadowMap.type = project.shadowType;
+    if (project.shadowType !== undefined && SHADOW_TYPES[project.shadowType] !== undefined) {
+      renderer.shadowMap.type = SHADOW_TYPES[project.shadowType];
     }
-    if (project.toneMapping !== undefined) {
-      renderer.toneMapping = project.toneMapping;
+    if (project.toneMapping !== undefined && TONE_MAPPINGS[project.toneMapping] !== undefined) {
+      renderer.toneMapping = TONE_MAPPINGS[project.toneMapping];
     }
     if (project.toneMappingExposure !== undefined) {
       renderer.toneMappingExposure = project.toneMappingExposure;
     }
     if (project.physicallyCorrectLights !== undefined) {
-      renderer.physicallyCorrectLights = project.physicallyCorrectLights === true;
+      renderer.physicallyCorrectLights = Boolean(project.physicallyCorrectLights);
     }
   }
 
-  // Normalize script-assigned render targets and upload edited texture parameters.
-  function refreshSceneMaterials(rootScene) {
-    if (!rootScene) {
+  function disposeMaterialTextures(material) {
+    var keys = Object.keys(material);
+    for (var i = 0; i < keys.length; i++) {
+      var value = material[keys[i]];
+      if (value && value.isTexture && typeof value.dispose === "function") {
+        value.dispose();
+      }
+    }
+  }
+
+  function disposeMaterial(material) {
+    if (!material) {
+      return;
+    }
+    if (Array.isArray(material)) {
+      for (var i = 0; i < material.length; i++) {
+        disposeMaterial(material[i]);
+      }
+      return;
+    }
+    disposeMaterialTextures(material);
+    if (typeof material.dispose === "function") {
+      material.dispose();
+    }
+  }
+
+  function disposeSceneGraph(targetScene) {
+    if (!targetScene) {
       return;
     }
 
-    rootScene.traverse(function (node) {
-      if (!node.material) {
+    targetScene.traverse(function (object) {
+      if (object.geometry && typeof object.geometry.dispose === "function") {
+        object.geometry.dispose();
+      }
+      if (object.material) {
+        disposeMaterial(object.material);
+      }
+    });
+
+    if (targetScene.background && targetScene.background.isTexture) {
+      targetScene.background.dispose();
+    }
+    if (targetScene.environment && targetScene.environment.isTexture) {
+      targetScene.environment.dispose();
+    }
+  }
+
+  function isUploadableTexture(tex) {
+    if (!tex || !tex.isTexture || tex.isRenderTargetTexture) {
+      return false;
+    }
+    if (tex.isDataTexture || tex.isCompressedTexture || tex.isCanvasTexture) {
+      return true;
+    }
+    var img = tex.image;
+    if (!img) {
+      return false;
+    }
+    return Boolean(img.src || img.data || img.tagName || img.nodeName);
+  }
+
+  function refreshMaterial(mat) {
+    if (!mat) {
+      return;
+    }
+
+    if (mat.envMap && mat.envMap.isWebGLCubeRenderTarget) {
+      var cubeTex = mat.envMap.texture;
+      cubeTex.mapping = THREE.CubeReflectionMapping;
+      mat.envMap = cubeTex;
+    }
+
+    var keys = Object.keys(mat);
+    for (var i = 0; i < keys.length; i++) {
+      var prop = mat[keys[i]];
+      if (isUploadableTexture(prop)) {
+        prop.needsUpdate = true;
+      }
+    }
+    mat.needsUpdate = true;
+  }
+
+  function refreshSceneMaterials(targetScene) {
+    if (!targetScene) {
+      return;
+    }
+    targetScene.traverse(function (obj) {
+      if (!obj.material) {
         return;
       }
-
-      var materials = Array.isArray(node.material) ? node.material : [node.material];
-      for (var i = 0; i < materials.length; i++) {
-        var mat = materials[i];
-        if (!mat) {
-          continue;
+      if (Array.isArray(obj.material)) {
+        for (var i = 0; i < obj.material.length; i++) {
+          refreshMaterial(obj.material[i]);
         }
-
-        if (mat.envMap && mat.envMap.isWebGLCubeRenderTarget && mat.envMap.texture) {
-          if (mat.envMap.texture.mapping === THREE.UVMapping) {
-            mat.envMap.texture.mapping = THREE.CubeReflectionMapping;
-          }
-          mat.envMap = mat.envMap.texture;
-        }
-
-        for (var k = 0; k < MATERIAL_MAP_KEYS.length; k++) {
-          var tex = mat[MATERIAL_MAP_KEYS[k]];
-          if (!tex) {
-            continue;
-          }
-          var hasSource = tex.isDataTexture ||
-            Boolean(tex.image && (tex.image.src || tex.image.data || tex.image.tagName));
-          if (hasSource) {
-            tex.needsUpdate = true;
-          }
-        }
-        mat.needsUpdate = true;
+      } else {
+        refreshMaterial(obj.material);
       }
     });
   }
 
-  function disposeMaterialMaps(mat) {
-    for (var i = 0; i < MATERIAL_MAP_KEYS.length; i++) {
-      var tex = mat[MATERIAL_MAP_KEYS[i]];
-      if (tex && typeof tex.dispose === "function") {
-        tex.dispose();
-      }
-    }
-    if (mat.envMap && typeof mat.envMap.dispose === "function") {
-      mat.envMap.dispose();
-    }
-  }
-
-  // Release GPU buffers and textures from the outgoing scene before loading the next work.
-  function disposeSceneGraph(oldScene) {
-    if (!oldScene) {
-      return;
+  function compileSceneScripts(scriptsMap, playerApi) {
+    var events = createEmptyEvents();
+    if (!scriptsMap || !scene) {
+      return events;
     }
 
-    oldScene.traverse(function (node) {
-      if (node.geometry && typeof node.geometry.dispose === "function") {
-        node.geometry.dispose();
-      }
-      if (!node.material) {
-        return;
-      }
-
-      var materials = Array.isArray(node.material) ? node.material : [node.material];
-      for (var i = 0; i < materials.length; i++) {
-        var mat = materials[i];
-        if (!mat) {
-          continue;
-        }
-        disposeMaterialMaps(mat);
-        if (typeof mat.dispose === "function") {
-          mat.dispose();
-        }
-      }
-    });
-
-    if (oldScene.environment && typeof oldScene.environment.dispose === "function") {
-      oldScene.environment.dispose();
-    }
-    if (oldScene.background && typeof oldScene.background.dispose === "function") {
-      oldScene.background.dispose();
-    }
-  }
-
-  // Bind Three.js Editor App scripts to their target scene objects by UUID.
-  function compileSceneScripts(scriptsSpec, playerApi) {
-    var handlers = createEmptyEvents();
-    if (!scriptsSpec || !scene) {
-      return handlers;
-    }
-
-    var wrapParams = "player,renderer,scene,camera," + SCRIPT_EVENTS.join(",");
-    var returnPairs = [];
-    for (var e = 0; e < SCRIPT_EVENTS.length; e++) {
-      var evName = SCRIPT_EVENTS[e];
-      returnPairs.push(evName + ":" + evName);
-    }
-    var wrapReturn = "{" + returnPairs.join(",") + "}";
-
-    var uuids = Object.keys(scriptsSpec);
-    for (var u = 0; u < uuids.length; u++) {
-      var uuid = uuids[u];
-      var target = scene.getObjectByProperty("uuid", uuid, true);
-      if (!target) {
+    var uuids = Object.keys(scriptsMap);
+    for (var i = 0; i < uuids.length; i++) {
+      var uuid = uuids[i];
+      var targetObject = scene.getObjectByProperty("uuid", uuid, true);
+      if (!targetObject) {
         continue;
       }
 
-      var list = scriptsSpec[uuid] || [];
-      for (var i = 0; i < list.length; i++) {
-        var script = list[i];
-        if (!script || !script.source) {
-          continue;
-        }
-
-        var factory = new Function(wrapParams, script.source + "\nreturn " + wrapReturn + ";");
-        var exported = factory.bind(target)(playerApi, renderer, scene, camera);
-        for (var k = 0; k < SCRIPT_EVENTS.length; k++) {
-          var key = SCRIPT_EVENTS[k];
-          if (typeof exported[key] === "function") {
-            handlers[key].push(exported[key].bind(target));
+      var scriptList = scriptsMap[uuid];
+      for (var j = 0; j < scriptList.length; j++) {
+        var script = scriptList[j];
+        try {
+          var factory = new Function(SCRIPT_ARG_NAMES, script.source + SCRIPT_RETURN_EXPR);
+          var handlers = factory.bind(targetObject)(playerApi, renderer, scene, camera);
+          var handlerNames = Object.keys(handlers);
+          for (var k = 0; k < handlerNames.length; k++) {
+            var name = handlerNames[k];
+            if (handlers[name] !== undefined && events[name] !== undefined) {
+              events[name].push(handlers[name].bind(targetObject));
+            }
           }
+        } catch (err) {
+          console.error("Three.js script compile error:", script.name || uuid, err);
         }
       }
     }
-
-    return handlers;
+    return events;
   }
 
   function dispatchHandlers(list, payload) {
-    if (!list) {
-      return;
-    }
     for (var i = 0; i < list.length; i++) {
       try {
         list[i](payload);
       } catch (err) {
-        console.error("Script handler error:", err);
+        console.error("Three.js script runtime error:", err);
       }
     }
   }
@@ -266,55 +272,85 @@
     }
   }
 
+  function renderSingleStep(now) {
+    if (!renderer || !scene || !camera) {
+      return;
+    }
+
+    var rawDelta = now - prevTime;
+    prevTime = now;
+    var delta = Math.min(Math.max(rawDelta, 0), MAX_FRAME_DELTA_MS);
+    elapsedMs += delta;
+
+    dispatchHandlers(activeEvents.update, { time: elapsedMs, delta: delta });
+    renderer.render(scene, camera);
+  }
+
   function renderFrame() {
     if (!isRunning || !renderer || !scene || !camera) {
       return;
     }
 
     rafId = requestAnimationFrame(renderFrame);
-
-    var now = performance.now();
-    var delta = now - prevTime;
-    prevTime = now;
-
-    dispatchHandlers(activeEvents.update, { time: now, delta: delta });
-    renderer.render(scene, camera);
+    renderSingleStep(performance.now());
   }
 
-  function stopActiveWork() {
+  function pauseActiveWork() {
     if (rafId !== null) {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
-    if (isRunning) {
-      dispatchHandlers(activeEvents.stop, {});
-    }
-
     isRunning = false;
+  }
+
+  function resumeActiveWork() {
+    if (!renderer || !scene || !camera) {
+      return false;
+    }
+    applyViewportSize();
+    prevTime = performance.now();
+    renderSingleStep(prevTime);
+    if (!isRunning) {
+      isRunning = true;
+      rafId = requestAnimationFrame(renderFrame);
+    }
+    return true;
+  }
+
+  function stopActiveWork() {
+    pauseActiveWork();
+    dispatchHandlers(activeEvents.stop, {});
+
     activeEvents = createEmptyEvents();
     disposeSceneGraph(scene);
     scene = null;
     camera = null;
+    elapsedMs = 0;
   }
 
-  function startLoadedWork(json, loadedScene, playerApi) {
+  function startLoadedWork(json, loadedScene, playerApi, workTag) {
     scene = loadedScene;
+    activeWorkId = workTag || null;
+    elapsedMs = 0;
     applyViewportSize();
 
     activeEvents = compileSceneScripts(json.scripts, playerApi);
     refreshSceneMaterials(scene);
 
     dispatchHandlers(activeEvents.init, {});
+    refreshSceneMaterials(scene);
     prevTime = performance.now();
     dispatchHandlers(activeEvents.start, {});
 
     isRunning = true;
+    renderSingleStep(prevTime);
     rafId = requestAnimationFrame(renderFrame);
   }
 
   var playerApi = {
-    loadWorkJson: function (jsonText) {
+    loadWorkJson: function (jsonText, workTag) {
       var token = ++loadToken;
+      activeWorkId = null;
       stopActiveWork();
 
       var json = typeof jsonText === "string" ? JSON.parse(jsonText) : jsonText;
@@ -329,13 +365,14 @@
           disposeSceneGraph(loadedScene);
           return;
         }
-        startLoadedWork(json, loadedScene, playerApi);
+        startLoadedWork(json, loadedScene, playerApi, workTag);
       });
     },
 
     loadWork: function (workId) {
+      var targetId = String(workId || "");
       var token = ++loadToken;
-      var url = "works/" + encodeURIComponent(workId) + ".json";
+      var url = "works/" + encodeURIComponent(targetId) + ".json";
       fetch(url)
         .then(function (res) {
           if (!res.ok) {
@@ -347,15 +384,29 @@
           if (token !== loadToken) {
             return;
           }
-          playerApi.loadWorkJson(json);
+          playerApi.loadWorkJson(json, targetId);
         })
         .catch(function (err) {
-          console.error("Failed to load Three.js work " + workId + ":", err);
+          console.error("Failed to load Three.js work " + targetId + ":", err);
         });
+    },
+
+    activateWork: function (workId) {
+      var targetId = String(workId || "");
+      if (targetId && targetId === activeWorkId && scene && camera) {
+        resumeActiveWork();
+        return;
+      }
+      playerApi.loadWork(targetId);
+    },
+
+    pause: function () {
+      pauseActiveWork();
     },
 
     stop: function () {
       loadToken++;
+      activeWorkId = null;
       stopActiveWork();
     },
 
