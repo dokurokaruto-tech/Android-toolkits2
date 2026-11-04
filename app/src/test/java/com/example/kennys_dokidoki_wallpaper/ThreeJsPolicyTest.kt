@@ -79,4 +79,24 @@ class ThreeJsPolicyTest {
         assertEquals(0, dims.height % 2)
         assertFalse(dims.width <= 0)
     }
+
+    @Test
+    fun setItemCountUsesLiveCount() {
+        assertEquals(
+            7,
+            ThreeJsPolicy.setItemCount(
+                kind = WallpaperSourceKind.THREE_JS,
+                activeImageCount = 12,
+                threeWorkCount = 7
+            )
+        )
+        assertEquals(
+            12,
+            ThreeJsPolicy.setItemCount(
+                kind = WallpaperSourceKind.IMAGES,
+                activeImageCount = 12,
+                threeWorkCount = 7
+            )
+        )
+    }
 }

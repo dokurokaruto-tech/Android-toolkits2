@@ -865,6 +865,31 @@ sandbox.ThreeWallpaperPlayer.stop();
         )
         self.assertEqual(proc.returncode, 0, msg=proc.stderr or proc.stdout)
 
+    def test_home_hud_set_item_count_tracks_live_threejs_store(self):
+        policy_src = (SRC_DIR / "ThreeJsPolicy.kt").read_text(encoding="utf-8")
+        service_src = (SRC_DIR / "MyWallpaperService.kt").read_text(encoding="utf-8")
+        store_src = (SRC_DIR / "ThreeJsWorkStore.kt").read_text(encoding="utf-8")
+
+        self.assertNotIn(
+            "threeWorkCount: Int = ThreeJsCatalog.BUILT_IN_WORKS.size",
+            policy_src,
+            "setItemCount must not fall back to static BUILT_IN_WORKS.size",
+        )
+        self.assertRegex(
+            policy_src,
+            r"fun\s+setItemCount\s*\(\s*kind:\s*WallpaperSourceKind,\s*activeImageCount:\s*Int,\s*threeWorkCount:\s*Int\s*\)",
+        )
+        self.assertIn(
+            "ThreeJsWorkStore.workCount(applicationContext)",
+            service_src,
+        )
+        self.assertRegex(
+            service_src,
+            r"ThreeJsPolicy\.setItemCount\(\s*currentSet\.sourceKind,\s*activeImageCount,\s*threeWorkCount\s*\)",
+        )
+        self.assertIn("readCachedWorksLocked", store_src)
+        self.assertIn("cacheManifestLocked", store_src)
+
 
 if __name__ == "__main__":
     unittest.main()

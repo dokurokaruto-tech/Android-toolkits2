@@ -164,7 +164,7 @@ object ThreeJsPolicy {
     fun setItemCount(
         kind: WallpaperSourceKind,
         activeImageCount: Int,
-        threeWorkCount: Int = ThreeJsCatalog.BUILT_IN_WORKS.size
+        threeWorkCount: Int
     ): Int {
         if (kind == WallpaperSourceKind.THREE_JS) {
             return threeWorkCount

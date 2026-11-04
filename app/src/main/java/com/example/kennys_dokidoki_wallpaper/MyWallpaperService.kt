@@ -938,9 +938,22 @@ class MyWallpaperService : WallpaperService() {
                         val totalSets = activeSets.size
                         val setIndex = activeSets.indexOfFirst { it.name == activeSetName } + 1
                         val currentSet = activeSets.find { it.name == activeSetName }
-                        val activeImageCount = currentSet?.filterImages(DataManager.allImages)?.filter { it.isActive }?.size ?: 0
                         val totalItemsInSet = if (currentSet != null) {
-                            ThreeJsPolicy.setItemCount(currentSet.sourceKind, activeImageCount)
+                            val activeImageCount = if (currentSet.sourceKind == WallpaperSourceKind.THREE_JS) {
+                                0
+                            } else {
+                                currentSet.filterImages(DataManager.allImages).count { it.isActive }
+                            }
+                            val threeWorkCount = if (currentSet.sourceKind == WallpaperSourceKind.THREE_JS) {
+                                ThreeJsWorkStore.workCount(applicationContext)
+                            } else {
+                                0
+                            }
+                            ThreeJsPolicy.setItemCount(
+                                currentSet.sourceKind,
+                                activeImageCount,
+                                threeWorkCount
+                            )
                         } else {
                             0
                         }

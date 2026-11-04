@@ -21,11 +21,21 @@ object ThreeJsWorkStore {
     private const val THUMB_CACHE_VERSION = "2"
     private const val DATE_LABEL_PATTERN = "yy MM dd"
     private const val DATA_URI_BASE64_MARKER = ";base64,"
+    private const val NO_MANIFEST_METRIC = -1L
     private val lock = Any()
+    private var thumbVersionVerified = false
+    private var cachedManifestStamp = NO_MANIFEST_METRIC
+    private var cachedManifestSize = NO_MANIFEST_METRIC
+    private var cachedWorks: List<ThreeJsWork>? = null
+    private var cachedDeletedBuiltIns: Set<String>? = null
 
     fun loadWorks(context: Context): List<ThreeJsWork> {
         synchronized(lock) {
             ensureThumbVersionLocked(context)
+            val cached = readCachedWorksLocked(context)
+            if (cached != null) {
+                return cached
+            }
             return loadManifestLocked(context).works.toList()
         }
     }
@@ -264,6 +274,9 @@ object ThreeJsWorkStore {
     }
 
     private fun ensureThumbVersionLocked(context: Context) {
+        if (thumbVersionVerified) {
+            return
+        }
         val dir = File(storeDir(context), THUMBS_DIR_NAME)
         dir.mkdirs()
         val marker = File(dir, THUMB_VERSION_FILE)
@@ -275,6 +288,7 @@ object ThreeJsWorkStore {
             }
         }.getOrDefault("")
         if (current == THUMB_CACHE_VERSION) {
+            thumbVersionVerified = true
             return
         }
         dir.listFiles()?.forEach { file ->
@@ -283,6 +297,7 @@ object ThreeJsWorkStore {
             }
         }
         runCatching { marker.writeText(THUMB_CACHE_VERSION, Charsets.UTF_8) }
+        thumbVersionVerified = true
     }
 
     private fun storeDir(context: Context): File {
@@ -319,8 +334,43 @@ object ThreeJsWorkStore {
         return SimpleDateFormat(DATE_LABEL_PATTERN, Locale.US).format(Date(epochMs))
     }
 
+    private fun readCachedWorksLocked(context: Context): List<ThreeJsWork>? {
+        val works = cachedWorks ?: return null
+        val file = manifestFile(context)
+        if (!file.isFile) {
+            return null
+        }
+        if (file.lastModified() != cachedManifestStamp || file.length() != cachedManifestSize) {
+            return null
+        }
+        return works
+    }
+
+    private fun cacheManifestLocked(file: File, state: ManifestState) {
+        cachedWorks = state.works.toList()
+        cachedDeletedBuiltIns = state.deletedBuiltIns.toSet()
+        cachedManifestStamp = if (file.isFile) {
+            file.lastModified()
+        } else {
+            NO_MANIFEST_METRIC
+        }
+        cachedManifestSize = if (file.isFile) {
+            file.length()
+        } else {
+            NO_MANIFEST_METRIC
+        }
+    }
+
     private fun loadManifestLocked(context: Context): ManifestState {
         val file = manifestFile(context)
+        val cachedList = readCachedWorksLocked(context)
+        val cachedDeleted = cachedDeletedBuiltIns
+        if (cachedList != null && cachedDeleted != null) {
+            return ManifestState(
+                works = cachedList.toMutableList(),
+                deletedBuiltIns = cachedDeleted.toMutableSet()
+            )
+        }
         val works = mutableListOf<ThreeJsWork>()
         val deletedBuiltIns = linkedSetOf<String>()
         var loadedValidManifest = false
@@ -384,6 +434,8 @@ object ThreeJsWorkStore {
         val state = ManifestState(works = works, deletedBuiltIns = deletedBuiltIns)
         if (!loadedValidManifest || seededNew) {
             saveManifestLocked(context, state)
+        } else {
+            cacheManifestLocked(file, state)
         }
         return state
     }
@@ -417,6 +469,7 @@ object ThreeJsWorkStore {
             target.writeText(root.toString(), Charsets.UTF_8)
             tmp.delete()
         }
+        cacheManifestLocked(target, state)
     }
 
     private data class ManifestState(
