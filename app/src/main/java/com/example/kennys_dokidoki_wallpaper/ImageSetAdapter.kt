@@ -58,19 +58,30 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
             set.targetTags.joinToString(", ")
         }
         
-        holder.count.text = context.getString(
-            R.string.album_info_format,
-            filteredEntries.size,
-            matchDesc,
-            tagsText
-        )
+        if (set.threeJsEnabled) {
+            holder.count.text = "three.js 作品 ${ThreeJsWork.count}件 [組み込み]"
+        } else {
+            holder.count.text = context.getString(
+                R.string.album_info_format,
+                filteredEntries.size,
+                matchDesc,
+                tagsText
+            )
+        }
         
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val lastIndex = prefs.getInt("last_index_for_album_${set.name}", 0)
         
         val displayEntries = activeEntries.ifEmpty { filteredEntries }
-        
-        if (displayEntries.isNotEmpty()) {
+
+        if (set.threeJsEnabled) {
+            // 組み込み作品のポスターをサムネイル代わりに表示する。
+            Glide.with(context)
+                .load(ThreeJsWork.at(lastIndex).posterUri)
+                .centerCrop()
+                .into(holder.thumbnail)
+            holder.iconCropped.visibility = View.GONE
+        } else if (displayEntries.isNotEmpty()) {
             val safeIndex = lastIndex.coerceIn(0, displayEntries.size - 1)
             val selectedEntry = displayEntries[safeIndex]
             val imageToLoad = selectedEntry.thumbnailUri ?: selectedEntry.uri
@@ -147,14 +158,18 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
         }
 
         holder.btnSetWallpaper.setOnClickListener {
-            if (filteredEntries.isEmpty()) {
+            if (!set.threeJsEnabled && filteredEntries.isEmpty()) {
                 Toast.makeText(it.context, "条件に合う画像がないよ！タグを見直しなよｗ", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
             val currentLastIndex = prefs.getInt("last_index_for_album_${set.name}", 0)
             val targetEntries = activeEntries.ifEmpty { filteredEntries }
-            val safeIndex = currentLastIndex.coerceIn(0, targetEntries.size - 1)
+            val safeIndex = if (set.threeJsEnabled) {
+                currentLastIndex.coerceIn(0, ThreeJsWork.count - 1)
+            } else {
+                currentLastIndex.coerceIn(0, targetEntries.size - 1)
+            }
 
             set.isActive = true
             holder.activeIcon.setImageResource(R.drawable.ic_cyber_check)

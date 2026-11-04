@@ -1,0 +1,162 @@
+{
+	"metadata": {
+		"type": "App"
+	},
+	"project": {
+		"shadows": true,
+		"shadowType": 1,
+		"vr": false,
+		"physicallyCorrectLights": false,
+		"toneMapping": 4,
+		"toneMappingExposure": 1
+	},
+	"camera": {
+		"metadata": {
+			"version": 4.5,
+			"type": "Object",
+			"generator": "Object3D.toJSON"
+		},
+		"object": {
+			"uuid": "7A0CC19C-DCE2-4D99-A5D7-A2B6D135E0C6",
+			"type": "PerspectiveCamera",
+			"name": "Camera",
+			"layers": 1,
+			"matrix": [0.527282,0,-0.849691,0,-0.346344,0.913155,-0.214926,0,0.7759,0.407611,0.48149,0,236.147751,124.057991,146.543198,1],
+			"fov": 50,
+			"zoom": 1,
+			"near": 1,
+			"far": 100000,
+			"focus": 10,
+			"aspect": 1.375185,
+			"filmGauge": 35,
+			"filmOffset": 0
+		}
+	},
+	"scene": {
+		"metadata": {
+			"version": 4.5,
+			"type": "Object",
+			"generator": "Object3D.toJSON"
+		},
+		"geometries": [
+			{
+				"uuid": "AFFBA5DB-8506-4F17-8E82-B30ED9F19E50",
+				"type": "IcosahedronGeometry",
+				"radius": 600,
+				"detail": 1
+			},
+			{
+				"uuid": "9213D506-22A7-420C-9755-4EC6C56F7328",
+				"type": "TorusGeometry",
+				"radius": 100,
+				"tube": 10,
+				"radialSegments": 32,
+				"tubularSegments": 64,
+				"arc": 6.283185
+			}],
+		"materials": [
+			{
+				"uuid": "56E2C603-BC59-45A4-9460-6633CC94B9EB",
+				"type": "MeshStandardMaterial",
+				"color": 1118481,
+				"roughness": 1,
+				"metalness": 0.5,
+				"emissive": 0,
+				"side": 1,
+				"depthFunc": 3,
+				"depthTest": true,
+				"depthWrite": true,
+				"stencilWrite": false,
+				"stencilWriteMask": 255,
+				"stencilFunc": 519,
+				"stencilRef": 0,
+				"stencilFuncMask": 255,
+				"stencilFail": 7680,
+				"stencilZFail": 7680,
+				"stencilZPass": 7680
+			},
+			{
+				"uuid": "5F98F0EA-EB5B-403D-A4BF-966537EF8DC4",
+				"type": "MeshStandardMaterial",
+				"color": 2236962,
+				"roughness": 0.1,
+				"metalness": 0.9,
+				"emissive": 0,
+				"emissiveMap": "2E83990C-332B-459F-8ADB-A6AF0A9FA9BB",
+				"depthFunc": 3,
+				"depthTest": true,
+				"depthWrite": true,
+				"stencilWrite": false,
+				"stencilWriteMask": 255,
+				"stencilFunc": 519,
+				"stencilRef": 0,
+				"stencilFuncMask": 255,
+				"stencilFail": 7680,
+				"stencilZFail": 7680,
+				"stencilZPass": 7680
+			}],
+		"textures": [
+			{
+				"uuid": "2E83990C-332B-459F-8ADB-A6AF0A9FA9BB",
+				"name": "",
+				"mapping": 300,
+				"repeat": [1,1],
+				"offset": [0,0],
+				"center": [0,0],
+				"rotation": 0,
+				"wrap": [1001,1001],
+				"format": 1023,
+				"type": 1009,
+				"encoding": 3000,
+				"minFilter": 1008,
+				"magFilter": 1006,
+				"anisotropy": 1,
+				"flipY": true,
+				"premultiplyAlpha": false,
+				"unpackAlignment": 4,
+				"image": "7CCD3C4F-9001-4FE8-AC41-4F51964265F2"
+			}],
+		"images": [
+			{
+				"uuid": "7CCD3C4F-9001-4FE8-AC41-4F51964265F2",
+				"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVQIW2P8////f0ZGRgZGGAMAWAIIAbG1U/YAAAAASUVORK5CYII="
+			}],
+		"object": {
+			"uuid": "449AB29E-5281-4B62-9771-2E6E57D32494",
+			"type": "Scene",
+			"name": "Scene",
+			"layers": 1,
+			"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+			"children": [
+				{
+					"uuid": "6CF0BED0-0BFF-4896-92D4-08C3CA24435D",
+					"type": "Mesh",
+					"name": "Background",
+					"layers": 1,
+					"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+					"geometry": "AFFBA5DB-8506-4F17-8E82-B30ED9F19E50",
+					"material": "56E2C603-BC59-45A4-9460-6633CC94B9EB"
+				},
+				{
+					"uuid": "7854A04C-2688-4D1A-AF56-1512FE92C32E",
+					"type": "Mesh",
+					"name": "Torus",
+					"layers": 1,
+					"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+					"geometry": "9213D506-22A7-420C-9755-4EC6C56F7328",
+					"material": "5F98F0EA-EB5B-403D-A4BF-966537EF8DC4"
+				}]
+		}
+	},
+	"scripts": {
+		"449AB29E-5281-4B62-9771-2E6E57D32494": [
+			{
+				"name": "Animation",
+				"source": "var torus = scene.getObjectByName( 'Torus' );\nscene.remove( torus );\n\nvar map = torus.material.emissiveMap;\nmap.wrapS = THREE.RepeatWrapping;\nmap.repeat.x = 2;\nmap.encoding = THREE.sRGBEncoding;\n\n//\n\nvar group = new THREE.Group();\nscene.add( group );\n\nfor ( var i = 0; i < 11; i ++ ) {\n\n\tvar clone = torus.clone();\n\tclone.geometry = new THREE.TorusGeometry( i * 10 + 20, 5, 32, 64 );\n\tclone.material = torus.material.clone();\n\tgroup.add( clone );\n\n}\n\nfunction update( event ) {\n\n\tvar time = 0.4 + event.time * 0.0003;\n\t\n\tcamera.position.x = Math.cos( time ) * 200;\n\tcamera.position.z = Math.sin( time ) * 200;\n\tcamera.lookAt( new THREE.Vector3() );\n\t\n\tvar children = group.children;\n\t\n\tfor ( var i = 0; i < children.length; i ++ ) {\n\n\t\tvar child = children[ i ];\n\n\t\tchild.position.x = Math.sin( time - i * 0.15 ) * 50;\n\t\tchild.position.y = Math.sin( time * 1.3 - i * 0.15 ) * 50;\n\t\tchild.rotation.x = time * 2.123 - Math.pow( i, 1.15 ) * 0.13;\n\t\tchild.rotation.y = time * 2.85 - Math.pow( i, 1.15 ) * 0.13;\n\t\tchild.material.emissive.r = Math.max( 0, Math.sin( - time * 5 + i * 0.2 ) ) * 0.5;\n\t\tchild.material.emissive.b = Math.pow( child.material.emissive.r * 2, 6 );\n\t\tchild.material.emissiveIntensity = 2.0;\n\t\t\n\t}\n\n}"
+			},
+			{
+				"name": "Environment",
+				"source": "var envScene = new THREE.Scene();\n\nvar geometry = new THREE.IcosahedronBufferGeometry( 20, 4 );\nvar material = new THREE.MeshStandardMaterial( { metalness: 0, side: THREE.BackSide } );\nvar mesh = new THREE.Mesh( geometry, material );\nenvScene.add( mesh );\n\nvar geometry = new THREE.CircleBufferGeometry( 6, 64 );\nvar material = new THREE.MeshLambertMaterial( {\n\tcolor: 0x000000, emissive: 0xaabbff, emissiveIntensity: 0.5\n} );\n\nvar mesh = new THREE.Mesh( geometry, material );\nmesh.position.set( 0, 4, 0 );\nmesh.rotation.x = Math.PI / 2;\nenvScene.add( mesh );\n\nvar material = new THREE.MeshLambertMaterial( {\n\tcolor: 0x000000, emissive: 0x8888ff, emissiveIntensity: 0.15\n} );\n\nvar mesh = new THREE.Mesh( geometry, material );\nmesh.position.set( 0, - 4, 0 );\nmesh.rotation.x = - Math.PI / 2;\nenvScene.add( mesh );\n\nvar pmremGenerator = new THREE.PMREMGenerator( renderer );\nvar renderTarget = pmremGenerator.fromScene( envScene );\n\nscene.environment = renderTarget.texture;"
+			}]
+	}
+}

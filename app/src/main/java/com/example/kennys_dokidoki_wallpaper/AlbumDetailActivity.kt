@@ -27,6 +27,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
@@ -37,6 +38,8 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     private lateinit var imageAdapter: ImageAdapter
     private val images = mutableListOf<ImageEntry>()
     private var albumName: String = ""
+    private var threeJsList: LinearLayout? = null
+    private var isThreeJsAlbum = false
     private var isSortAscending: Boolean = true
 
     // 複数選択用アクションバー
@@ -92,8 +95,8 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        toolbar.setNavigationOnClickListener { 
-            if (imageAdapter.isSelectionMode) {
+        toolbar.setNavigationOnClickListener {
+            if (::imageAdapter.isInitialized && imageAdapter.isSelectionMode) {
                 imageAdapter.stopSelectionMode()
             } else if (albumName.startsWith("生成:")) {
                 closeGeneratedAlbum()
@@ -115,6 +118,15 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
         selectionActionBar = findViewById(R.id.selection_action_bar)
         tvSelectionCount = findViewById(R.id.tv_selection_count)
+
+        // three.js セットは画像ではなく組み込み作品の一覧を表示する。
+        DataManager.loadData(this)
+        val threeJsSet = DataManager.imageSetList.find { it.name == albumName }
+        if (threeJsSet != null && threeJsSet.threeJsEnabled) {
+            isThreeJsAlbum = true
+            showThreeJsWorks(threeJsSet)
+            return
+        }
 
         loadImages()
 
@@ -303,6 +315,10 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        // three.js 作品一覧に画像用のメニュー（並び替え等）は出さない。
+        if (isThreeJsAlbum) {
+            return false
+        }
         if (isGeneratedViewer) {
             // 生成画像ビューワー: 「全画像に入れる」をケバブに用意
             val importTitle = if (isRemoteGenerated) "端末へダウンロードして全画像に入れる" else "全画像に入れる"
@@ -622,6 +638,110 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
             .show()
     }
 
+    // three.js セットの詳細: 組み込み作品をポスター付きで並べ、タップで壁紙に適用する。
+    private fun showThreeJsWorks(set: ImageSet) {
+        val recycler = findViewById<RecyclerView>(R.id.image_recycler_view)
+        recycler.visibility = View.GONE
+        findViewById<View>(R.id.folder_load_status).visibility = View.GONE
+        selectionActionBar.visibility = View.GONE
+
+        val density = resources.displayMetrics.density
+        val root = recycler.parent as androidx.constraintlayout.widget.ConstraintLayout
+        val scroll = android.widget.ScrollView(this)
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((16 * density).toInt(), (16 * density).toInt(), (16 * density).toInt(), (16 * density).toInt())
+        }
+        threeJsList = list
+        scroll.addView(list, android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        val params = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams(0, 0)
+        params.topToBottom = R.id.toolbar
+        params.bottomToBottom = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+        params.startToStart = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+        params.endToEnd = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+        root.addView(scroll, params)
+
+        refreshThreeJsCards(set)
+    }
+
+    private fun refreshThreeJsCards(set: ImageSet) {
+        val list = threeJsList ?: return
+        list.removeAllViews()
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val currentIndex = prefs.getInt("last_index_for_album_${set.name}", 0)
+        ThreeJsWork.entries.forEachIndexed { index, work ->
+            list.addView(buildThreeJsCard(work, index, index == currentIndex, set))
+        }
+    }
+
+    private fun buildThreeJsCard(work: ThreeJsWork, index: Int, isCurrent: Boolean, set: ImageSet): View {
+        val density = resources.displayMetrics.density
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding((12 * density).toInt(), (12 * density).toInt(), (12 * density).toInt(), (12 * density).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 12 * density
+                setColor(Color.parseColor("#151A28"))
+                setStroke(((if (isCurrent) 2 else 1) * density).toInt(), Color.parseColor(if (isCurrent) "#D0BCFF" else "#2B2930"))
+            }
+            setOnClickListener { applyThreeJsWork(set, index) }
+        }
+        val cardParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        cardParams.bottomMargin = (12 * density).toInt()
+        card.layoutParams = cardParams
+
+        val poster = android.widget.ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams((84 * density).toInt(), (150 * density).toInt())
+            scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            Glide.with(context).load(work.posterUri).centerCrop().into(this)
+        }
+        card.addView(poster)
+
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((16 * density).toInt(), 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        texts.addView(TextView(this).apply {
+            text = work.title
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        texts.addView(TextView(this).apply {
+            text = "組み込み three.js 作品"
+            setTextColor(Color.parseColor("#CAC4D0"))
+            textSize = 12f
+        })
+        if (isCurrent) {
+            texts.addView(TextView(this).apply {
+                text = "● 表示中"
+                setTextColor(Color.parseColor("#D0BCFF"))
+                textSize = 12f
+                setPadding(0, (8 * density).toInt(), 0, 0)
+            })
+        }
+        card.addView(texts)
+        return card
+    }
+
+    private fun applyThreeJsWork(set: ImageSet, index: Int) {
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("active_album_name", set.name)
+            .putString("active_album_name_homescreen", set.name)
+            .putInt("active_image_index", index)
+            .putInt("last_index_for_album_${set.name}", index)
+            .apply()
+        sendBroadcast(Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED").setPackage(packageName))
+        Toast.makeText(this, "「${ThreeJsWork.at(index).title}」を壁紙にしたわ！", Toast.LENGTH_SHORT).show()
+        refreshThreeJsCards(set)
+    }
+
     private fun startWallpaper(entry: ImageEntry) {
         if (!entry.isActive) {
             entry.isActive = true
@@ -804,6 +924,12 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
 
     override fun onResume() {
         super.onResume()
+        if (isThreeJsAlbum) {
+            // 他所で壁紙が変わっていれば「表示中」バッジを更新する。
+            DataManager.loadData(this)
+            DataManager.imageSetList.find { it.name == albumName }?.let { refreshThreeJsCards(it) }
+            return
+        }
         refreshSavedImages()
         loadImages()
         updateActiveImageHighlight()
@@ -811,7 +937,7 @@ class AlbumDetailActivity : AppCompatActivity(), SharedPreferences.OnSharedPrefe
     }
 
     override fun onBackPressed() {
-        if (imageAdapter.isSelectionMode) {
+        if (::imageAdapter.isInitialized && imageAdapter.isSelectionMode) {
             imageAdapter.stopSelectionMode()
         } else if (albumName.startsWith("生成:")) {
             closeGeneratedAlbum()

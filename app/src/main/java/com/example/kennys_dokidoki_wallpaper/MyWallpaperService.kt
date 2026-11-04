@@ -41,6 +41,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.random.Random
 
 private const val TOOL_FINDER_ACTION = "TOOL_FINDER"
 private const val DOUBLE_TAP_HOLD_KEY = "action_tap_2_hold"
@@ -90,6 +91,13 @@ class MyWallpaperService : WallpaperService() {
         
         private var imageEntries = mutableListOf<ImageEntry>()
         private var currentImageIndex = 0
+
+        // three.js 壁紙モード。画像の代わりに組み込み作品を描く。
+        private var threeRenderer: ThreeJsStageRenderer? = null
+        private var threeJsMode = false
+        private var currentWorkIndex = 0
+        private var pendingWorkIndex = -1
+        private var transitionSnapshot: Bitmap? = null
 
         private var tapCount: Int = 0
         private val tapTimeout: Long = 350L
@@ -162,6 +170,9 @@ class MyWallpaperService : WallpaperService() {
                                 needsReload = true
                                 return@post
                             }
+                            if (handleThreeJsReload()) {
+                                return@post
+                            }
                             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                                 currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
                                 val entry = imageEntries[currentImageIndex]
@@ -223,6 +234,9 @@ class MyWallpaperService : WallpaperService() {
                     // 見えていない時の設定変更は次に表示される時まで寝かせる。
                     if (!engineVisible) {
                         needsReload = true
+                        return@post
+                    }
+                    if (handleThreeJsReload()) {
                         return@post
                     }
                     if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
@@ -654,6 +668,158 @@ class MyWallpaperService : WallpaperService() {
             applicationContext.startActivity(intent)
         }
 
+        // three.js 作品のフレームと準備完了を受け取る。描画は既存の draw() に合流する。
+        private val threeListener = object : ThreeJsStageRenderer.Listener {
+            override fun onFrame(bitmap: Bitmap) {
+                if (!engineVisible || !threeJsMode) {
+                    return
+                }
+                // 遷移中は旧フレームを凍結表示し、新作品の準備完了を待つ。
+                if (pendingWorkIndex >= 0) {
+                    return
+                }
+                currentBitmap = bitmap
+                if (!isAnimating) {
+                    draw()
+                }
+            }
+
+            override fun onWorkReady(workId: String) {
+                if (!engineVisible || !threeJsMode) {
+                    return
+                }
+                val work = ThreeJsWork.byId(workId) ?: return
+                val index = ThreeJsWork.entries.indexOf(work)
+                if (index != pendingWorkIndex) {
+                    return
+                }
+                pendingWorkIndex = -1
+                currentWorkIndex = index
+                saveThreeWorkIndex(index)
+                val snapshot = transitionSnapshot
+                transitionSnapshot = null
+                if (snapshot != null) {
+                    previousBitmap = snapshot
+                    previousEntry = null
+                    startAnimator()
+                } else {
+                    draw()
+                }
+            }
+
+            override fun onWorkError(workId: String, message: String) {
+                android.util.Log.e("MyWallpaperService", "three.js work $workId failed: $message")
+            }
+        }
+
+        private fun getActiveSet(): ImageSet? {
+            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val name = getActiveSetName(settingsPrefs) ?: return null
+            DataManager.loadData(this@MyWallpaperService)
+            return DataManager.imageSetList.find { it.name == name }
+        }
+
+        // 再読込系（surface生成・再表示・設定変更・変更通知）の three.js 分岐。
+        // three.js セットなら描画して true、画像セットなら renderer を解放して false。
+        private fun handleThreeJsReload(): Boolean {
+            val set = getActiveSet()
+            if (!set.isThreeJs) {
+                if (threeJsMode) {
+                    releaseThreeRenderer()
+                }
+                return false
+            }
+            // 遷移中は何もしない。ジェスチャー側のクロスフェードを中断させない。
+            if (pendingWorkIndex >= 0) {
+                showSetNameText()
+                return true
+            }
+            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val savedIndex = settingsPrefs.getInt("last_index_for_album_${set!!.name}", 0)
+                .coerceIn(0, ThreeJsWork.count - 1)
+            if (threeJsMode && threeRenderer != null && currentWorkIndex == savedIndex) {
+                showSetNameText()
+                return true
+            }
+            enterThreeJsMode(savedIndex, crossfade = false)
+            showSetNameText()
+            return true
+        }
+
+        private fun ensureThreeRenderer(): ThreeJsStageRenderer {
+            threeRenderer?.let { return it }
+            val frame = surfaceHolder.surfaceFrame
+            val renderer = ThreeJsStageRenderer(
+                applicationContext, frame.width(), frame.height(),
+                Handler(Looper.getMainLooper()), threeListener
+            )
+            renderer.start()
+            threeRenderer = renderer
+            return renderer
+        }
+
+        private fun releaseThreeRenderer() {
+            threeRenderer?.release()
+            threeRenderer = null
+            threeJsMode = false
+            pendingWorkIndex = -1
+            transitionSnapshot = null
+        }
+
+        private fun enterThreeJsMode(targetIndex: Int, crossfade: Boolean) {
+            val renderer = ensureThreeRenderer()
+            val work = ThreeJsWork.at(targetIndex)
+            threeJsMode = true
+            pendingWorkIndex = targetIndex
+            currentEntry = null
+
+            if (crossfade && currentBitmap != null) {
+                // 直前フレームを複製して残像にし、新作品の準備完了まで凍結表示する。
+                transitionSnapshot = renderer.snapshot() ?: currentBitmap
+                currentBitmap = transitionSnapshot
+                draw()
+            } else {
+                transitionSnapshot = null
+                loadPoster(work)
+            }
+            renderer.loadWork(work.id)
+        }
+
+        // 読み込み中はポスターを表示して黒画面を防ぐ。ライブフレームが届けば置き換わる。
+        private fun loadPoster(work: ThreeJsWork) {
+            engineScope.launch(Dispatchers.IO) {
+                val bitmap = try {
+                    applicationContext.assets.open(work.posterPath).use { BitmapFactory.decodeStream(it) }
+                } catch (e: Exception) {
+                    null
+                }
+                withContext(Dispatchers.Main) {
+                    if (!engineVisible || !threeJsMode || pendingWorkIndex < 0) {
+                        return@withContext
+                    }
+                    if (bitmap != null && currentBitmap == null) {
+                        currentBitmap = bitmap
+                        draw()
+                    }
+                }
+            }
+        }
+
+        private fun saveThreeWorkIndex(index: Int) {
+            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val activeSetName = getActiveSetName(settingsPrefs) ?: return
+            settingsPrefs.edit()
+                .putInt("active_image_index", index)
+                .putInt("last_index_for_album_$activeSetName", index)
+                .apply()
+        }
+
+        private fun notifyWallpaperChanged() {
+            val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
+            intent.setPackage(applicationContext.packageName)
+            applicationContext.sendBroadcast(intent)
+        }
+
         private fun loadActiveAlbumAndIndex(): Boolean {
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val activeSetName = getActiveSetName(settingsPrefs) ?: return false
@@ -673,13 +839,13 @@ class MyWallpaperService : WallpaperService() {
             if (!engineVisible) return
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val activeSetName = getActiveSetName(settingsPrefs) ?: return
-            val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
-            intent.setPackage(applicationContext.packageName)
+            // three.js モードでは画像インデックスではなく作品インデックスを保存する。
+            val indexToSave = if (threeJsMode) currentWorkIndex else currentImageIndex
             settingsPrefs.edit()
-                .putInt("active_image_index", currentImageIndex) 
-                .putInt("last_index_for_album_$activeSetName", currentImageIndex) 
+                .putInt("active_image_index", indexToSave)
+                .putInt("last_index_for_album_$activeSetName", indexToSave)
                 .apply()
-            applicationContext.sendBroadcast(intent)
+            notifyWallpaperChanged()
         }
 
         private fun startAnimator() {
@@ -787,7 +953,15 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun startCrossfadeToNextImage() {
-            if (isAnimating || isLoading) return
+            if (isAnimating || isLoading || pendingWorkIndex >= 0) return
+            val activeSet = getActiveSet()
+            if (activeSet.isThreeJs) {
+                // 登録作品から現在と異なるものをランダムに選ぶ。
+                val pick = if (ThreeJsWork.count > 1) Random.nextInt(ThreeJsWork.count - 1) else 0
+                val next = ThreeJsSetPolicy.nextIndex(currentWorkIndex, ThreeJsWork.count, pick)
+                enterThreeJsMode(next, crossfade = true)
+                return
+            }
             if (!loadActiveAlbumAndIndex() || imageEntries.isEmpty()) return
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val isShuffle = settingsPrefs.getBoolean("shuffle_images", false)
@@ -805,7 +979,7 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun startCrossfadeToNextAlbum() {
-            if (isAnimating || isLoading) return
+            if (isAnimating || isLoading || pendingWorkIndex >= 0) return
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val currentSetName = getActiveSetName(settingsPrefs) ?: return
             DataManager.loadData(this@MyWallpaperService)
@@ -814,42 +988,46 @@ class MyWallpaperService : WallpaperService() {
             if (activeSets.isEmpty()) return
             val currentIndex = activeSets.indexOfFirst { it.name == currentSetName }
             val nextSet = if (currentIndex == -1 || currentIndex == activeSets.size - 1) activeSets[0] else activeSets[currentIndex + 1]
-            val newEntries = nextSet.filterImages(DataManager.allImages).filter { it.isActive }
-            if (newEntries.isEmpty()) return
-            val lastIndexForNextSet = settingsPrefs.getInt("last_index_for_album_${nextSet.name}", 0)
-            val nextImageIndex = lastIndexForNextSet.coerceIn(0, newEntries.size - 1)
-            val nextEntry = newEntries[nextImageIndex]
-            prepareCrossfade(nextEntry) { nextBitmap ->
-                val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
-                intent.setPackage(applicationContext.packageName)
-                val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
-                val keyToSave = if (isChatActive) "active_album_name_chat" else "active_album_name_homescreen"
-                settingsPrefs.edit().putString(keyToSave, nextSet.name).putInt("active_image_index", nextImageIndex).putInt("last_index_for_album_${nextSet.name}", nextImageIndex).apply()
-                applicationContext.sendBroadcast(intent)
-                previousBitmap = currentBitmap; previousEntry = currentEntry
-                imageEntries = newEntries.toMutableList(); currentImageIndex = nextImageIndex; currentEntry = nextEntry; currentBitmap = nextBitmap
-                startAnimator()
-            }
+            switchToSet(nextSet)
         }
 
         private fun startCrossfadeToSpecificAlbum(setName: String) {
-            if (isAnimating || isLoading) return
+            if (isAnimating || isLoading || pendingWorkIndex >= 0) return
             DataManager.loadData(this@MyWallpaperService)
             val set = DataManager.imageSetList.find { it.name == setName } ?: return
+            switchToSet(set)
+        }
+
+        // 別セットへクロスフェードする。three.js セット・画像セットの双方を出発/到着にできる。
+        private fun switchToSet(set: ImageSet) {
+            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
+            val keyToSave = if (isChatActive) "active_album_name_chat" else "active_album_name_homescreen"
+
+            if (set.isThreeJs) {
+                val savedIndex = settingsPrefs.getInt("last_index_for_album_${set.name}", 0)
+                    .coerceIn(0, ThreeJsWork.count - 1)
+                // 作品準備完了時の索引保存が新セット名を参照できるよう、先に活性セットを保存する。
+                settingsPrefs.edit().putString(keyToSave, set.name).putInt("active_image_index", savedIndex).apply()
+                enterThreeJsMode(savedIndex, crossfade = true)
+                notifyWallpaperChanged()
+                return
+            }
+
             val newEntries = set.filterImages(DataManager.allImages).filter { it.isActive }
             if (newEntries.isEmpty()) return
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val lastIndex = settingsPrefs.getInt("last_index_for_album_$setName", 0)
+            val lastIndex = settingsPrefs.getInt("last_index_for_album_${set.name}", 0)
             val nextImageIndex = lastIndex.coerceIn(0, newEntries.size - 1)
             val nextEntry = newEntries[nextImageIndex]
+
+            // three.js -> 画像: 直前フレームを複製して残像にし、renderer を解放する。
+            val threeSnapshot = if (threeJsMode) threeRenderer?.snapshot() else null
+            if (threeJsMode) releaseThreeRenderer()
+
             prepareCrossfade(nextEntry) { nextBitmap ->
-                val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
-                intent.setPackage(applicationContext.packageName)
-                val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
-                val keyToSave = if (isChatActive) "active_album_name_chat" else "active_album_name_homescreen"
-                settingsPrefs.edit().putString(keyToSave, set.name).putInt("active_image_index", nextImageIndex).apply()
-                applicationContext.sendBroadcast(intent)
-                previousBitmap = currentBitmap; previousEntry = currentEntry
+                settingsPrefs.edit().putString(keyToSave, set.name).putInt("active_image_index", nextImageIndex).putInt("last_index_for_album_${set.name}", nextImageIndex).apply()
+                notifyWallpaperChanged()
+                previousBitmap = threeSnapshot ?: currentBitmap; previousEntry = currentEntry
                 imageEntries = newEntries.toMutableList(); currentImageIndex = nextImageIndex; currentEntry = nextEntry; currentBitmap = nextBitmap
                 startAnimator()
             }
@@ -871,6 +1049,7 @@ class MyWallpaperService : WallpaperService() {
 
         /** 非表示になった。アニメーションとコールバックを止め、ビットマップも手放す。 */
         private fun goQuiet() {
+            releaseThreeRenderer()
             animator?.cancel()
             animator = null
             textAnimator?.cancel()
@@ -899,6 +1078,9 @@ class MyWallpaperService : WallpaperService() {
                 needsReload = true
                 return
             }
+            if (handleThreeJsReload()) {
+                return
+            }
             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                 currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
                 val entry = imageEntries[currentImageIndex]
@@ -909,6 +1091,9 @@ class MyWallpaperService : WallpaperService() {
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
+            if (handleThreeJsReload()) {
+                return
+            }
             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                 val entry = imageEntries[currentImageIndex]
                 currentEntry = entry
@@ -948,7 +1133,11 @@ class MyWallpaperService : WallpaperService() {
                         val totalSets = activeSets.size
                         val setIndex = activeSets.indexOfFirst { it.name == activeSetName } + 1
                         val currentSet = activeSets.find { it.name == activeSetName }
-                        val totalImagesInSet = currentSet?.filterImages(DataManager.allImages)?.filter { it.isActive }?.size ?: 0
+                        val totalImagesInSet = if (currentSet.isThreeJs) {
+                            ThreeJsWork.count
+                        } else {
+                            currentSet?.filterImages(DataManager.allImages)?.filter { it.isActive }?.size ?: 0
+                        }
                         
                         val displayText = String.format(
                             Locale.US,

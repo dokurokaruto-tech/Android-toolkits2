@@ -1,0 +1,142 @@
+{
+	"metadata": {
+		"type": "App"
+	},
+	"project": {
+		"shadows": true,
+		"vr": false
+	},
+	"camera": {
+		"metadata": {
+			"version": 4.5,
+			"type": "Object",
+			"generator": "Object3D.toJSON"
+		},
+		"object": {
+			"uuid": "52EE713F-51DB-4676-8445-ECCB316C85A4",
+			"type": "PerspectiveCamera",
+			"name": "Camera",
+			"layers": 1,
+			"matrix": [0.999972,0,0.007519,0,0.001006,0.991008,-0.133798,0,-0.007451,0.133802,0.99098,0,-0.047014,1.106021,6.804191,1],
+			"fov": 50,
+			"zoom": 1,
+			"near": 0.01,
+			"far": 1000,
+			"focus": 10,
+			"aspect": 1.076212,
+			"filmGauge": 35,
+			"filmOffset": 0
+		}
+	},
+	"scene": {
+		"metadata": {
+			"version": 4.5,
+			"type": "Object",
+			"generator": "Object3D.toJSON"
+		},
+		"geometries": [
+			{
+				"uuid": "9BF918CC-7B12-4B0C-912B-06484A4506E1",
+				"type": "CylinderBufferGeometry",
+				"radiusTop": 0.5,
+				"radiusBottom": 0.5,
+				"height": 0.04,
+				"radialSegments": 8,
+				"heightSegments": 1,
+				"openEnded": true
+			},
+			{
+				"uuid": "49AA45B9-18A9-4220-AAE2-6CEC93650F05",
+				"type": "IcosahedronBufferGeometry",
+				"radius": 20,
+				"detail": 1
+			}],
+		"materials": [
+			{
+				"uuid": "EA4EA0CA-6555-4172-8330-3ABAFCF2F54B",
+				"type": "MeshStandardMaterial",
+				"color": 16777215,
+				"roughness": 1,
+				"metalness": 1,
+				"emissive": 0,
+				"flatShading": true,
+				"side": 2,
+				"depthFunc": 3,
+				"depthTest": true,
+				"depthWrite": true,
+				"stencilWrite": false,
+				"stencilWriteMask": 255,
+				"stencilFunc": 519,
+				"stencilRef": 0,
+				"stencilFuncMask": 255,
+				"stencilFail": 7680,
+				"stencilZFail": 7680,
+				"stencilZPass": 7680
+			},
+			{
+				"uuid": "D0A9BA41-8B18-41FE-8438-BBBDE90B90B6",
+				"type": "MeshStandardMaterial",
+				"color": 1315860,
+				"roughness": 0.4,
+				"metalness": 0.5,
+				"emissive": 0,
+				"side": 1,
+				"depthFunc": 3,
+				"depthTest": true,
+				"depthWrite": true,
+				"stencilWrite": false,
+				"stencilWriteMask": 255,
+				"stencilFunc": 519,
+				"stencilRef": 0,
+				"stencilFuncMask": 255,
+				"stencilFail": 7680,
+				"stencilZFail": 7680,
+				"stencilZPass": 7680
+			}],
+		"object": {
+			"uuid": "FB5EF6DF-FD70-47D8-AFD5-E7FFA706AB73",
+			"type": "Scene",
+			"name": "Scene",
+			"layers": 1,
+			"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+			"children": [
+				{
+					"uuid": "895516C6-07D8-4A89-AABD-6BFAF8A48A0F",
+					"type": "Mesh",
+					"name": "Cylinder",
+					"castShadow": true,
+					"receiveShadow": true,
+					"layers": 1,
+					"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+					"geometry": "9BF918CC-7B12-4B0C-912B-06484A4506E1",
+					"material": "EA4EA0CA-6555-4172-8330-3ABAFCF2F54B"
+				},
+				{
+					"uuid": "9B3EE446-40DE-40D0-8412-81F498764B68",
+					"type": "Mesh",
+					"name": "Icosahedron",
+					"layers": 1,
+					"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+					"geometry": "49AA45B9-18A9-4220-AAE2-6CEC93650F05",
+					"material": "D0A9BA41-8B18-41FE-8438-BBBDE90B90B6"
+				}],
+			"background": 0
+		}
+	},
+	"scripts": {
+		"FB5EF6DF-FD70-47D8-AFD5-E7FFA706AB73": [
+			{
+				"name": "Instances",
+				"source": "var amount = 300;\n\nvar mesh = scene.children[ 0 ];\nmesh.visible = false;\n\nvar instances = new THREE.InstancedMesh( mesh.geometry, mesh.material, amount );\nscene.add( instances );\n\nvar transform = new THREE.Object3D();\n\nfunction update( event ) {\n\n\tvar time = event.time / 2000;\n\t\n\tfor ( var i = 0; i < amount; i ++ ) {\n\t\t\n\t\tvar theta2 = ( i / amount ) * Math.PI * 2; \n\t\tvar theta = ( i / amount ) * ( Math.sin( time / 2.1563 ) + Math.cos( time / 2.8745 ) ) * 2;\n\t\t\n\t\ttransform.position.y = ( i / 30 ) - 5;\n\n\t\ttransform.position.x = Math.sin( theta + time ) * Math.sin( theta * 0.5 + time * 1.345 )\n\t\t\t* Math.cos( theta + time * 1.768 ) * Math.sin( theta2 ) * 1.5;\n\t\t\n\t\ttransform.position.z = Math.cos( theta + time ) * Math.cos( theta * 0.5 + time * 1.345 )\n\t\t\t* Math.cos( theta + time * 2.768 ) * Math.sin( theta2 ) * 1.5;\n\t\t\n\t\ttransform.rotation.y = Math.cos( theta * 2 + time ) * Math.sin( theta + time * 1.345 )\n\t\t\t* Math.sin( theta * 0.5 + time * 0.768 ) * 2;\n\t\t\n\t\tvar scale = 2 + Math.sin( theta + time ) * Math.cos( theta + time * 0.768 )\n\t\t\t* Math.sin( theta + time * 1.768 ) * Math.sin( theta2 );\n\t\t\n\t\ttransform.scale.x = scale;\n\t\ttransform.scale.z = scale;\n\t\t\n\t\ttransform.updateMatrix();\n\t\t\n\t\tinstances.setMatrixAt( i, transform.matrix );\n\t\t\n\t}\n\t\n\tinstances.instanceMatrix.needsUpdate = true;\n\t\n\tscene.rotation.z = - time / 10;\n\t\t\n}"
+			},
+			{
+				"name": "Environment",
+				"source": "var envScene = new THREE.Scene();\n\nvar geometry = new THREE.BoxBufferGeometry( 0.1, 1, 0.1 );\nvar material = new THREE.MeshLambertMaterial( {\n\tcolor: 0x000000, emissive: 0xffbb88, emissiveIntensity: 20\n} );\n\nvar mesh = new THREE.Mesh( geometry, material );\nmesh.position.set( - 4, 0, 0 );\nenvScene.add( mesh );\n\nvar geometry = new THREE.BoxBufferGeometry( 0.1, 1, 0.1 );\nvar material = new THREE.MeshLambertMaterial( {\n\tcolor: 0x000000, emissive: 0x4444ff, emissiveIntensity: 4\n} );\n\nvar mesh = new THREE.Mesh( geometry, material );\nmesh.position.set( 0, 0, - 4 );\nenvScene.add( mesh );\n\nvar geometry = new THREE.BoxBufferGeometry( 0.1, 1, 0.1 );\nvar material = new THREE.MeshLambertMaterial( {\n\tcolor: 0x000000, emissive: 0xff4444, emissiveIntensity: 120\n} );\n\nvar mesh = new THREE.Mesh( geometry, material );\nmesh.position.set( 4, 0, - 4 );\nenvScene.add( mesh );\n\nvar geometry = new THREE.BoxBufferGeometry( 0.1, 1, 0.1 );\nvar material = new THREE.MeshLambertMaterial( {\n\tcolor: 0x000000, emissive: 0xff88ff, emissiveIntensity: 10\n} );\n\nvar mesh = new THREE.Mesh( geometry, material );\nmesh.position.set( 0, 0, 4 );\nenvScene.add( mesh );\n\nvar pmremGenerator = new THREE.PMREMGenerator( renderer );\nvar renderTarget = pmremGenerator.fromScene( envScene );\n\n// scene.background = renderTarget.texture;\nscene.environment = renderTarget.texture;"
+			}],
+		"895516C6-07D8-4A89-AABD-6BFAF8A48A0F": [
+			{
+				"name": "Texture",
+				"source": "var pixels = new Uint8Array( [ 80, 50 ] );\n\nvar texture = new THREE.DataTexture( pixels, 2, 1, THREE.LuminanceFormat );\ntexture.magFilter = THREE.NearestFilter;\ntexture.wrapS = THREE.RepeatWrapping;\ntexture.repeat.x = 60;\n\nthis.material.roughnessMap = texture;"
+			}]
+	}
+}

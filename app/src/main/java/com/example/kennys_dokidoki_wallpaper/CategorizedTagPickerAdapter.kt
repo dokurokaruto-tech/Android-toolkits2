@@ -17,11 +17,23 @@ class CategorizedTagPickerAdapter(
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private var items: MutableList<TagListItem> = mutableListOf()
-    
+
+    // three.js セットのようにタグ選択を無効化する時に立てる。
+    private var locked = false
+
     companion object {
         private const val TYPE_HEADER = 0
         private const val TYPE_TAG = 1
         private const val PREFS_NAME = "tag_display_settings"
+        private const val LOCKED_ALPHA = 0.35f
+    }
+
+    fun setLocked(value: Boolean) {
+        if (locked == value) {
+            return
+        }
+        locked = value
+        notifyDataSetChanged()
     }
 
     private fun isAlphabetical(context: Context, categoryName: String): Boolean {
@@ -35,6 +47,7 @@ class CategorizedTagPickerAdapter(
     }
 
     fun isDraggable(position: Int): Boolean {
+        if (locked) return false
         if (position !in items.indices) return false
         val item = items[position]
         if (item is TagListItem.Header) return false
@@ -177,19 +190,25 @@ class CategorizedTagPickerAdapter(
                 holder.btnSortMode.setImageResource(android.R.drawable.ic_menu_sort_by_size)
                 holder.btnSortMode.alpha = 0.4f
             }
+            holder.btnSortMode.isEnabled = !locked
+            if (locked) holder.btnSortMode.alpha = LOCKED_ALPHA
 
             holder.btnSortMode.setOnClickListener {
+                if (locked) return@setOnClickListener
                 setAlphabetical(context, item.name, !isAlpha)
                 refreshItems(context)
             }
 
         } else if (holder is TagViewHolder && item is TagListItem.TagItem) {
             holder.textView.text = item.name
-            
+
             val isSelected = selectedTags.contains(item.name)
             updateStyle(holder.textView, isSelected)
-            
+            holder.textView.isEnabled = !locked
+            holder.textView.alpha = if (locked) LOCKED_ALPHA else 1f
+
             holder.textView.setOnClickListener {
+                if (locked) return@setOnClickListener
                 val currentlySelected = selectedTags.contains(item.name)
                 val newSelected = !currentlySelected
                 if (newSelected) selectedTags.add(item.name) else selectedTags.remove(item.name)
