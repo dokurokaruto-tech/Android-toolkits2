@@ -17,11 +17,22 @@ class CategorizedTagPickerAdapter(
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private var items: MutableList<TagListItem> = mutableListOf()
+    private var selectionState: TagSelectionState = TagSelectionState.ENABLED
     
     companion object {
         private const val TYPE_HEADER = 0
         private const val TYPE_TAG = 1
         private const val PREFS_NAME = "tag_display_settings"
+        private const val LOCKED_ALPHA = 0.36f
+        private const val ENABLED_ALPHA = 1.0f
+    }
+
+    fun updateSelectionState(state: TagSelectionState) {
+        if (selectionState == state) {
+            return
+        }
+        selectionState = state
+        notifyDataSetChanged()
     }
 
     private fun isAlphabetical(context: Context, categoryName: String): Boolean {
@@ -35,6 +46,9 @@ class CategorizedTagPickerAdapter(
     }
 
     fun isDraggable(position: Int): Boolean {
+        if (selectionState == TagSelectionState.LOCKED) {
+            return false
+        }
         if (position !in items.indices) return false
         val item = items[position]
         if (item is TagListItem.Header) return false
@@ -166,6 +180,13 @@ class CategorizedTagPickerAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val item = items[position]
         val context = holder.itemView.context
+        val locked = selectionState == TagSelectionState.LOCKED
+        holder.itemView.alpha = if (locked) {
+            LOCKED_ALPHA
+        } else {
+            ENABLED_ALPHA
+        }
+
         if (holder is HeaderViewHolder && item is TagListItem.Header) {
             holder.categoryName.text = item.name
             
@@ -178,9 +199,14 @@ class CategorizedTagPickerAdapter(
                 holder.btnSortMode.alpha = 0.4f
             }
 
-            holder.btnSortMode.setOnClickListener {
-                setAlphabetical(context, item.name, !isAlpha)
-                refreshItems(context)
+            holder.btnSortMode.isEnabled = !locked
+            if (locked) {
+                holder.btnSortMode.setOnClickListener(null)
+            } else {
+                holder.btnSortMode.setOnClickListener {
+                    setAlphabetical(context, item.name, !isAlpha)
+                    refreshItems(context)
+                }
             }
 
         } else if (holder is TagViewHolder && item is TagListItem.TagItem) {
@@ -188,6 +214,11 @@ class CategorizedTagPickerAdapter(
             
             val isSelected = selectedTags.contains(item.name)
             updateStyle(holder.textView, isSelected)
+            holder.textView.isEnabled = !locked
+            if (locked) {
+                holder.textView.setOnClickListener(null)
+                return
+            }
             
             holder.textView.setOnClickListener {
                 val currentlySelected = selectedTags.contains(item.name)

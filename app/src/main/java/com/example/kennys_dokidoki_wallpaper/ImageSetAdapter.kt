@@ -51,43 +51,55 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
             ImageSetUsage.BOTH -> " [両方]"
         }
         holder.name.text = "${set.name}$usageDesc"
-        val matchDesc = if (set.matchMode == MatchMode.ALL) "[完全一致]" else "[部分一致]"
-        val tagsText = if (set.targetTags.isEmpty()) {
-            context.getString(R.string.tags_not_set)
-        } else {
-            set.targetTags.joinToString(", ")
-        }
-        
-        holder.count.text = context.getString(
-            R.string.album_info_format,
-            filteredEntries.size,
-            matchDesc,
-            tagsText
-        )
-        
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val lastIndex = prefs.getInt("last_index_for_album_${set.name}", 0)
-        
-        val displayEntries = activeEntries.ifEmpty { filteredEntries }
-        
-        if (displayEntries.isNotEmpty()) {
-            val safeIndex = lastIndex.coerceIn(0, displayEntries.size - 1)
-            val selectedEntry = displayEntries[safeIndex]
-            val imageToLoad = selectedEntry.thumbnailUri ?: selectedEntry.uri
-            
-            holder.thumbnail.loadThumb(
-                imageToLoad,
-                ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
-                ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT,
-                ImageStoragePolicy.glideDiskCache(imageToLoad, DiskCacheStrategy.RESOURCE)
-            )
-            ImageMemoryGovernor.onGridBind(holder.thumbnail.context)
-                
-            holder.iconCropped.visibility = if (selectedEntry.cropRect != null || selectedEntry.croppedUri != null) View.VISIBLE else View.GONE
-        } else {
-            holder.thumbnail.setImageResource(android.R.drawable.ic_menu_gallery)
-            holder.thumbnail.scaleType = ImageView.ScaleType.FIT_CENTER
+        val density = holder.itemView.context.resources.displayMetrics.density
+
+        if (set.sourceKind == WallpaperSourceKind.THREE_JS) {
+            holder.count.text = "${ThreeJsCatalog.BUILT_IN_WORKS.size}作品 [three.js]\n(内蔵コレクション)"
+            Glide.with(holder.thumbnail.context).clear(holder.thumbnail)
+            holder.thumbnail.setBackgroundColor(0xFF141824.toInt())
+            holder.thumbnail.scaleType = ImageView.ScaleType.CENTER_INSIDE
+            holder.thumbnail.setImageResource(R.drawable.ic_three_js_cube)
             holder.iconCropped.visibility = View.GONE
+        } else {
+            val matchDesc = if (set.matchMode == MatchMode.ALL) "[完全一致]" else "[部分一致]"
+            val tagsText = if (set.targetTags.isEmpty()) {
+                context.getString(R.string.tags_not_set)
+            } else {
+                set.targetTags.joinToString(", ")
+            }
+
+            holder.count.text = context.getString(
+                R.string.album_info_format,
+                filteredEntries.size,
+                matchDesc,
+                tagsText
+            )
+
+            val lastIndex = prefs.getInt("last_index_for_album_${set.name}", 0)
+            val displayEntries = activeEntries.ifEmpty { filteredEntries }
+
+            holder.thumbnail.setBackgroundColor(0)
+            if (displayEntries.isNotEmpty()) {
+                val safeIndex = lastIndex.coerceIn(0, displayEntries.size - 1)
+                val selectedEntry = displayEntries[safeIndex]
+                val imageToLoad = selectedEntry.thumbnailUri ?: selectedEntry.uri
+                holder.thumbnail.scaleType = ImageView.ScaleType.CENTER_CROP
+
+                holder.thumbnail.loadThumb(
+                    imageToLoad,
+                    ImageMemoryPressurePolicy.GRID_THUMB_WIDTH,
+                    ImageMemoryPressurePolicy.GRID_THUMB_HEIGHT,
+                    ImageStoragePolicy.glideDiskCache(imageToLoad, DiskCacheStrategy.RESOURCE)
+                )
+                ImageMemoryGovernor.onGridBind(holder.thumbnail.context)
+
+                holder.iconCropped.visibility = if (selectedEntry.cropRect != null || selectedEntry.croppedUri != null) View.VISIBLE else View.GONE
+            } else {
+                holder.thumbnail.setImageResource(android.R.drawable.ic_menu_gallery)
+                holder.thumbnail.scaleType = ImageView.ScaleType.FIT_CENTER
+                holder.iconCropped.visibility = View.GONE
+            }
         }
 
         // アクティブな適用バッジの表示切り替え
@@ -106,7 +118,6 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
         val isHomeActive = canShowHomescreenBadge && set.name == activeAlbumHomescreen
         val isChatActive = canShowChatBadge && set.name == activeAlbumChat
         val cardView = holder.card as? com.google.android.material.card.MaterialCardView
-        val density = holder.itemView.context.resources.displayMetrics.density
         if (cardView != null) {
             when {
                 isHomeActive -> {
@@ -140,6 +151,14 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
         }
         
         holder.card.setOnClickListener {
+            if (set.sourceKind == WallpaperSourceKind.THREE_JS) {
+                val intent = Intent(it.context, ImageTagEditorActivity::class.java).apply {
+                    putExtra("SET_NAME", set.name)
+                    putExtra("CREATE_NEW_SET", false)
+                }
+                it.context.startActivity(intent)
+                return@setOnClickListener
+            }
             val intent = Intent(it.context, AlbumDetailActivity::class.java).apply {
                 putExtra("ALBUM_NAME", set.name)
             }
@@ -147,14 +166,26 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
         }
 
         holder.btnSetWallpaper.setOnClickListener {
-            if (filteredEntries.isEmpty()) {
+            val isThreeJs = set.sourceKind == WallpaperSourceKind.THREE_JS
+            if (!isThreeJs && filteredEntries.isEmpty()) {
                 Toast.makeText(it.context, "条件に合う画像がないよ！タグを見直しなよｗ", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            val currentLastIndex = prefs.getInt("last_index_for_album_${set.name}", 0)
-            val targetEntries = activeEntries.ifEmpty { filteredEntries }
-            val safeIndex = currentLastIndex.coerceIn(0, targetEntries.size - 1)
+            val safeIndex = if (isThreeJs) {
+                0
+            } else {
+                val currentLastIndex = prefs.getInt("last_index_for_album_${set.name}", 0)
+                val targetEntries = activeEntries.ifEmpty { filteredEntries }
+                currentLastIndex.coerceIn(0, targetEntries.size - 1)
+            }
+
+            val nextThreeWork = if (isThreeJs) {
+                val prevId = prefs.getString(ThreeJsPolicy.prefKeyForAlbum(set.name), null)
+                ThreeJsPolicy.pickNextRandomWork(ThreeJsCatalog.BUILT_IN_WORKS, prevId)
+            } else {
+                null
+            }
 
             set.isActive = true
             holder.activeIcon.setImageResource(R.drawable.ic_cyber_check)
@@ -163,6 +194,9 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
 
             val usageType = set.usage
             prefs.edit().apply {
+                if (nextThreeWork != null) {
+                    putString(ThreeJsPolicy.prefKeyForAlbum(set.name), nextThreeWork.id)
+                }
                 when (usageType) {
                     ImageSetUsage.HOMESCREEN -> {
                         putString("active_album_name_homescreen", set.name)
@@ -183,6 +217,10 @@ class ImageSetAdapter(private val sets: MutableList<ImageSet>) :
                 }
                 apply()
             }
+            val changedIntent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED").apply {
+                setPackage(it.context.packageName)
+            }
+            it.context.sendBroadcast(changedIntent)
             notifyDataSetChanged()
 
             // どのusageTypeであっても、真ん中の再生ボタンを押したら絶対に『set wallpaper』の画面が出るようにする

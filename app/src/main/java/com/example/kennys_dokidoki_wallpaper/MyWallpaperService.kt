@@ -87,6 +87,8 @@ class MyWallpaperService : WallpaperService() {
         private var previousBitmap: Bitmap? = null
         private var currentEntry: ImageEntry? = null
         private var previousEntry: ImageEntry? = null
+        private var activeSourceKind: WallpaperSourceKind = WallpaperSourceKind.IMAGES
+        private var threeJsDriver: ThreeJsWallpaperDriver? = null
         
         private var imageEntries = mutableListOf<ImageEntry>()
         private var currentImageIndex = 0
@@ -162,19 +164,7 @@ class MyWallpaperService : WallpaperService() {
                                 needsReload = true
                                 return@post
                             }
-                            if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
-                                currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
-                                val entry = imageEntries[currentImageIndex]
-                                // URIが違うか、今のビットマップが空っぽなら読み込み開始よ！
-                                if (entry.uri != currentEntry?.uri || currentBitmap == null) {
-                                    loadAndSetCurrentBitmap(entry) { draw() }
-                                } else {
-                                    // URIが同じでも、クロップ範囲などが変わっている可能性があるから
-                                    // エントリーを最新のものに差し替えて再描画するわよ！
-                                    currentEntry = entry
-                                    draw()
-                                }
-                            }
+                            syncActiveWallpaper(SyncTransition.IMMEDIATE)
                             showSetNameText()
                         }
                     }
@@ -225,27 +215,12 @@ class MyWallpaperService : WallpaperService() {
                         needsReload = true
                         return@post
                     }
-                    if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
-                        currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
-                        val entry = imageEntries[currentImageIndex]
-                        // 設定が変わっても、画像が違うか空っぽの時だけロードするわ
-                        if (entry.uri != currentEntry?.uri || currentBitmap == null) {
-                            if (key == "is_chat_active" && currentBitmap != null) {
-                                prepareCrossfade(entry) { nextBitmap ->
-                                    previousBitmap = currentBitmap; previousEntry = currentEntry
-                                    currentBitmap = nextBitmap; currentEntry = entry
-                                    startAnimator()
-                                }
-                            } else {
-                                loadAndSetCurrentBitmap(entry) { draw() }
-                            }
-                        } else {
-                            // URIが同じでも、クロップ範囲などが変わっている可能性があるから
-                            // エントリーを最新のものに差し替えて再描画するわよ！
-                            currentEntry = entry
-                            draw()
-                        }
+                    val transition = if (key == "is_chat_active") {
+                        SyncTransition.CROSSFADE
+                    } else {
+                        SyncTransition.IMMEDIATE
                     }
+                    syncActiveWallpaper(transition)
                     showSetNameText()
                 }
             }
@@ -601,6 +576,9 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun startCropImage() {
+            if (activeSourceKind != WallpaperSourceKind.IMAGES) {
+                return
+            }
             if (imageEntries.isEmpty() || currentImageIndex !in imageEntries.indices) return
             val entry = imageEntries[currentImageIndex]
             val intent = Intent(applicationContext, CropHandlerActivity::class.java).apply {
@@ -612,6 +590,9 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun startEditTags() {
+            if (activeSourceKind != WallpaperSourceKind.IMAGES) {
+                return
+            }
             if (imageEntries.isEmpty() || currentImageIndex !in imageEntries.indices) return
             val entry = imageEntries[currentImageIndex]
             val intent = Intent(applicationContext, ImageTagEditorActivity::class.java).apply {
@@ -787,6 +768,12 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun startCrossfadeToNextImage() {
+            val activeSet = resolveActiveSet()
+            if (activeSet != null && activeSet.sourceKind == WallpaperSourceKind.THREE_JS) {
+                advanceRandomThreeJsWork(activeSet)
+                return
+            }
+
             if (isAnimating || isLoading) return
             if (!loadActiveAlbumAndIndex() || imageEntries.isEmpty()) return
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -814,52 +801,26 @@ class MyWallpaperService : WallpaperService() {
             if (activeSets.isEmpty()) return
             val currentIndex = activeSets.indexOfFirst { it.name == currentSetName }
             val nextSet = if (currentIndex == -1 || currentIndex == activeSets.size - 1) activeSets[0] else activeSets[currentIndex + 1]
-            val newEntries = nextSet.filterImages(DataManager.allImages).filter { it.isActive }
-            if (newEntries.isEmpty()) return
-            val lastIndexForNextSet = settingsPrefs.getInt("last_index_for_album_${nextSet.name}", 0)
-            val nextImageIndex = lastIndexForNextSet.coerceIn(0, newEntries.size - 1)
-            val nextEntry = newEntries[nextImageIndex]
-            prepareCrossfade(nextEntry) { nextBitmap ->
-                val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
-                intent.setPackage(applicationContext.packageName)
-                val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
-                val keyToSave = if (isChatActive) "active_album_name_chat" else "active_album_name_homescreen"
-                settingsPrefs.edit().putString(keyToSave, nextSet.name).putInt("active_image_index", nextImageIndex).putInt("last_index_for_album_${nextSet.name}", nextImageIndex).apply()
-                applicationContext.sendBroadcast(intent)
-                previousBitmap = currentBitmap; previousEntry = currentEntry
-                imageEntries = newEntries.toMutableList(); currentImageIndex = nextImageIndex; currentEntry = nextEntry; currentBitmap = nextBitmap
-                startAnimator()
-            }
+            switchToTargetSet(nextSet)
         }
 
         private fun startCrossfadeToSpecificAlbum(setName: String) {
             if (isAnimating || isLoading) return
             DataManager.loadData(this@MyWallpaperService)
             val set = DataManager.imageSetList.find { it.name == setName } ?: return
-            val newEntries = set.filterImages(DataManager.allImages).filter { it.isActive }
-            if (newEntries.isEmpty()) return
-            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            val lastIndex = settingsPrefs.getInt("last_index_for_album_$setName", 0)
-            val nextImageIndex = lastIndex.coerceIn(0, newEntries.size - 1)
-            val nextEntry = newEntries[nextImageIndex]
-            prepareCrossfade(nextEntry) { nextBitmap ->
-                val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
-                intent.setPackage(applicationContext.packageName)
-                val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
-                val keyToSave = if (isChatActive) "active_album_name_chat" else "active_album_name_homescreen"
-                settingsPrefs.edit().putString(keyToSave, set.name).putInt("active_image_index", nextImageIndex).apply()
-                applicationContext.sendBroadcast(intent)
-                previousBitmap = currentBitmap; previousEntry = currentEntry
-                imageEntries = newEntries.toMutableList(); currentImageIndex = nextImageIndex; currentEntry = nextEntry; currentBitmap = nextBitmap
-                startAnimator()
-            }
+            switchToTargetSet(set)
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
             super.onVisibilityChanged(visible)
             engineVisible = visible
             if (visible) {
-                if (needsReload || currentBitmap == null) {
+                val missingFrame = if (activeSourceKind == WallpaperSourceKind.THREE_JS) {
+                    threeJsDriver?.currentFrame() == null
+                } else {
+                    currentBitmap == null
+                }
+                if (needsReload || missingFrame) {
                     reloadCurrent()
                 } else {
                     draw()
@@ -876,6 +837,7 @@ class MyWallpaperService : WallpaperService() {
             textAnimator?.cancel()
             textAnimator = null
             clearToolFinder()
+            threeJsDriver?.stop()
             tapHandler.removeCallbacksAndMessages(null)
             textHandler.removeCallbacksAndMessages(null)
             holdRunnable = null
@@ -899,6 +861,13 @@ class MyWallpaperService : WallpaperService() {
                 needsReload = true
                 return
             }
+            val activeSet = resolveActiveSet()
+            if (activeSet != null && activeSet.sourceKind == WallpaperSourceKind.THREE_JS) {
+                activateThreeJsSet(activeSet)
+                return
+            }
+            threeJsDriver?.stop()
+            activeSourceKind = WallpaperSourceKind.IMAGES
             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                 currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
                 val entry = imageEntries[currentImageIndex]
@@ -909,11 +878,24 @@ class MyWallpaperService : WallpaperService() {
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
+            val activeSet = resolveActiveSet()
+            if (activeSet != null && activeSet.sourceKind == WallpaperSourceKind.THREE_JS) {
+                activateThreeJsSet(activeSet)
+                showSetNameText()
+                return
+            }
             if (loadActiveAlbumAndIndex() && imageEntries.isNotEmpty()) {
                 val entry = imageEntries[currentImageIndex]
                 currentEntry = entry
                 loadAndSetCurrentBitmap(entry) { showSetNameText(); draw() }
             } else draw()
+        }
+
+        override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+            super.onSurfaceChanged(holder, format, width, height)
+            if (engineVisible && activeSourceKind == WallpaperSourceKind.THREE_JS) {
+                threeJsDriver?.onSurfaceResize(width, height)
+            }
         }
 
         private fun draw() {
@@ -923,7 +905,9 @@ class MyWallpaperService : WallpaperService() {
             } catch (e: Exception) { null } ?: return
             try {
                 canvas.drawColor(Color.BLACK)
-                if (isAnimating && previousBitmap != null && currentBitmap != null) {
+                if (activeSourceKind == WallpaperSourceKind.THREE_JS) {
+                    drawThreeJsFrame(canvas)
+                } else if (isAnimating && previousBitmap != null && currentBitmap != null) {
                     val progress = animationProgress.coerceIn(0f, 1f)
                     val prevBitmap = previousBitmap!!; val currBitmap = currentBitmap!!
                     val prevSrc = calculateSrcRect(prevBitmap, previousEntry); val prevDest = Rect(0, 0, canvas.width, canvas.height)
@@ -948,12 +932,17 @@ class MyWallpaperService : WallpaperService() {
                         val totalSets = activeSets.size
                         val setIndex = activeSets.indexOfFirst { it.name == activeSetName } + 1
                         val currentSet = activeSets.find { it.name == activeSetName }
-                        val totalImagesInSet = currentSet?.filterImages(DataManager.allImages)?.filter { it.isActive }?.size ?: 0
+                        val activeImageCount = currentSet?.filterImages(DataManager.allImages)?.filter { it.isActive }?.size ?: 0
+                        val totalItemsInSet = if (currentSet != null) {
+                            ThreeJsPolicy.setItemCount(currentSet.sourceKind, activeImageCount)
+                        } else {
+                            0
+                        }
                         
                         val displayText = String.format(
                             Locale.US,
                             "IMAGE SET [ %02d / %02d ] : %s ( %d )",
-                            setIndex, totalSets, activeSetName.uppercase(Locale.US), totalImagesInSet
+                            setIndex, totalSets, activeSetName.uppercase(Locale.US), totalItemsInSet
                         )
 
                         textPaint.alpha = (showTextProgress * 255).toInt().coerceIn(0, 255)
@@ -979,7 +968,235 @@ class MyWallpaperService : WallpaperService() {
             if (srcRatio > canvasRatio) { val width = (canvas.height * srcRatio).toInt(); val left = (canvas.width - width) / 2; outRect.set(left, 0, left + width, canvas.height) }
             else { val height = (canvas.width / srcRatio).toInt(); val top = (canvas.height - height) / 2; outRect.set(0, top, canvas.width, top + height) }
         }
+
+        private fun ensureThreeJsDriver(): ThreeJsWallpaperDriver {
+            val existing = threeJsDriver
+            if (existing != null) {
+                return existing
+            }
+            val created = ThreeJsWallpaperDriver(applicationContext) { draw() }
+            threeJsDriver = created
+            return created
+        }
+
+        private fun resolveActiveSet(): ImageSet? {
+            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val activeSetName = getActiveSetName(settingsPrefs) ?: return null
+            DataManager.loadData(this@MyWallpaperService)
+            return DataManager.imageSetList.find { it.name == activeSetName }
+        }
+
+        private fun surfaceDimensions(): Pair<Int, Int> {
+            val frame = surfaceHolder.surfaceFrame
+            val metrics = applicationContext.resources.displayMetrics
+            val width = frame.width().takeIf { it > 0 } ?: metrics.widthPixels
+            val height = frame.height().takeIf { it > 0 } ?: metrics.heightPixels
+            return width to height
+        }
+
+        private fun activateThreeJsSet(set: ImageSet) {
+            animator?.cancel()
+            isAnimating = false
+            previousBitmap = null
+            previousEntry = null
+            currentBitmap = null
+            currentEntry = null
+            activeSourceKind = WallpaperSourceKind.THREE_JS
+
+            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val prefKey = ThreeJsPolicy.prefKeyForAlbum(set.name)
+            val storedId = settingsPrefs.getString(prefKey, null)
+            val work = ThreeJsCatalog.findById(storedId)
+                ?: ThreeJsPolicy.pickNextRandomWork(ThreeJsCatalog.BUILT_IN_WORKS, null)
+                ?: return
+
+            if (storedId != work.id) {
+                settingsPrefs.edit().putString(prefKey, work.id).apply()
+            }
+
+            val (width, height) = surfaceDimensions()
+            ensureThreeJsDriver().showWork(work.id, width, height)
+            draw()
+        }
+
+        private fun advanceRandomThreeJsWork(set: ImageSet) {
+            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val prefKey = ThreeJsPolicy.prefKeyForAlbum(set.name)
+            val currentId = threeJsDriver?.currentWorkId()
+                ?: settingsPrefs.getString(prefKey, null)
+            val nextWork = ThreeJsPolicy.pickNextRandomWork(
+                ThreeJsCatalog.BUILT_IN_WORKS,
+                currentId
+            ) ?: return
+
+            activeSourceKind = WallpaperSourceKind.THREE_JS
+            settingsPrefs.edit().putString(prefKey, nextWork.id).apply()
+            val (width, height) = surfaceDimensions()
+            ensureThreeJsDriver().showWork(nextWork.id, width, height)
+            showSetNameText()
+        }
+
+        private fun syncActiveWallpaper(transition: SyncTransition) {
+            val activeSet = resolveActiveSet()
+            if (activeSet != null && activeSet.sourceKind == WallpaperSourceKind.THREE_JS) {
+                activateThreeJsSet(activeSet)
+                return
+            }
+
+            val outgoingThreeFrame = if (activeSourceKind == WallpaperSourceKind.THREE_JS) {
+                snapshotFrameForCrossfade(threeJsDriver?.currentFrame())
+            } else {
+                null
+            }
+            threeJsDriver?.stop()
+            activeSourceKind = WallpaperSourceKind.IMAGES
+
+            if (!loadActiveAlbumAndIndex() || imageEntries.isEmpty()) {
+                draw()
+                return
+            }
+
+            currentImageIndex = currentImageIndex.coerceIn(0, imageEntries.size - 1)
+            val entry = imageEntries[currentImageIndex]
+            val baseline = outgoingThreeFrame ?: currentBitmap
+
+            if (entry.uri != currentEntry?.uri || currentBitmap == null) {
+                if (transition == SyncTransition.CROSSFADE && baseline != null) {
+                    prepareCrossfade(entry) { nextBitmap ->
+                        previousBitmap = baseline
+                        previousEntry = if (outgoingThreeFrame != null) {
+                            null
+                        } else {
+                            currentEntry
+                        }
+                        currentBitmap = nextBitmap
+                        currentEntry = entry
+                        startAnimator()
+                    }
+                } else {
+                    loadAndSetCurrentBitmap(entry) { draw() }
+                }
+            } else {
+                currentEntry = entry
+                draw()
+            }
+        }
+
+        private fun switchToTargetSet(targetSet: ImageSet) {
+            val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val isChatActive = settingsPrefs.getBoolean("is_chat_active", false)
+            val keyToSave = if (isChatActive) {
+                "active_album_name_chat"
+            } else {
+                "active_album_name_homescreen"
+            }
+
+            if (targetSet.sourceKind == WallpaperSourceKind.THREE_JS) {
+                val prefKey = ThreeJsPolicy.prefKeyForAlbum(targetSet.name)
+                val prevId = settingsPrefs.getString(prefKey, null)
+                val chosen = ThreeJsCatalog.findById(prevId)
+                    ?: ThreeJsPolicy.pickNextRandomWork(ThreeJsCatalog.BUILT_IN_WORKS, null)
+                    ?: return
+
+                settingsPrefs.edit()
+                    .putString(keyToSave, targetSet.name)
+                    .putString(prefKey, chosen.id)
+                    .apply()
+
+                val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED").apply {
+                    setPackage(applicationContext.packageName)
+                }
+                applicationContext.sendBroadcast(intent)
+                activateThreeJsSet(targetSet)
+                showSetNameText()
+                return
+            }
+
+            val newEntries = targetSet.filterImages(DataManager.allImages).filter { it.isActive }
+            if (newEntries.isEmpty()) {
+                return
+            }
+
+            val lastIndex = settingsPrefs.getInt("last_index_for_album_${targetSet.name}", 0)
+            val nextImageIndex = lastIndex.coerceIn(0, newEntries.size - 1)
+            val nextEntry = newEntries[nextImageIndex]
+            val outgoingThreeFrame = if (activeSourceKind == WallpaperSourceKind.THREE_JS) {
+                snapshotFrameForCrossfade(threeJsDriver?.currentFrame())
+            } else {
+                null
+            }
+
+            prepareCrossfade(nextEntry) { nextBitmap ->
+                threeJsDriver?.stop()
+                activeSourceKind = WallpaperSourceKind.IMAGES
+
+                val intent = Intent("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED").apply {
+                    setPackage(applicationContext.packageName)
+                }
+                settingsPrefs.edit()
+                    .putString(keyToSave, targetSet.name)
+                    .putInt("active_image_index", nextImageIndex)
+                    .putInt("last_index_for_album_${targetSet.name}", nextImageIndex)
+                    .apply()
+                applicationContext.sendBroadcast(intent)
+
+                previousBitmap = outgoingThreeFrame ?: currentBitmap
+                previousEntry = if (outgoingThreeFrame != null) {
+                    null
+                } else {
+                    currentEntry
+                }
+                imageEntries = newEntries.toMutableList()
+                currentImageIndex = nextImageIndex
+                currentEntry = nextEntry
+                currentBitmap = nextBitmap
+                startAnimator()
+            }
+        }
+
+        private fun snapshotFrameForCrossfade(frame: Bitmap?): Bitmap? {
+            if (frame == null || frame.isRecycled) {
+                return null
+            }
+            return try {
+                frame.copy(frame.config ?: Bitmap.Config.ARGB_8888, false)
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
+        private fun drawThreeJsFrame(canvas: Canvas) {
+            val frame = threeJsDriver?.currentFrame() ?: return
+            if (frame.isRecycled) {
+                return
+            }
+
+            val drawableFrame = if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                frame.config == Bitmap.Config.HARDWARE &&
+                !canvas.isHardwareAccelerated
+            ) {
+                try {
+                    frame.copy(Bitmap.Config.ARGB_8888, false)
+                } catch (_: Throwable) {
+                    null
+                }
+            } else {
+                frame
+            } ?: return
+
+            val src = Rect(0, 0, drawableFrame.width, drawableFrame.height)
+            val dest = Rect(0, 0, canvas.width, canvas.height)
+            calculateDestRect(src, canvas, dest)
+            currPaint.alpha = 255
+            canvas.drawBitmap(drawableFrame, src, dest, currPaint)
+        }
     }
+}
+
+private enum class SyncTransition {
+    IMMEDIATE,
+    CROSSFADE
 }
 
 private enum class ToolFinderTarget {
