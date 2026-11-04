@@ -27,6 +27,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -42,11 +43,15 @@ import java.io.ByteArrayInputStream
  *        v
  *   ThreeJsPresentation ---> VirtualDisplay ---> ImageReader ---> Bitmap frame
  *
- * Lifecycle note:
- * Creating a VirtualDisplay or calling Presentation.show() while Android's
- * Recents gesture animation is in-flight disrupts WindowManager / Quickstep.
- * Therefore pause() stops WebGL rAF, pauses WebView, and drops frame buffers
- * while keeping the private VirtualDisplay + Presentation parked until stop().
+ * Lifecycle invariants:
+ * 1. Never create/destroy VirtualDisplay or Presentation during pause()/resume,
+ *    because doing so mid-Recents-gesture stalls WindowManager / Quickstep.
+ * 2. Never call WebView.onPause() or detach ImageReader's listener during pause():
+ *    - WebView.onPause() tears down Chromium's Viz output surface on Presentation.
+ *    - Detaching ImageReader's listener lets in-flight GPU frames fill all 4
+ *      BufferQueue slots, deadlocking producer/consumer on resume.
+ *    Instead, pause() stops the JS rAF/timer loop (0 FPS) while consumeFrame()
+ *    drains any trailing in-flight frames so BufferQueue stays empty.
  */
 class ThreeJsWallpaperDriver(
     private val appContext: Context,
@@ -60,10 +65,12 @@ class ThreeJsWallpaperDriver(
         private const val UTF8 = "UTF-8"
         private const val BLANK_URL = "about:blank"
         private const val MAX_QUEUE_IMAGES = 4
+        private const val MAX_DRAIN_ITERATIONS = 8
         private const val PIXEL_BYTES_RGBA = 4
         private const val HTTP_NOT_FOUND = 404
-        private const val COLD_START_SETTLE_MS = 360L
+        private const val COLD_START_SETTLE_MS = 320L
         private const val RESIZE_DEBOUNCE_MS = 450L
+        private const val FRAME_WATCHDOG_MS = 900L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -90,6 +97,7 @@ class ThreeJsWallpaperDriver(
 
     private var coldBuildRunnable: Runnable? = null
     private var resizeRunnable: Runnable? = null
+    private var watchdogRunnable: Runnable? = null
 
     fun currentFrame(): Bitmap? {
         return latestFrame
@@ -127,13 +135,12 @@ class ThreeJsWallpaperDriver(
         }
     }
 
-    // Freeze WebGL and release frame RAM while keeping the VirtualDisplay parked.
+    // Stop JS rendering and drop frame RAM while keeping ImageReader draining and WebView warm.
     fun pause() {
         active = false
         cancelPendingCallbacks()
 
         imageReader?.let { reader ->
-            reader.setOnImageAvailableListener(null, null)
             drainImageReader(reader)
         }
         releaseFrameBuffers()
@@ -144,9 +151,8 @@ class ThreeJsWallpaperDriver(
                     "window.ThreeWallpaperPlayer && window.ThreeWallpaperPlayer.pause();",
                     null
                 )
-                view.onPause()
             } catch (t: Throwable) {
-                Log.w(TAG, "WebView pause failed", t)
+                Log.w(TAG, "JS pause evaluation failed", t)
             }
         }
     }
@@ -218,6 +224,7 @@ class ThreeJsWallpaperDriver(
         coldBuildRunnable = null
         resizeRunnable?.let { mainHandler.removeCallbacks(it) }
         resizeRunnable = null
+        disarmFrameWatchdog()
     }
 
     private fun scheduleColdBuild(width: Int, height: Int) {
@@ -246,6 +253,31 @@ class ThreeJsWallpaperDriver(
         }
         resizeRunnable = task
         mainHandler.postDelayed(task, RESIZE_DEBOUNCE_MS)
+    }
+
+    private fun armFrameWatchdog() {
+        disarmFrameWatchdog()
+        val task = Runnable {
+            watchdogRunnable = null
+            if (!active || latestFrame != null) {
+                return@Runnable
+            }
+            val workId = activeWorkId ?: return@Runnable
+            val width = renderWidth.takeIf { it > 0 } ?: return@Runnable
+            val height = renderHeight.takeIf { it > 0 } ?: return@Runnable
+            Log.w(TAG, "No frame received after resume; rebuilding Three.js pipeline")
+            stop()
+            activeWorkId = workId
+            active = true
+            buildPipeline(width, height)
+        }
+        watchdogRunnable = task
+        mainHandler.postDelayed(task, FRAME_WATCHDOG_MS)
+    }
+
+    private fun disarmFrameWatchdog() {
+        watchdogRunnable?.let { mainHandler.removeCallbacks(it) }
+        watchdogRunnable = null
     }
 
     private fun buildPipeline(width: Int, height: Int) {
@@ -337,17 +369,22 @@ class ThreeJsWallpaperDriver(
     }
 
     private fun resumeExistingPipeline(workId: String) {
-        imageReader?.setOnImageAvailableListener({ r -> consumeFrame(r) }, mainHandler)
+        imageReader?.let { reader ->
+            drainImageReader(reader)
+            reader.setOnImageAvailableListener({ r -> consumeFrame(r) }, mainHandler)
+        }
         webView?.let { view ->
             try {
                 view.onResume()
+                view.invalidate()
             } catch (t: Throwable) {
-                Log.w(TAG, "WebView resume failed", t)
+                Log.w(TAG, "WebView invalidate failed", t)
             }
         }
         if (pageReady) {
             dispatchWorkToJs(workId)
         }
+        armFrameWatchdog()
     }
 
     private fun resizePipelineInPlace(width: Int, height: Int) {
@@ -357,6 +394,7 @@ class ThreeJsWallpaperDriver(
         }
 
         val newReader = createImageReader(width, height) ?: return
+        newReader.setOnImageAvailableListener({ r -> consumeFrame(r) }, mainHandler)
         val oldReader = imageReader
         oldReader?.setOnImageAvailableListener(null, null)
 
@@ -365,13 +403,12 @@ class ThreeJsWallpaperDriver(
             vd.setSurface(newReader.surface)
         } catch (t: Throwable) {
             Log.w(TAG, "VirtualDisplay in-place resize failed", t)
+            newReader.setOnImageAvailableListener(null, null)
             try {
                 newReader.close()
             } catch (_: Throwable) {
             }
-            if (active && oldReader != null) {
-                oldReader.setOnImageAvailableListener({ r -> consumeFrame(r) }, mainHandler)
-            }
+            oldReader?.setOnImageAvailableListener({ r -> consumeFrame(r) }, mainHandler)
             return
         }
 
@@ -388,7 +425,7 @@ class ThreeJsWallpaperDriver(
         renderWidth = width
         renderHeight = height
         if (active) {
-            newReader.setOnImageAvailableListener({ r -> consumeFrame(r) }, mainHandler)
+            webView?.invalidate()
             webView?.evaluateJavascript(
                 "window.ThreeWallpaperPlayer && window.ThreeWallpaperPlayer.resize();",
                 null
@@ -397,12 +434,16 @@ class ThreeJsWallpaperDriver(
     }
 
     private fun drainImageReader(reader: ImageReader) {
-        val stale = try {
-            reader.acquireLatestImage()
-        } catch (_: Throwable) {
-            null
+        var count = 0
+        while (count < MAX_DRAIN_ITERATIONS) {
+            val next = try {
+                reader.acquireNextImage()
+            } catch (_: Throwable) {
+                null
+            } ?: break
+            closeQuietly(next)
+            count++
         }
-        closeQuietly(stale)
     }
 
     private fun releaseFrameBuffers() {
@@ -450,6 +491,8 @@ class ThreeJsWallpaperDriver(
         } catch (_: Throwable) {
             null
         } ?: return
+
+        disarmFrameWatchdog()
 
         val hwBitmap = wrapHardwareBitmap(image)
         if (hwBitmap != null) {
@@ -561,6 +604,19 @@ class ThreeJsWallpaperDriver(
         }
         val workId = activeWorkId ?: return
         dispatchWorkToJs(workId)
+    }
+
+    private fun handleRendererGone() {
+        val resumeWork = activeWorkId
+        val wasActive = active
+        val width = renderWidth
+        val height = renderHeight
+        stop()
+        if (wasActive && resumeWork != null && width > 0 && height > 0) {
+            activeWorkId = resumeWork
+            active = true
+            scheduleColdBuild(width, height)
+        }
     }
 
     private fun dispatchWorkToJs(workId: String) {
@@ -697,16 +753,20 @@ class ThreeJsWallpaperDriver(
                         super.onPageFinished(view, url)
                         onJsPlayerReady()
                     }
+
+                    override fun onRenderProcessGone(
+                        view: WebView?,
+                        detail: RenderProcessGoneDetail?
+                    ): Boolean {
+                        mainHandler.post { handleRendererGone() }
+                        return true
+                    }
                 }
             }
 
             setContentView(view)
             webView = view
-            if (active) {
-                view.onResume()
-            } else {
-                view.onPause()
-            }
+            view.onResume()
             view.loadUrl(ThreeJsCatalog.PLAYER_URL)
         }
     }

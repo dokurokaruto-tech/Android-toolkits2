@@ -6,6 +6,7 @@
   var DEFAULT_FOV = 50;
   var MAX_PIXEL_RATIO = 2;
   var MAX_FRAME_DELTA_MS = 100;
+  var FALLBACK_TICK_MS = 66;
 
   var SCRIPT_ARG_NAMES =
     "player,renderer,scene,camera," +
@@ -43,6 +44,7 @@
   var elapsedMs = 0;
   var loadToken = 0;
   var rafId = null;
+  var fallbackTimerId = null;
   var activeWorkId = null;
 
   function createEmptyEvents() {
@@ -70,6 +72,51 @@
     var scaledRad = Math.atan((Math.tan(halfRad) * PORTRAIT_REF_ASPECT) / aspect);
     var adjusted = THREE.MathUtils.radToDeg(scaledRad * 2);
     return Math.min(adjusted, Math.max(rawFov, MAX_PORTRAIT_FOV));
+  }
+
+  function createRenderer() {
+    if (renderer && renderer.domElement && renderer.domElement.parentNode) {
+      renderer.domElement.parentNode.removeChild(renderer.domElement);
+    }
+    if (renderer && typeof renderer.dispose === "function") {
+      try {
+        renderer.dispose();
+      } catch (_err) {
+      }
+    }
+
+    renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance"
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.domElement.addEventListener(
+      "webglcontextlost",
+      function (event) {
+        if (event && typeof event.preventDefault === "function") {
+          event.preventDefault();
+        }
+        pauseActiveWork();
+      },
+      false
+    );
+    document.body.appendChild(renderer.domElement);
+    applyViewportSize();
+  }
+
+  function isGlContextHealthy() {
+    if (!renderer || typeof renderer.getContext !== "function") {
+      return false;
+    }
+    var gl = renderer.getContext();
+    if (!gl) {
+      return false;
+    }
+    if (typeof gl.isContextLost === "function" && gl.isContextLost()) {
+      return false;
+    }
+    return true;
   }
 
   function resetRendererState() {
@@ -272,6 +319,26 @@
     }
   }
 
+  function clearLoopHandles() {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    if (fallbackTimerId !== null) {
+      clearTimeout(fallbackTimerId);
+      fallbackTimerId = null;
+    }
+  }
+
+  function scheduleNextTick() {
+    clearLoopHandles();
+    if (!isRunning) {
+      return;
+    }
+    rafId = requestAnimationFrame(onAnimationTick);
+    fallbackTimerId = setTimeout(onFallbackTick, FALLBACK_TICK_MS);
+  }
+
   function renderSingleStep(now) {
     if (!renderer || !scene || !camera) {
       return;
@@ -286,21 +353,35 @@
     renderer.render(scene, camera);
   }
 
-  function renderFrame() {
+  function onAnimationTick() {
+    rafId = null;
+    if (fallbackTimerId !== null) {
+      clearTimeout(fallbackTimerId);
+      fallbackTimerId = null;
+    }
     if (!isRunning || !renderer || !scene || !camera) {
       return;
     }
-
-    rafId = requestAnimationFrame(renderFrame);
     renderSingleStep(performance.now());
+    scheduleNextTick();
   }
 
-  function pauseActiveWork() {
+  function onFallbackTick() {
+    fallbackTimerId = null;
     if (rafId !== null) {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
+    if (!isRunning || !renderer || !scene || !camera) {
+      return;
+    }
+    renderSingleStep(performance.now());
+    scheduleNextTick();
+  }
+
+  function pauseActiveWork() {
     isRunning = false;
+    clearLoopHandles();
   }
 
   function resumeActiveWork() {
@@ -308,12 +389,10 @@
       return false;
     }
     applyViewportSize();
+    isRunning = true;
     prevTime = performance.now();
     renderSingleStep(prevTime);
-    if (!isRunning) {
-      isRunning = true;
-      rafId = requestAnimationFrame(renderFrame);
-    }
+    scheduleNextTick();
     return true;
   }
 
@@ -344,7 +423,7 @@
 
     isRunning = true;
     renderSingleStep(prevTime);
-    rafId = requestAnimationFrame(renderFrame);
+    scheduleNextTick();
   }
 
   var playerApi = {
@@ -352,6 +431,10 @@
       var token = ++loadToken;
       activeWorkId = null;
       stopActiveWork();
+
+      if (!isGlContextHealthy()) {
+        createRenderer();
+      }
 
       var json = typeof jsonText === "string" ? JSON.parse(jsonText) : jsonText;
       applyProjectConfig(json.project);
@@ -393,6 +476,10 @@
 
     activateWork: function (workId) {
       var targetId = String(workId || "");
+      if (!isGlContextHealthy()) {
+        activeWorkId = null;
+        createRenderer();
+      }
       if (targetId && targetId === activeWorkId && scene && camera) {
         resumeActiveWork();
         return;
@@ -416,15 +503,7 @@
   };
 
   function initPlayer() {
-    renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      powerPreference: "high-performance"
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
-    renderer.outputEncoding = THREE.sRGBEncoding;
-    document.body.appendChild(renderer.domElement);
-
-    applyViewportSize();
+    createRenderer();
     window.addEventListener("resize", applyViewportSize);
     window.ThreeWallpaperPlayer = playerApi;
 

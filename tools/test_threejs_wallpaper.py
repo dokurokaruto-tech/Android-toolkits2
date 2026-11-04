@@ -214,15 +214,24 @@ const sandbox = {
   AndroidThreeBridge: {
     onPlayerReady() { bridgeReady += 1; }
   },
-  setTimeout,
-  clearTimeout
+  setTimeout(cb) {
+    const id = ++rafSeq;
+    sandbox.fallbackTimers.set(id, cb);
+    return id;
+  },
+  clearTimeout(id) {
+    sandbox.fallbackTimers.delete(id);
+  }
 };
+sandbox.fallbackTimers = new Map();
 sandbox.window = sandbox;
 sandbox.self = sandbox;
 
 vm.createContext(sandbox);
 vm.runInContext(threeCode, sandbox);
 vm.runInContext(playerCode, sandbox);
+
+const hostWait = (ms) => new Promise(r => setTimeout(r, ms));
 
 function stepFrames(count) {
   for (let i = 0; i < count; i++) {
@@ -241,24 +250,31 @@ function stepFrames(count) {
   }
   for (const id of ['32', '36', '38', '32']) {
     sandbox.ThreeWallpaperPlayer.activateWork(id);
-    await new Promise(r => setTimeout(r, 15));
+    await hostWait(15);
     stepFrames(25);
   }
   const fetchesBeforePause = sandbox.fetchCount;
   sandbox.ThreeWallpaperPlayer.pause();
-  if (rafMap.size !== 0) {
-    throw new Error('Expected 0 pending rAF callbacks after pause(), got ' + rafMap.size);
+  if (rafMap.size !== 0 || sandbox.fallbackTimers.size !== 0) {
+    throw new Error('Expected 0 pending callbacks after pause()');
   }
   sandbox.ThreeWallpaperPlayer.activateWork('32');
   if (sandbox.fetchCount !== fetchesBeforePause) {
     throw new Error('Expected resume of same work without re-fetch');
   }
+  // Simulate stalled rAF where fallback timer drives a frame
+  const fallbackEntries = Array.from(sandbox.fallbackTimers.entries());
+  sandbox.fallbackTimers.clear();
+  nowMs += 66;
+  for (const [, fn] of fallbackEntries) {
+    fn();
+  }
   stepFrames(10);
   sandbox.ThreeWallpaperPlayer.resize(720, 1600);
   stepFrames(5);
   sandbox.ThreeWallpaperPlayer.stop();
-  if (rafMap.size !== 0) {
-    throw new Error('Expected 0 pending rAF callbacks after stop(), got ' + rafMap.size);
+  if (rafMap.size !== 0 || sandbox.fallbackTimers.size !== 0) {
+    throw new Error('Expected 0 pending callbacks after stop()');
   }
   if (issues.length > 0) {
     throw new Error(issues.join('\n'));
@@ -340,6 +356,11 @@ class ThreeJsKotlinWiringTest(unittest.TestCase):
         self.assertIn("FLAG_NOT_TOUCHABLE", driver_src)
         self.assertIn("FLAG_ALT_FOCUSABLE_IM", driver_src)
         self.assertIn("vd.resize(width, height", driver_src)
+
+        pause_block = driver_src.split("fun pause()", 1)[1].split("fun stop()", 1)[0]
+        self.assertNotIn("view.onPause()", pause_block)
+        self.assertNotIn("setOnImageAvailableListener(null", pause_block)
+        self.assertIn("drainImageReader(reader)", pause_block)
 
     def test_new_kotlin_files_follow_function_length_and_no_boolean_params(self):
         checked_files = [
