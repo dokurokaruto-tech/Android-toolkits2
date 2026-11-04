@@ -2,10 +2,11 @@ package com.example.kennys_dokidoki_wallpaper
 
 import android.content.Context
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -20,13 +21,14 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatButton
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.google.android.material.button.MaterialButton
 import android.graphics.BitmapFactory
 import android.util.Base64
 import kotlinx.coroutines.CoroutineScope
@@ -65,6 +67,12 @@ class ImageTagEditorActivity : AppCompatActivity() {
         const val ACTIVE_SECTION_ALPHA = 1.0f
         const val THREE_BTN_CORNER_DP = 14
         const val THREE_BTN_STROKE_DP = 2
+        const val THREE_BTN_ICON_DP = 22
+        const val THREE_BTN_ICON_GAP_DP = 10
+        const val THREE_BTN_PAD_H_DP = 14
+        const val THREE_BTN_PAD_V_DP = 11
+        const val THREE_BTN_MARGIN_V_DP = 6
+        const val THREE_BTN_TEXT_SP = 13f
         const val THREE_ON_BG_HEX = "#223C40"
         const val THREE_ON_STROKE_HEX = "#A6F0E4"
         const val THREE_OFF_BG_HEX = "#25232A"
@@ -149,7 +157,7 @@ class ImageTagEditorActivity : AppCompatActivity() {
         var radioGroup: RadioGroup? = null
         var cbActive: CheckBox? = null
         var usageRadioGroup: RadioGroup? = null
-        var threeJsButton: MaterialButton? = null
+        var threeJsButton: AppCompatButton? = null
 
         if (isImageMode) {
             if (isBatchMode) {
@@ -508,49 +516,84 @@ class ImageTagEditorActivity : AppCompatActivity() {
         return sortedTags.map { "#$it" }.joinToString(joiner)
     }
 
-    private fun createThreeJsButton(): MaterialButton {
+    // Theme.TagEditorOverlay inherits from Theme.AppCompat, so avoid MaterialButton here.
+    private fun createThreeJsButton(): AppCompatButton {
         val density = resources.displayMetrics.density
-        return MaterialButton(this).apply {
+        val padH = (THREE_BTN_PAD_H_DP * density).toInt()
+        val padV = (THREE_BTN_PAD_V_DP * density).toInt()
+        return AppCompatButton(this, null, 0).apply {
             id = View.generateViewId()
             isAllCaps = false
-            icon = ContextCompat.getDrawable(this@ImageTagEditorActivity, R.drawable.ic_three_js_cube)
-            iconSize = (22 * density).toInt()
-            iconPadding = (10 * density).toInt()
-            cornerRadius = (THREE_BTN_CORNER_DP * density).toInt()
-            strokeWidth = (THREE_BTN_STROKE_DP * density).toInt()
+            isClickable = true
+            isFocusable = true
+            minHeight = 0
+            minimumHeight = 0
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            textSize = THREE_BTN_TEXT_SP
+            compoundDrawablePadding = (THREE_BTN_ICON_GAP_DP * density).toInt()
+            setPadding(padH, padV, padH, padV)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = (6 * density).toInt()
-                bottomMargin = (6 * density).toInt()
+                topMargin = (THREE_BTN_MARGIN_V_DP * density).toInt()
+                bottomMargin = (THREE_BTN_MARGIN_V_DP * density).toInt()
             }
         }
     }
 
-    private fun styleThreeJsButton(button: MaterialButton, kind: WallpaperSourceKind) {
+    private fun styleThreeJsButton(button: AppCompatButton, kind: WallpaperSourceKind) {
+        val density = resources.displayMetrics.density
         val count = ThreeJsCatalog.BUILT_IN_WORKS.size
-        if (kind == WallpaperSourceKind.THREE_JS) {
-            val accent = Color.parseColor(THREE_ON_STROKE_HEX)
-            button.text = "three.js 作品モード: ON（内蔵${count}作品・タグ選択無効）"
-            button.backgroundTintList = ColorStateList.valueOf(Color.parseColor(THREE_ON_BG_HEX))
-            button.strokeColor = ColorStateList.valueOf(accent)
-            button.setTextColor(accent)
-            button.iconTint = ColorStateList.valueOf(accent)
-            return
+        val isThreeOn = kind == WallpaperSourceKind.THREE_JS
+
+        val bgColor = if (isThreeOn) {
+            Color.parseColor(THREE_ON_BG_HEX)
+        } else {
+            Color.parseColor(THREE_OFF_BG_HEX)
+        }
+        val strokeColor = if (isThreeOn) {
+            Color.parseColor(THREE_ON_STROKE_HEX)
+        } else {
+            Color.parseColor(THREE_OFF_STROKE_HEX)
+        }
+        val textColor = if (isThreeOn) {
+            strokeColor
+        } else {
+            Color.WHITE
         }
 
-        val accent = Color.parseColor(THREE_OFF_STROKE_HEX)
-        button.text = "three.js の作品を表示する（内蔵${count}作品）"
-        button.backgroundTintList = ColorStateList.valueOf(Color.parseColor(THREE_OFF_BG_HEX))
-        button.strokeColor = ColorStateList.valueOf(accent)
-        button.setTextColor(Color.WHITE)
-        button.iconTint = null
+        button.text = if (isThreeOn) {
+            "three.js 作品モード: ON（内蔵${count}作品・タグ選択無効）"
+        } else {
+            "three.js の作品を表示する（内蔵${count}作品）"
+        }
+        button.setTextColor(textColor)
+        button.backgroundTintList = null
+        button.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = THREE_BTN_CORNER_DP * density
+            setColor(bgColor)
+            setStroke((THREE_BTN_STROKE_DP * density).toInt(), strokeColor)
+        }
+
+        val iconPx = (THREE_BTN_ICON_DP * density).toInt()
+        val rawIcon = ContextCompat.getDrawable(this, R.drawable.ic_three_js_cube)?.mutate()
+        if (rawIcon != null) {
+            val wrapped = DrawableCompat.wrap(rawIcon)
+            if (isThreeOn) {
+                DrawableCompat.setTint(wrapped, strokeColor)
+            } else {
+                DrawableCompat.setTintList(wrapped, null)
+            }
+            wrapped.setBounds(0, 0, iconPx, iconPx)
+            button.setCompoundDrawablesRelative(wrapped, null, null, null)
+        }
     }
 
     // Lock tag controls and match mode whenever Three.js mode is enabled on the edited set.
     private fun applySourceKindUi(
-        threeJsButton: MaterialButton?,
+        threeJsButton: AppCompatButton?,
         radioGroup: RadioGroup?,
         nameInput: EditText?,
         rvTags: RecyclerView,

@@ -24,7 +24,6 @@ import android.util.Log
 import android.view.Display
 import android.view.View
 import android.view.ViewGroup
-import android.view.Window
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -446,12 +445,11 @@ class ThreeJsWallpaperDriver(
     private inner class ThreeJsPresentation(
         outerContext: Context,
         display: Display
-    ) : Presentation(outerContext, display, R.style.Theme_Kennys_dokidoki_wallpaper) {
+    ) : Presentation(outerContext, display, android.R.style.Theme_Black_NoTitleBar_Fullscreen) {
 
         @SuppressLint("SetJavaScriptEnabled")
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
-            requestWindowFeature(Window.FEATURE_NO_TITLE)
 
             window?.apply {
                 val flags = WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or

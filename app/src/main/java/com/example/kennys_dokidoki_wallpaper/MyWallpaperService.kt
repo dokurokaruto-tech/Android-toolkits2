@@ -974,7 +974,7 @@ class MyWallpaperService : WallpaperService() {
             if (existing != null) {
                 return existing
             }
-            val created = ThreeJsWallpaperDriver(applicationContext) { draw() }
+            val created = ThreeJsWallpaperDriver(this@MyWallpaperService) { draw() }
             threeJsDriver = created
             return created
         }

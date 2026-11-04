@@ -3,11 +3,13 @@ import pathlib
 import re
 import subprocess
 import unittest
+import xml.etree.ElementTree as ET
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS_DIR = ROOT / "app/src/main/assets/threejs"
 SRC_DIR = ROOT / "app/src/main/java/com/example/kennys_dokidoki_wallpaper"
+ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
 
 
 class ThreeJsBundledAssetsTest(unittest.TestCase):
@@ -290,6 +292,19 @@ class ThreeJsKotlinWiringTest(unittest.TestCase):
 
         self.assertIn("fun updateSelectionState(state: TagSelectionState)", picker_src)
         self.assertIn("selectionState == TagSelectionState.LOCKED", picker_src)
+
+    def test_tag_editor_avoids_material_widgets_under_appcompat_theme(self):
+        manifest = ET.parse(ROOT / "app/src/main/AndroidManifest.xml").getroot()
+        activity = next(
+            node for node in manifest.iter("activity")
+            if node.get(ANDROID_NS + "name") == ".ImageTagEditorActivity"
+        )
+        self.assertEqual("@style/Theme.TagEditorOverlay", activity.get(ANDROID_NS + "theme"))
+
+        editor_src = (SRC_DIR / "ImageTagEditorActivity.kt").read_text(encoding="utf-8")
+        self.assertNotIn("MaterialButton(", editor_src)
+        self.assertNotIn("com.google.android.material", editor_src)
+        self.assertIn("AppCompatButton(this, null, 0)", editor_src)
 
     def test_wallpaper_service_preserves_gestures_and_random_next_work(self):
         service_src = (SRC_DIR / "MyWallpaperService.kt").read_text(encoding="utf-8")
