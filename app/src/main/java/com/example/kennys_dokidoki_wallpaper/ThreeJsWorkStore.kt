@@ -44,6 +44,15 @@ object ThreeJsWorkStore {
         return loadWorks(context).size
     }
 
+    fun evictMemoryCache() {
+        synchronized(lock) {
+            cachedWorks = null
+            cachedDeletedBuiltIns = null
+            cachedManifestStamp = NO_MANIFEST_METRIC
+            cachedManifestSize = NO_MANIFEST_METRIC
+        }
+    }
+
     fun findWork(context: Context, workId: String?): ThreeJsWork? {
         if (workId.isNullOrBlank()) {
             return null

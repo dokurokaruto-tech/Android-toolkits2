@@ -7,6 +7,8 @@
   var MAX_PIXEL_RATIO = 2;
   var MAX_FRAME_DELTA_MS = 100;
   var FALLBACK_TICK_MS = 66;
+  var PACED_TIMER_THRESHOLD_MS = 20;
+  var FPS60_MIN_GAP_MS = 14;
   var CLEAR_BLACK = 0x000000;
   var THUMB_SIZE_PX = 512;
   var THUMB_WARMUP_STEPS = 12;
@@ -48,18 +50,30 @@
   ];
 
   var renderer = null;
+  var rendererAttrKey = "";
   var scene = null;
   var camera = null;
+  var lastProjectConfig = null;
   var baseCameraFov = DEFAULT_FOV;
   var activeEvents = createEmptyEvents();
   var isRunning = false;
   var prevTime = 0;
+  var lastRenderAtMs = -1000;
   var elapsedMs = 0;
   var loadToken = 0;
   var rafId = null;
   var fallbackTimerId = null;
   var activeWorkId = null;
   var fixedViewportOverride = null;
+
+  var powerConfig = {
+    frameIntervalMs: 0,
+    loopMode: "continuous",
+    maxPixelRatio: MAX_PIXEL_RATIO,
+    antialias: true,
+    shadowMode: "project",
+    powerPref: "high-performance"
+  };
 
   function createEmptyEvents() {
     return {
@@ -88,6 +102,21 @@
     return Math.min(adjusted, Math.max(rawFov, MAX_PORTRAIT_FOV));
   }
 
+  function computeEffectivePixelRatio() {
+    if (IS_CAPTURE_MODE) {
+      return 1;
+    }
+    var cap = Math.max(1, Math.min(powerConfig.maxPixelRatio || 1, MAX_PIXEL_RATIO));
+    return Math.min(window.devicePixelRatio || 1, cap);
+  }
+
+  function desiredRendererAttrKey() {
+    if (IS_CAPTURE_MODE) {
+      return "capture";
+    }
+    return String(Boolean(powerConfig.antialias)) + ":" + String(powerConfig.powerPref || "default");
+  }
+
   function createRenderer() {
     if (renderer && renderer.domElement && renderer.domElement.parentNode) {
       renderer.domElement.parentNode.removeChild(renderer.domElement);
@@ -99,13 +128,15 @@
       }
     }
 
+    var useAntialias = IS_CAPTURE_MODE ? true : Boolean(powerConfig.antialias);
+    var pref = IS_CAPTURE_MODE ? "high-performance" : String(powerConfig.powerPref || "default");
     renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: useAntialias,
       preserveDrawingBuffer: IS_CAPTURE_MODE,
-      powerPreference: "high-performance"
+      powerPreference: pref
     });
-    var dpr = IS_CAPTURE_MODE ? 1 : Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
-    renderer.setPixelRatio(dpr);
+    rendererAttrKey = desiredRendererAttrKey();
+    renderer.setPixelRatio(computeEffectivePixelRatio());
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.domElement.addEventListener(
       "webglcontextlost",
@@ -119,6 +150,12 @@
     );
     document.body.appendChild(renderer.domElement);
     applyViewportSize();
+  }
+
+  function ensureRenderer() {
+    if (!isGlContextHealthy() || rendererAttrKey !== desiredRendererAttrKey()) {
+      createRenderer();
+    }
   }
 
   function isGlContextHealthy() {
@@ -186,17 +223,37 @@
     renderer.setClearColor(CLEAR_BLACK, 1);
   }
 
-  function applyProjectConfig(project) {
-    resetRendererState();
-    if (!project || !renderer) {
+  function applyShadowPolicy(project) {
+    if (!renderer) {
       return;
     }
-
-    if (project.shadows !== undefined) {
-      renderer.shadowMap.enabled = Boolean(project.shadows);
+    if (!IS_CAPTURE_MODE && powerConfig.shadowMode === "off") {
+      renderer.shadowMap.enabled = false;
+      return;
     }
-    if (project.shadowType !== undefined && SHADOW_TYPES[project.shadowType] !== undefined) {
+    var projectWantsShadows = Boolean(project && project.shadows);
+    renderer.shadowMap.enabled = projectWantsShadows;
+    if (!projectWantsShadows) {
+      return;
+    }
+    if (!IS_CAPTURE_MODE && powerConfig.shadowMode === "basic") {
+      renderer.shadowMap.type = THREE.BasicShadowMap;
+      return;
+    }
+    if (project && project.shadowType !== undefined && SHADOW_TYPES[project.shadowType] !== undefined) {
       renderer.shadowMap.type = SHADOW_TYPES[project.shadowType];
+    }
+  }
+
+  function applyProjectConfig(project) {
+    lastProjectConfig = project || null;
+    resetRendererState();
+    if (!renderer) {
+      return;
+    }
+    applyShadowPolicy(project);
+    if (!project) {
+      return;
     }
     if (project.toneMapping !== undefined && TONE_MAPPINGS[project.toneMapping] !== undefined) {
       renderer.toneMapping = TONE_MAPPINGS[project.toneMapping];
@@ -541,12 +598,32 @@
   }
 
   function scheduleNextTick() {
-    clearLoopHandles();
     if (!isRunning) {
+      clearLoopHandles();
       return;
     }
-    rafId = requestAnimationFrame(onAnimationTick);
-    fallbackTimerId = setTimeout(onFallbackTick, FALLBACK_TICK_MS);
+    if (powerConfig.loopMode === "single_frame") {
+      pauseActiveWork();
+      return;
+    }
+    var targetInterval = Number(powerConfig.frameIntervalMs) || 0;
+    if (targetInterval > PACED_TIMER_THRESHOLD_MS) {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (fallbackTimerId !== null) {
+        clearTimeout(fallbackTimerId);
+      }
+      fallbackTimerId = setTimeout(onPacedTick, targetInterval);
+      return;
+    }
+    if (rafId === null) {
+      rafId = requestAnimationFrame(onAnimationTick);
+    }
+    if (fallbackTimerId === null) {
+      fallbackTimerId = setTimeout(onFallbackTick, FALLBACK_TICK_MS);
+    }
   }
 
   function renderSingleStep(now) {
@@ -556,6 +633,7 @@
 
     var rawDelta = now - prevTime;
     prevTime = now;
+    lastRenderAtMs = now;
     var delta = Math.min(Math.max(rawDelta, 0), MAX_FRAME_DELTA_MS);
     elapsedMs += delta;
 
@@ -565,11 +643,24 @@
 
   function onAnimationTick() {
     rafId = null;
-    if (fallbackTimerId !== null) {
-      clearTimeout(fallbackTimerId);
-      fallbackTimerId = null;
-    }
     if (!isRunning || !renderer || !scene || !camera) {
+      clearLoopHandles();
+      return;
+    }
+    var now = performance.now();
+    var targetInterval = Number(powerConfig.frameIntervalMs) || 0;
+    if (targetInterval >= 16 && now - lastRenderAtMs < FPS60_MIN_GAP_MS) {
+      scheduleNextTick();
+      return;
+    }
+    renderSingleStep(now);
+    scheduleNextTick();
+  }
+
+  function onPacedTick() {
+    fallbackTimerId = null;
+    if (!isRunning || !renderer || !scene || !camera) {
+      clearLoopHandles();
       return;
     }
     renderSingleStep(performance.now());
@@ -578,14 +669,20 @@
 
   function onFallbackTick() {
     fallbackTimerId = null;
+    if (!isRunning || !renderer || !scene || !camera) {
+      clearLoopHandles();
+      return;
+    }
+    var now = performance.now();
+    if (now - lastRenderAtMs < FALLBACK_TICK_MS * 0.75) {
+      fallbackTimerId = setTimeout(onFallbackTick, FALLBACK_TICK_MS);
+      return;
+    }
     if (rafId !== null) {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
-    if (!isRunning || !renderer || !scene || !camera) {
-      return;
-    }
-    renderSingleStep(performance.now());
+    renderSingleStep(now);
     scheduleNextTick();
   }
 
@@ -614,7 +711,31 @@
     disposeSceneGraph(scene);
     scene = null;
     camera = null;
+    lastProjectConfig = null;
     elapsedMs = 0;
+  }
+
+  function purgeEngineCaches() {
+    if (THREE && THREE.Cache && typeof THREE.Cache.clear === "function") {
+      try {
+        THREE.Cache.clear();
+      } catch (_err) {
+      }
+    }
+    if (renderer) {
+      if (renderer.renderLists && typeof renderer.renderLists.dispose === "function") {
+        try {
+          renderer.renderLists.dispose();
+        } catch (_err2) {
+        }
+      }
+      if (typeof renderer.clear === "function") {
+        try {
+          renderer.clear();
+        } catch (_err3) {
+        }
+      }
+    }
   }
 
   function prepareLoadedWork(json, loadedScene, resolvedCam, hadExplicitCam, playerApiRef, workTag) {
@@ -663,15 +784,61 @@
   }
 
   var playerApi = {
+    setPowerProfile: function (rawCfg) {
+      var cfg = typeof rawCfg === "string" ? JSON.parse(rawCfg) : rawCfg;
+      if (!cfg || typeof cfg !== "object") {
+        return;
+      }
+      if (cfg.frameIntervalMs !== undefined) {
+        powerConfig.frameIntervalMs = Math.max(0, Number(cfg.frameIntervalMs) || 0);
+      }
+      if (cfg.loopMode === "single_frame" || cfg.loopMode === "continuous") {
+        powerConfig.loopMode = cfg.loopMode;
+      }
+      if (cfg.maxPixelRatio !== undefined) {
+        powerConfig.maxPixelRatio = Math.max(1, Math.min(Number(cfg.maxPixelRatio) || 1, MAX_PIXEL_RATIO));
+      }
+      if (cfg.antialias !== undefined) {
+        powerConfig.antialias = Boolean(cfg.antialias);
+      }
+      if (cfg.shadowMode === "project" || cfg.shadowMode === "basic" || cfg.shadowMode === "off") {
+        powerConfig.shadowMode = cfg.shadowMode;
+      }
+      if (typeof cfg.powerPref === "string" && cfg.powerPref.length > 0) {
+        powerConfig.powerPref = cfg.powerPref;
+      }
+
+      if (renderer) {
+        if (rendererAttrKey !== desiredRendererAttrKey()) {
+          createRenderer();
+          applyProjectConfig(lastProjectConfig);
+          refreshSceneMaterials(scene);
+          if (scene && camera) {
+            renderer.render(scene, camera);
+          }
+        } else {
+          renderer.setPixelRatio(computeEffectivePixelRatio());
+          applyShadowPolicy(lastProjectConfig);
+          applyViewportSize();
+        }
+      }
+
+      if (scene && camera) {
+        if (powerConfig.loopMode === "single_frame") {
+          pauseActiveWork();
+        } else if (isRunning) {
+          scheduleNextTick();
+        }
+      }
+    },
+
     loadWorkJson: function (jsonText, workTag) {
       var token = ++loadToken;
       fixedViewportOverride = null;
       activeWorkId = null;
       stopActiveWork();
 
-      if (!isGlContextHealthy()) {
-        createRenderer();
-      }
+      ensureRenderer();
 
       var json = typeof jsonText === "string" ? JSON.parse(jsonText) : jsonText;
       applyProjectConfig(json.project);
@@ -710,9 +877,10 @@
     activateWork: function (workId) {
       var targetId = String(workId || "");
       fixedViewportOverride = null;
-      if (!isGlContextHealthy()) {
+      var wasHealthy = isGlContextHealthy() && rendererAttrKey === desiredRendererAttrKey();
+      ensureRenderer();
+      if (!wasHealthy) {
         activeWorkId = null;
-        createRenderer();
       }
       if (targetId && targetId === activeWorkId && scene && camera) {
         resumeActiveWork();
@@ -727,9 +895,7 @@
       stopActiveWork();
       fixedViewportOverride = { width: THUMB_SIZE_PX, height: THUMB_SIZE_PX };
 
-      if (!isGlContextHealthy()) {
-        createRenderer();
-      }
+      ensureRenderer();
 
       var url = "works/" + encodeURIComponent(targetId) + ".json";
       fetch(url)
@@ -788,8 +954,20 @@
       return renderer.domElement.toDataURL("image/jpeg", THUMB_JPEG_QUALITY);
     },
 
+    resume: function () {
+      return resumeActiveWork();
+    },
+
     pause: function () {
       pauseActiveWork();
+    },
+
+    purgeForSleep: function () {
+      loadToken++;
+      fixedViewportOverride = null;
+      activeWorkId = null;
+      stopActiveWork();
+      purgeEngineCaches();
     },
 
     stop: function () {
@@ -806,7 +984,9 @@
 
   function initPlayer() {
     installPmremClearGuard();
-    createRenderer();
+    if (IS_CAPTURE_MODE) {
+      createRenderer();
+    }
     window.addEventListener("resize", applyViewportSize);
     window.ThreeWallpaperPlayer = playerApi;
 

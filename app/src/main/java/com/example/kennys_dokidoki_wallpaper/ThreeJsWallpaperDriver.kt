@@ -93,6 +93,7 @@ class ThreeJsWallpaperDriver(
     private var pipelineReady = false
     private var active = false
     private var pageReady = false
+    private var currentPlan: EffectiveThreeJsPowerPlan = ThreeJsPowerPolicy.defaultPlan()
 
     private var coldBuildRunnable: Runnable? = null
     private var resizeRunnable: Runnable? = null
@@ -107,9 +108,19 @@ class ThreeJsWallpaperDriver(
     }
 
     // Activate or resume the Three.js pipeline without recreating windows on resume.
-    fun showWork(workId: String, surfaceWidth: Int, surfaceHeight: Int) {
+    fun showWork(
+        workId: String,
+        surfaceWidth: Int,
+        surfaceHeight: Int,
+        plan: EffectiveThreeJsPowerPlan = currentPlan
+    ) {
         val work = ThreeJsWorkStore.workOrFirst(appContext, workId) ?: return
-        val dims = ThreeJsPolicy.computeRenderSize(surfaceWidth, surfaceHeight)
+        currentPlan = plan
+        val dims = ThreeJsPolicy.computeRenderSize(
+            surfaceWidth,
+            surfaceHeight,
+            plan.maxRenderEdgePx
+        )
         activeWorkId = work.id
         active = true
 
@@ -128,7 +139,11 @@ class ThreeJsWallpaperDriver(
         if (!active || !pipelineReady) {
             return
         }
-        val dims = ThreeJsPolicy.computeRenderSize(surfaceWidth, surfaceHeight)
+        val dims = ThreeJsPolicy.computeRenderSize(
+            surfaceWidth,
+            surfaceHeight,
+            currentPlan.maxRenderEdgePx
+        )
         if (dims.width != renderWidth || dims.height != renderHeight) {
             scheduleInPlaceResize(dims.width, dims.height)
         }
@@ -216,6 +231,99 @@ class ThreeJsWallpaperDriver(
             Log.w(TAG, "ImageReader close failed", t)
         }
         imageReader = null
+    }
+
+    fun applyPowerPlan(
+        plan: EffectiveThreeJsPowerPlan,
+        surfaceWidth: Int,
+        surfaceHeight: Int
+    ) {
+        currentPlan = plan
+        if (!pipelineReady) {
+            return
+        }
+        if (pageReady) {
+            dispatchPowerToJs(plan)
+            if (active && plan.loopMode == LoopExecutionMode.CONTINUOUS) {
+                resumeOrActivateJsWork()
+            }
+        }
+        if (!active) {
+            return
+        }
+        val dims = ThreeJsPolicy.computeRenderSize(
+            surfaceWidth,
+            surfaceHeight,
+            plan.maxRenderEdgePx
+        )
+        if (dims.width != renderWidth || dims.height != renderHeight) {
+            scheduleInPlaceResize(dims.width, dims.height)
+        }
+    }
+
+    // Freeze WebGL at 0 FPS while keeping latestFrame displayed on the Home Screen.
+    fun freezeOnHome() {
+        if (!pipelineReady) {
+            return
+        }
+        disarmFrameWatchdog()
+        webView?.let { view ->
+            try {
+                view.evaluateJavascript(
+                    "window.ThreeWallpaperPlayer && window.ThreeWallpaperPlayer.pause();",
+                    null
+                )
+            } catch (t: Throwable) {
+                Log.w(TAG, "JS home freeze failed", t)
+            }
+        }
+    }
+
+    fun resumeFromHomeIdle(plan: EffectiveThreeJsPowerPlan) {
+        currentPlan = plan
+        if (!pipelineReady) {
+            return
+        }
+        active = true
+        if (pageReady) {
+            dispatchPowerToJs(plan)
+            resumeOrActivateJsWork()
+        }
+    }
+
+    // Pause rendering and dispose Three.js scene/VRAM while keeping VirtualDisplay shell parked.
+    fun pauseAndPurgeScene() {
+        pause()
+        webView?.let { view ->
+            try {
+                view.evaluateJavascript(
+                    "window.ThreeWallpaperPlayer && window.ThreeWallpaperPlayer.purgeForSleep();",
+                    null
+                )
+                view.clearCache(false)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Scene purge failed", t)
+            }
+        }
+    }
+
+    // Tear down WebView, GPU context, VirtualDisplay, and purge both RAM and disk caches.
+    fun stopAndPurgeCaches() {
+        webView?.let { view ->
+            try {
+                view.evaluateJavascript(
+                    "window.ThreeWallpaperPlayer && window.ThreeWallpaperPlayer.purgeForSleep();",
+                    null
+                )
+                view.clearCache(true)
+                view.clearHistory()
+                view.clearFormData()
+            } catch (t: Throwable) {
+                Log.w(TAG, "Cache purge before stop failed", t)
+            }
+        }
+        ThreeJsWorkStore.evictMemoryCache()
+        stop()
     }
 
     private fun cancelPendingCallbacks() {
@@ -381,6 +489,7 @@ class ThreeJsWallpaperDriver(
             }
         }
         if (pageReady) {
+            dispatchPowerToJs(currentPlan)
             dispatchWorkToJs(workId)
         }
         armFrameWatchdog()
@@ -598,6 +707,7 @@ class ThreeJsWallpaperDriver(
             return
         }
         pageReady = true
+        dispatchPowerToJs(currentPlan)
         if (!active) {
             return
         }
@@ -616,6 +726,27 @@ class ThreeJsWallpaperDriver(
             active = true
             scheduleColdBuild(width, height)
         }
+    }
+
+    private fun dispatchPowerToJs(plan: EffectiveThreeJsPowerPlan) {
+        val json = ThreeJsPowerPolicy.toJsProfileJson(plan)
+        webView?.evaluateJavascript(
+            "window.ThreeWallpaperPlayer && window.ThreeWallpaperPlayer.setPowerProfile($json);",
+            null
+        )
+    }
+
+    private fun resumeOrActivateJsWork() {
+        val safeId = activeWorkId?.filter { it.isLetterOrDigit() || it == '_' || it == '-' }
+        if (safeId.isNullOrEmpty()) {
+            return
+        }
+        webView?.evaluateJavascript(
+            "window.ThreeWallpaperPlayer && " +
+                "(window.ThreeWallpaperPlayer.resume() || " +
+                "window.ThreeWallpaperPlayer.activateWork('$safeId'));",
+            null
+        )
     }
 
     private fun dispatchWorkToJs(workId: String) {

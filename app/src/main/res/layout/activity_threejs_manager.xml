@@ -66,27 +66,40 @@
                 android:id="@+id/btn_threejs_import_file"
                 android:layout_width="wrap_content"
                 android:layout_height="32dp"
-                android:layout_marginEnd="8dp"
+                android:layout_marginEnd="6dp"
                 android:fontFamily="monospace"
                 android:gravity="center"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:text="+ JSON"
                 android:textColor="#DCDCE6"
-                android:textSize="12sp" />
+                android:textSize="11.5sp" />
 
             <TextView
                 android:id="@+id/btn_threejs_open_browser"
                 android:layout_width="wrap_content"
                 android:layout_height="32dp"
-                android:layout_marginEnd="4dp"
+                android:layout_marginEnd="6dp"
                 android:fontFamily="monospace"
                 android:gravity="center"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:text="Browser"
                 android:textColor="#DCDCE6"
-                android:textSize="12sp" />
+                android:textSize="11.5sp" />
+
+            <TextView
+                android:id="@+id/btn_threejs_power_settings"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginEnd="2dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:text="省電力"
+                android:textColor="#7DD3A8"
+                android:textSize="11.5sp" />
 
             <ImageButton
                 android:id="@+id/btn_threejs_overflow"

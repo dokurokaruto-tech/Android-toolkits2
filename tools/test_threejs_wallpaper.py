@@ -365,6 +365,9 @@ class ThreeJsKotlinWiringTest(unittest.TestCase):
     def test_new_kotlin_files_follow_function_length_and_no_boolean_params(self):
         checked_files = [
             SRC_DIR / "ThreeJsPolicy.kt",
+            SRC_DIR / "ThreeJsPowerPolicy.kt",
+            SRC_DIR / "ThreeJsPowerStore.kt",
+            SRC_DIR / "ThreeJsPowerSettingsActivity.kt",
             SRC_DIR / "ThreeJsInspectorPolicy.kt",
             SRC_DIR / "ThreeJsWorkStore.kt",
             SRC_DIR / "ThreeJsThumbnailCapturer.kt",
@@ -889,6 +892,197 @@ sandbox.ThreeWallpaperPlayer.stop();
         )
         self.assertIn("readCachedWorksLocked", store_src)
         self.assertIn("cacheManifestLocked", store_src)
+
+    def test_player_power_profiles_and_purge_for_sleep(self):
+        node_script = r"""
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const assetsDir = process.argv[1];
+const threeCode = fs.readFileSync(path.join(assetsDir, 'three.min.js'), 'utf8');
+const playerCode = fs.readFileSync(path.join(assetsDir, 'player.js'), 'utf8');
+
+class FakeImage {
+  constructor() { this.width = 16; this.height = 16; }
+  addEventListener(type, fn) { if (type === 'load') this._onload = fn; }
+  removeEventListener() {}
+  set src(v) {
+    this._src = v;
+    Promise.resolve().then(() => { if (this._onload) this._onload({}); });
+  }
+  get src() { return this._src; }
+}
+
+let nowMs = 1000;
+let rafSeq = 1;
+const rafMap = new Map();
+const timerMap = new Map();
+const createdRenderers = [];
+let renderCalls = 0;
+let renderListsDisposed = 0;
+
+const sandbox = {
+  console, Math, Date, Promise, JSON, Object, Array, String, Number, Boolean, Function,
+  Float32Array, Uint16Array, Uint32Array, Uint8Array, Int32Array,
+  performance: { now: () => nowMs },
+  devicePixelRatio: 3,
+  innerWidth: 720,
+  innerHeight: 1600,
+  location: { search: '' },
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  requestAnimationFrame: (cb) => { const id = rafSeq++; rafMap.set(id, cb); return id; },
+  cancelAnimationFrame: (id) => rafMap.delete(id),
+  setTimeout: (cb, ms) => { const id = rafSeq++; timerMap.set(id, { cb, ms }); return id; },
+  clearTimeout: (id) => timerMap.delete(id),
+  Image: FakeImage,
+  document: {
+    body: { appendChild: () => {}, removeChild: () => {} },
+    createElementNS: (_ns, tag) => tag === 'img' ? new FakeImage() : { style: {}, addEventListener: () => {} },
+    createElement: (tag) => tag === 'img' ? new FakeImage() : { style: {}, addEventListener: () => {} }
+  },
+  fetch: (rel) => {
+    const raw = fs.readFileSync(path.join(assetsDir, rel), 'utf8');
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(JSON.parse(raw)) });
+  },
+  AndroidThreeBridge: { onPlayerReady: () => {} }
+};
+sandbox.window = sandbox;
+sandbox.self = sandbox;
+
+vm.createContext(sandbox);
+vm.runInContext(threeCode, sandbox);
+
+const THREE = sandbox.THREE;
+THREE.WebGLRenderer = function (opts) {
+  const rec = { opts, pixelRatio: 1, shadowMap: { enabled: false, type: THREE.PCFShadowMap }, cleared: 0 };
+  createdRenderers.push(rec);
+  this.domElement = { style: {}, addEventListener: () => {}, removeEventListener: () => {} };
+  this.shadowMap = rec.shadowMap;
+  this.toneMapping = THREE.NoToneMapping;
+  this.toneMappingExposure = 1;
+  this.physicallyCorrectLights = false;
+  this.outputEncoding = THREE.sRGBEncoding;
+  this.renderLists = { dispose: () => { renderListsDisposed += 1; } };
+  this.setPixelRatio = (dpr) => { rec.pixelRatio = dpr; };
+  this.setSize = () => {};
+  this.setClearColor = () => {};
+  this.getClearColor = () => new THREE.Color(0x000000);
+  this.getClearAlpha = () => 1;
+  this.getRenderTarget = () => null;
+  this.setRenderTarget = () => {};
+  this.getContext = () => ({ isContextLost: () => false });
+  this.render = () => { renderCalls += 1; };
+  this.clear = () => { rec.cleared += 1; };
+  this.dispose = () => {};
+};
+
+vm.runInContext(playerCode, sandbox);
+
+// 1. Lazy renderer creation: no throwaway renderer before setPowerProfile + activateWork
+if (createdRenderers.length !== 0) {
+  throw new Error('Expected 0 WebGLRenderers before first work activation, got ' + createdRenderers.length);
+}
+
+sandbox.ThreeWallpaperPlayer.setPowerProfile({
+  frameIntervalMs: 33,
+  loopMode: 'continuous',
+  maxPixelRatio: 1,
+  antialias: false,
+  shadowMode: 'off',
+  powerPref: 'low-power'
+});
+
+const shadowedJson = {
+  metadata: { version: 4.5, type: 'App' },
+  project: { shadows: true, shadowType: 2 },
+  camera: {
+    metadata: { version: 4.5, type: 'Object' },
+    object: { uuid: 'cam-1', type: 'PerspectiveCamera', fov: 50, aspect: 1, near: 0.1, far: 100 }
+  },
+  scene: {
+    metadata: { version: 4.5, type: 'Object' },
+    object: { uuid: 'scn-1', type: 'Scene', children: [] }
+  },
+  scripts: {}
+};
+sandbox.ThreeWallpaperPlayer.loadWorkJson(shadowedJson, 'eco_work');
+
+if (createdRenderers.length !== 1) {
+  throw new Error('Expected exactly 1 WebGLRenderer after activation');
+}
+if (createdRenderers[0].opts.antialias !== false || createdRenderers[0].opts.powerPreference !== 'low-power') {
+  throw new Error('Expected low-power non-MSAA renderer: ' + JSON.stringify(createdRenderers[0].opts));
+}
+if (createdRenderers[0].pixelRatio !== 1) {
+  throw new Error('Expected DPR capped at 1, got ' + createdRenderers[0].pixelRatio);
+}
+if (createdRenderers[0].shadowMap.enabled !== false) {
+  throw new Error('Expected shadowMode=off to disable shadows');
+}
+// 2. At 30 FPS (33ms > 20ms), rAF must stay 0 so VSync is not woken at 60-120Hz
+if (rafMap.size !== 0 || timerMap.size !== 1) {
+  throw new Error(`Expected 0 rAF and 1 paced timer at 33ms, got rAF=${rafMap.size} timers=${timerMap.size}`);
+}
+
+// 3. Single-frame freeze renders and stops all callbacks (0% GPU/CPU)
+sandbox.ThreeWallpaperPlayer.setPowerProfile({ loopMode: 'single_frame' });
+if (rafMap.size !== 0 || timerMap.size !== 0) {
+  throw new Error('Expected 0 callbacks in single_frame freeze mode');
+}
+
+// 4. Resume back to continuous
+sandbox.ThreeWallpaperPlayer.setPowerProfile({ loopMode: 'continuous', frameIntervalMs: 50 });
+if (!sandbox.ThreeWallpaperPlayer.resume() || timerMap.size !== 1) {
+  throw new Error('Expected resume() to restart paced timer without re-fetch');
+}
+
+// 5. purgeForSleep disposes renderLists and leaves 0 callbacks
+sandbox.ThreeWallpaperPlayer.purgeForSleep();
+if (rafMap.size !== 0 || timerMap.size !== 0 || renderListsDisposed < 1) {
+  throw new Error('Expected purgeForSleep() to clear timers and dispose renderLists');
+}
+"""
+        proc = subprocess.run(
+            ["node", "-e", node_script, str(ASSETS_DIR)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr or proc.stdout)
+
+    def test_power_settings_ui_and_initial_fade_wiring(self):
+        manifest_root = ET.parse(ROOT / "app/src/main/AndroidManifest.xml").getroot()
+        activities = {
+            el.attrib.get(f"{ANDROID_NS}name")
+            for el in manifest_root.findall("./application/activity")
+        }
+        self.assertIn(".ThreeJsPowerSettingsActivity", activities)
+
+        power_layout = ROOT / "app/src/main/res/layout/activity_threejs_power_settings.xml"
+        self.assertTrue(power_layout.is_file())
+        power_xml_raw = power_layout.read_text(encoding="utf-8")
+        self.assertNotIn("android:tint=", power_xml_raw)
+
+        main_src = (SRC_DIR / "MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn('"three.js の設定"', main_src)
+        self.assertIn('createSettingsRow("three.js の管理"', main_src)
+        self.assertIn("ThreeJsPowerSettingsActivity::class.java", main_src)
+
+        manager_src = (SRC_DIR / "ThreeJsManagerActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("btn_threejs_power_settings", manager_src)
+
+        service_src = (SRC_DIR / "MyWallpaperService.kt").read_text(encoding="utf-8")
+        self.assertIn("ThreeJsPolicy.INITIAL_FADE_MS", service_src)
+        self.assertIn("ThreeJsPolicy.resolveLoadTransition(currentThreeDisplayState())", service_src)
+        self.assertIn("prepareThreeFadeFromBlack()", service_src)
+
+        advance_block = service_src.split("private fun advanceRandomThreeJsWork(", 1)[1].split(
+            "private fun syncActiveWallpaper(", 1
+        )[0]
+        self.assertIn("completeThreeFadeOpaque()", advance_block)
+        self.assertNotIn("prepareThreeFadeFromBlack()", advance_block)
 
 
 if __name__ == "__main__":

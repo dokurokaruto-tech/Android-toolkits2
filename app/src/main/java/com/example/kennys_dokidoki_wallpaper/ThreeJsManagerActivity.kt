@@ -69,15 +69,20 @@ class ThreeJsManagerActivity : AppCompatActivity() {
         val btnBack = findViewById<ImageButton>(R.id.btn_threejs_back)
         val btnImportFile = findViewById<TextView>(R.id.btn_threejs_import_file)
         val btnOpenBrowser = findViewById<TextView>(R.id.btn_threejs_open_browser)
+        val btnPowerSettings = findViewById<TextView>(R.id.btn_threejs_power_settings)
         val btnOverflow = findViewById<ImageButton>(R.id.btn_threejs_overflow)
 
         styleActionPill(btnImportFile)
         styleActionPill(btnOpenBrowser)
+        styleActionPill(btnPowerSettings)
 
         btnBack.setOnClickListener { finish() }
         btnImportFile.setOnClickListener { launchDeviceJsonPicker() }
         btnOpenBrowser.setOnClickListener {
             startActivity(Intent(this, ThreeJsBrowserActivity::class.java))
+        }
+        btnPowerSettings.setOnClickListener {
+            startActivity(Intent(this, ThreeJsPowerSettingsActivity::class.java))
         }
         btnOverflow.setOnClickListener { anchor -> showHeaderMenu(anchor) }
 
@@ -124,8 +129,9 @@ class ThreeJsManagerActivity : AppCompatActivity() {
 
     private fun reloadGallery() {
         val works = ThreeJsWorkStore.loadWorks(this)
+        val preset = ThreeJsPowerPolicy.detectPreset(ThreeJsPowerStore.loadConfig(this))
         adapter.submitWorks(works)
-        countText.text = "${works.size} works"
+        countText.text = "${works.size} works · ${preset.badge}"
         if (works.isEmpty()) {
             emptyStateText.visibility = View.VISIBLE
             recyclerView.visibility = View.GONE
@@ -138,12 +144,23 @@ class ThreeJsManagerActivity : AppCompatActivity() {
 
     private fun showHeaderMenu(anchor: View) {
         val popup = PopupMenu(this, anchor)
-        popup.menu.add(0, MENU_REGENERATE_THUMBS, 0, "サムネイルを再撮影")
+        popup.menu.add(0, MENU_POWER_SETTINGS, 0, "省電力・動作設定")
+        popup.menu.add(0, MENU_PURGE_CACHES, 1, "キャッシュ・メモリを今すぐ解放")
+        popup.menu.add(0, MENU_REGENERATE_THUMBS, 2, "サムネイルを再撮影")
         if (ThreeJsWorkStore.hasDeletedBuiltIns(this)) {
-            popup.menu.add(0, MENU_RESTORE_BUILTINS, 1, "初期作品を復元")
+            popup.menu.add(0, MENU_RESTORE_BUILTINS, 3, "初期作品を復元")
         }
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
+                MENU_POWER_SETTINGS -> {
+                    startActivity(Intent(this, ThreeJsPowerSettingsActivity::class.java))
+                    true
+                }
+                MENU_PURGE_CACHES -> {
+                    ThreeJsPowerStore.requestImmediatePurge(this)
+                    Toast.makeText(this, "three.js のメモリ・キャッシュを解放しました", Toast.LENGTH_SHORT).show()
+                    true
+                }
                 MENU_REGENERATE_THUMBS -> {
                     ThreeJsWorkStore.clearAllThumbnails(this)
                     reloadGallery()
@@ -687,5 +704,7 @@ class ThreeJsManagerActivity : AppCompatActivity() {
         private const val WIDE_GRID_COLUMNS = 3
         private const val MENU_REGENERATE_THUMBS = 1
         private const val MENU_RESTORE_BUILTINS = 2
+        private const val MENU_POWER_SETTINGS = 3
+        private const val MENU_PURGE_CACHES = 4
     }
 }

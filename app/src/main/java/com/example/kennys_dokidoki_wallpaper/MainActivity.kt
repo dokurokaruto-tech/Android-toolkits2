@@ -569,6 +569,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private var tvSaveFolderDisplay: TextView? = null
     private var tvThumbFolderDisplay: TextView? = null
+    private var tvThreePowerSummary: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -737,6 +738,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         genBatchCount = settingsPrefs.getInt("gen_batch_count", 1)
         genSampler = settingsPrefs.getString("gen_sampler", "Euler a") ?: "Euler a"
         updateGenSettingsUI()
+        tvThreePowerSummary?.text = ThreeJsPowerStore.buildSummaryText(this)
         applyQuickFilter()
         imageSetAdapter.notifyDataSetChanged()
         tagPromptAdapter.refreshItemsFromManager()
@@ -3140,12 +3142,75 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             addView(TextView(this@MainActivity).apply { text = titleText; setTextColor(android.graphics.Color.parseColor("#D0BCFF")); textSize = 16f })
             if (subTitleText != null) {
                 addView(TextView(this@MainActivity).apply { 
-                    if (titleText.contains("取り込む画像")) tvSaveFolderDisplay = this
-                    if (titleText.contains("サムネイルの画像")) tvThumbFolderDisplay = this
+                    if (titleText.contains("取り込む画像")) {
+                        tvSaveFolderDisplay = this
+                    }
+                    if (titleText.contains("サムネイルの画像")) {
+                        tvThumbFolderDisplay = this
+                    }
+                    if (titleText.contains("three.js の省電力")) {
+                        tvThreePowerSummary = this
+                    }
                     text = subTitleText; setTextColor(Color.GRAY); textSize = 12f 
                 })
             }
             setOnClickListener { onClick() }
+        }
+    }
+
+    private fun createThreeJsSettingsFrame(): View {
+        val density = resources.displayMetrics.density
+        val strokePx = (1f * density).toInt().coerceAtLeast(1)
+        val marginV = (8f * density).toInt()
+        val headerPadH = (16f * density).toInt()
+        val headerPadTop = (12f * density).toInt()
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, marginV, 0, marginV)
+            }
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                cornerRadius = 12f * density
+                setColor(Color.parseColor("#13121C"))
+                setStroke(strokePx, Color.parseColor("#2E2842"))
+            }
+            addView(
+                TextView(this@MainActivity).apply {
+                    text = "three.js の設定"
+                    textSize = 11.5f
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(Color.parseColor("#9E92C4"))
+                    setPadding(headerPadH, headerPadTop, headerPadH, 0)
+                }
+            )
+            addView(
+                createSettingsRow("three.js の管理", "作品のサムネイル一覧・名前とJSONの編集・ファイル追加・Web探索") {
+                    startActivity(Intent(this@MainActivity, ThreeJsManagerActivity::class.java))
+                }
+            )
+            addView(
+                View(this@MainActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        strokePx
+                    )
+                    setBackgroundColor(Color.parseColor("#242034"))
+                }
+            )
+            addView(
+                createSettingsRow(
+                    "three.js の省電力・動作設定",
+                    ThreeJsPowerStore.buildSummaryText(this@MainActivity)
+                ) {
+                    startActivity(Intent(this@MainActivity, ThreeJsPowerSettingsActivity::class.java))
+                }
+            )
         }
     }
 
@@ -3154,9 +3219,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
             addView(createSettingsRow("タップ操作のカスタム設定") { startActivity(Intent(this@MainActivity, TapSettingsActivity::class.java)) })
-            addView(createSettingsRow("three.js の管理", "作品のサムネイル一覧・名前とJSONの編集・ファイル追加・Web探索") {
-                startActivity(Intent(this@MainActivity, ThreeJsManagerActivity::class.java))
-            })
+            addView(createThreeJsSettingsFrame())
             addView(createSettingsRow("PC生成エージェントの接続設定", "URL / APIキー / 接続テスト") { showServerUrlDialog() })
             addView(createSettingsRow("PC接続の失敗ログ", "原因コードと確認手順を表示・コピー") {
                 AgentConnectionUi.showLog(this@MainActivity)

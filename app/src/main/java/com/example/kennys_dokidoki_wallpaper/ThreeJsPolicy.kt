@@ -39,6 +39,22 @@ enum class TagSelectionState {
     LOCKED
 }
 
+enum class ThreeJsDisplayState {
+    NOT_SHOWING,
+    SHOWING_FRAME
+}
+
+enum class ThreeJsLoadTransition {
+    FADE_FROM_BLACK,
+    IMMEDIATE_IN_PLACE
+}
+
+enum class ThreeJsFadePhase {
+    WAITING_FIRST_FRAME,
+    FADING_IN,
+    OPAQUE
+}
+
 data class RenderDimensions(
     val width: Int,
     val height: Int
@@ -100,7 +116,15 @@ object ThreeJsPolicy {
     const val PREF_WORK_PREFIX = "last_threejs_work_for_album_"
     const val MAX_RENDER_EDGE_PX = 1600
     const val MIN_RENDER_EDGE_PX = 64
+    const val INITIAL_FADE_MS = 300L
     private const val EVEN_ALIGNMENT_MASK = 1
+
+    fun resolveLoadTransition(displayState: ThreeJsDisplayState): ThreeJsLoadTransition {
+        if (displayState == ThreeJsDisplayState.SHOWING_FRAME) {
+            return ThreeJsLoadTransition.IMMEDIATE_IN_PLACE
+        }
+        return ThreeJsLoadTransition.FADE_FROM_BLACK
+    }
 
     // Lock tag chips whenever Three.js mode is enabled on an ImageSet.
     fun tagSelectionStateFor(kind: WallpaperSourceKind): TagSelectionState {
@@ -184,17 +208,22 @@ object ThreeJsPolicy {
         return "$label ~ $sub"
     }
 
-    // Clamp offscreen render resolution to MAX_RENDER_EDGE_PX while preserving aspect ratio.
-    fun computeRenderSize(surfaceWidth: Int, surfaceHeight: Int): RenderDimensions {
+    // Clamp offscreen render resolution to maxEdgePx while preserving aspect ratio.
+    fun computeRenderSize(
+        surfaceWidth: Int,
+        surfaceHeight: Int,
+        maxEdgePx: Int = MAX_RENDER_EDGE_PX
+    ): RenderDimensions {
+        val capEdge = maxEdgePx.coerceIn(MIN_RENDER_EDGE_PX, MAX_RENDER_EDGE_PX)
         val safeW = surfaceWidth.coerceAtLeast(MIN_RENDER_EDGE_PX)
         val safeH = surfaceHeight.coerceAtLeast(MIN_RENDER_EDGE_PX)
         val longestEdge = maxOf(safeW, safeH)
 
-        if (longestEdge <= MAX_RENDER_EDGE_PX) {
+        if (longestEdge <= capEdge) {
             return RenderDimensions(alignEven(safeW), alignEven(safeH))
         }
 
-        val scale = MAX_RENDER_EDGE_PX.toFloat() / longestEdge.toFloat()
+        val scale = capEdge.toFloat() / longestEdge.toFloat()
         val scaledW = (safeW * scale).roundToInt()
         val scaledH = (safeH * scale).roundToInt()
         return RenderDimensions(alignEven(scaledW), alignEven(scaledH))

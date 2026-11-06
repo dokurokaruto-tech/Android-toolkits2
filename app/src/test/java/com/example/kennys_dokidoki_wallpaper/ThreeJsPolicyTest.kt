@@ -99,4 +99,25 @@ class ThreeJsPolicyTest {
             )
         )
     }
+
+    @Test
+    fun loadTransitionFadesOnlyCold() {
+        assertEquals(300L, ThreeJsPolicy.INITIAL_FADE_MS)
+        assertEquals(
+            ThreeJsLoadTransition.FADE_FROM_BLACK,
+            ThreeJsPolicy.resolveLoadTransition(ThreeJsDisplayState.NOT_SHOWING)
+        )
+        assertEquals(
+            ThreeJsLoadTransition.IMMEDIATE_IN_PLACE,
+            ThreeJsPolicy.resolveLoadTransition(ThreeJsDisplayState.SHOWING_FRAME)
+        )
+    }
+
+    @Test
+    fun renderSizeRespectsCustomCap() {
+        val ecoDims = ThreeJsPolicy.computeRenderSize(1440, 3200, 960)
+        assertEquals(960, ecoDims.height)
+        assertEquals(0, ecoDims.width % 2)
+        assertTrue(ecoDims.width < 500)
+    }
 }

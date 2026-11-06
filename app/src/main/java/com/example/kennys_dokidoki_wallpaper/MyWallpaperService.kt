@@ -25,9 +25,11 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.service.wallpaper.WallpaperService
 import android.view.MotionEvent
 import android.view.SurfaceHolder
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
@@ -40,11 +42,13 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private const val TOOL_FINDER_ACTION = "TOOL_FINDER"
 private const val DOUBLE_TAP_HOLD_KEY = "action_tap_2_hold"
 private const val TRIPLE_TAP_HOLD_KEY = "action_tap_3_hold"
+private const val FULL_PAINT_ALPHA = 255
 
 private object ToolFinderSpec {
     const val EXPANSION_DELAY_MS = 600L
@@ -89,6 +93,14 @@ class MyWallpaperService : WallpaperService() {
         private var previousEntry: ImageEntry? = null
         private var activeSourceKind: WallpaperSourceKind = WallpaperSourceKind.IMAGES
         private var threeJsDriver: ThreeJsWallpaperDriver? = null
+        private var threeFadePhase: ThreeJsFadePhase = ThreeJsFadePhase.WAITING_FIRST_FRAME
+        private var threeFadeAlpha: Float = 0f
+        private var threeFadeAnimator: ValueAnimator? = null
+        private val powerHandler = Handler(Looper.getMainLooper())
+        private var bgPurgeRunnable: Runnable? = null
+        private var homeIdleRunnable: Runnable? = null
+        private var homeTouchState: HomeTouchState = HomeTouchState.ACTIVE
+        private var thermalListener: PowerManager.OnThermalStatusChangedListener? = null
         
         private var imageEntries = mutableListOf<ImageEntry>()
         private var currentImageIndex = 0
@@ -168,6 +180,16 @@ class MyWallpaperService : WallpaperService() {
                             showSetNameText()
                         }
                     }
+                    ThreeJsPowerStore.ACTION_POWER_CHANGED,
+                    PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> {
+                        powerHandler.post { onPowerEnvironmentChanged() }
+                    }
+                    ThreeJsPowerStore.ACTION_PURGE_NOW -> {
+                        powerHandler.post { onManualThreePurge() }
+                    }
+                    Intent.ACTION_SCREEN_OFF -> {
+                        powerHandler.post { onScreenTurnedOff() }
+                    }
                     else -> {}
                 }
             }
@@ -190,14 +212,21 @@ class MyWallpaperService : WallpaperService() {
                 addAction("com.example.kennys_dokidoki_wallpaper.ACTION_EXECUTE_ACTION")
                 addAction("com.example.kennys_dokidoki_wallpaper.ACTION_SHOW_SET_NAME")
                 addAction("com.example.kennys_dokidoki_wallpaper.ACTION_WALLPAPER_CHANGED")
+                addAction(ThreeJsPowerStore.ACTION_POWER_CHANGED)
+                addAction(ThreeJsPowerStore.ACTION_PURGE_NOW)
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
             }
             ContextCompat.registerReceiver(applicationContext, tapReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+            registerThermalWatcher()
         }
 
         override fun onDestroy() {
             super.onDestroy()
             goQuiet()
+            cancelBackgroundPurge()
             teardownThreeJsDriver()
+            unregisterThermalWatcher()
             engineJob.cancel()
             val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             settingsPrefs.unregisterOnSharedPreferenceChangeListener(this)
@@ -209,6 +238,10 @@ class MyWallpaperService : WallpaperService() {
         }
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+            if (key != null && key in ThreeJsPowerStore.ALL_PREF_KEYS) {
+                powerHandler.post { onPowerEnvironmentChanged() }
+                return
+            }
             if (key == "active_album_name" || key == "active_album_name_homescreen" || key == "active_album_name_chat" || key == "is_chat_active" || key == "active_image_index" || key == "all_images" || key == "image_sets" || key == DataManager.KEY_REVISION) {
                 Handler(Looper.getMainLooper()).post {
                     // 見えていない時の設定変更は次に表示される時まで寝かせる。
@@ -232,6 +265,7 @@ class MyWallpaperService : WallpaperService() {
             event?.let {
                 when (it.action) {
                     MotionEvent.ACTION_DOWN -> {
+                        onHomeSurfaceTouched()
                         showSetNameText()
                         
                         // 指が触れた瞬間にタップ判定タイマーを停止する（これによって長押し中に前のタップのアクションが暴発するのを防ぐ）
@@ -816,6 +850,8 @@ class MyWallpaperService : WallpaperService() {
             super.onVisibilityChanged(visible)
             engineVisible = visible
             if (visible) {
+                cancelBackgroundPurge()
+                homeTouchState = HomeTouchState.ACTIVE
                 val missingFrame = if (activeSourceKind == WallpaperSourceKind.THREE_JS) {
                     threeJsDriver?.currentFrame() == null
                 } else {
@@ -824,6 +860,9 @@ class MyWallpaperService : WallpaperService() {
                 if (needsReload || missingFrame) {
                     reloadCurrent()
                 } else {
+                    if (activeSourceKind == WallpaperSourceKind.THREE_JS) {
+                        resetHomeIdleTimer()
+                    }
                     draw()
                 }
             } else {
@@ -837,8 +876,11 @@ class MyWallpaperService : WallpaperService() {
             animator = null
             textAnimator?.cancel()
             textAnimator = null
+            resetThreeFadeToWaiting()
+            cancelHomeIdleTimer()
             clearToolFinder()
             threeJsDriver?.pause()
+            applyBackgroundPower()
             tapHandler.removeCallbacksAndMessages(null)
             textHandler.removeCallbacksAndMessages(null)
             holdRunnable = null
@@ -993,12 +1035,15 @@ class MyWallpaperService : WallpaperService() {
             if (existing != null) {
                 return existing
             }
-            val created = ThreeJsWallpaperDriver(this@MyWallpaperService) { draw() }
+            val created = ThreeJsWallpaperDriver(this@MyWallpaperService) { onThreeFrameReady() }
             threeJsDriver = created
             return created
         }
 
         private fun teardownThreeJsDriver() {
+            cancelBackgroundPurge()
+            cancelHomeIdleTimer()
+            resetThreeFadeToWaiting()
             threeJsDriver?.stop()
             threeJsDriver = null
         }
@@ -1019,6 +1064,15 @@ class MyWallpaperService : WallpaperService() {
         }
 
         private fun activateThreeJsSet(set: ImageSet) {
+            val loadTransition = ThreeJsPolicy.resolveLoadTransition(currentThreeDisplayState())
+            if (loadTransition == ThreeJsLoadTransition.FADE_FROM_BLACK) {
+                prepareThreeFadeFromBlack()
+            } else {
+                completeThreeFadeOpaque()
+            }
+
+            cancelBackgroundPurge()
+            homeTouchState = HomeTouchState.ACTIVE
             animator?.cancel()
             isAnimating = false
             previousBitmap = null
@@ -1040,7 +1094,9 @@ class MyWallpaperService : WallpaperService() {
             }
 
             val (width, height) = surfaceDimensions()
-            ensureThreeJsDriver().showWork(work.id, width, height)
+            val plan = currentThreePlan()
+            ensureThreeJsDriver().showWork(work.id, width, height, plan)
+            resetHomeIdleTimer()
             draw()
         }
 
@@ -1055,10 +1111,15 @@ class MyWallpaperService : WallpaperService() {
                 currentId
             ) ?: return
 
+            completeThreeFadeOpaque()
+            cancelBackgroundPurge()
+            homeTouchState = HomeTouchState.ACTIVE
             activeSourceKind = WallpaperSourceKind.THREE_JS
             settingsPrefs.edit().putString(prefKey, nextWork.id).apply()
             val (width, height) = surfaceDimensions()
-            ensureThreeJsDriver().showWork(nextWork.id, width, height)
+            val plan = currentThreePlan()
+            ensureThreeJsDriver().showWork(nextWork.id, width, height, plan)
+            resetHomeIdleTimer()
             showSetNameText()
         }
 
@@ -1198,6 +1259,15 @@ class MyWallpaperService : WallpaperService() {
                 return
             }
 
+            val alpha = if (threeFadePhase == ThreeJsFadePhase.OPAQUE) {
+                FULL_PAINT_ALPHA
+            } else {
+                (threeFadeAlpha * FULL_PAINT_ALPHA).roundToInt().coerceIn(0, FULL_PAINT_ALPHA)
+            }
+            if (alpha <= 0) {
+                return
+            }
+
             val drawableFrame = if (
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                 frame.config == Bitmap.Config.HARDWARE &&
@@ -1215,8 +1285,257 @@ class MyWallpaperService : WallpaperService() {
             val src = Rect(0, 0, drawableFrame.width, drawableFrame.height)
             val dest = Rect(0, 0, canvas.width, canvas.height)
             calculateDestRect(src, canvas, dest)
-            currPaint.alpha = 255
+            currPaint.alpha = alpha
             canvas.drawBitmap(drawableFrame, src, dest, currPaint)
+        }
+
+        private fun currentThreeDisplayState(): ThreeJsDisplayState {
+            val frame = threeJsDriver?.currentFrame()
+            if (
+                activeSourceKind == WallpaperSourceKind.THREE_JS &&
+                frame != null &&
+                !frame.isRecycled
+            ) {
+                return ThreeJsDisplayState.SHOWING_FRAME
+            }
+            return ThreeJsDisplayState.NOT_SHOWING
+        }
+
+        private fun currentThreePlan(): EffectiveThreeJsPowerPlan {
+            return ThreeJsPowerStore.resolvePlan(applicationContext, homeTouchState)
+        }
+
+        private fun prepareThreeFadeFromBlack() {
+            if (threeFadePhase == ThreeJsFadePhase.FADING_IN) {
+                return
+            }
+            threeFadeAnimator?.cancel()
+            threeFadeAnimator = null
+            threeFadePhase = ThreeJsFadePhase.WAITING_FIRST_FRAME
+            threeFadeAlpha = 0f
+        }
+
+        private fun completeThreeFadeOpaque() {
+            threeFadeAnimator?.cancel()
+            threeFadeAnimator = null
+            threeFadePhase = ThreeJsFadePhase.OPAQUE
+            threeFadeAlpha = 1f
+        }
+
+        private fun resetThreeFadeToWaiting() {
+            threeFadeAnimator?.cancel()
+            threeFadeAnimator = null
+            threeFadePhase = ThreeJsFadePhase.WAITING_FIRST_FRAME
+            threeFadeAlpha = 0f
+        }
+
+        private fun onThreeFrameReady() {
+            if (!engineVisible) {
+                return
+            }
+            if (
+                threeFadePhase == ThreeJsFadePhase.WAITING_FIRST_FRAME &&
+                threeJsDriver?.currentFrame() != null
+            ) {
+                startThreeFadeIn()
+                return
+            }
+            draw()
+        }
+
+        private fun startThreeFadeIn() {
+            threeFadeAnimator?.cancel()
+            threeFadePhase = ThreeJsFadePhase.FADING_IN
+            threeFadeAlpha = 0f
+            draw()
+            threeFadeAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = ThreeJsPolicy.INITIAL_FADE_MS
+                interpolator = DecelerateInterpolator()
+                addUpdateListener { anim ->
+                    threeFadeAlpha = anim.animatedValue as Float
+                    draw()
+                }
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        if (threeFadePhase == ThreeJsFadePhase.FADING_IN) {
+                            threeFadePhase = ThreeJsFadePhase.OPAQUE
+                            threeFadeAlpha = 1f
+                            draw()
+                        }
+                    }
+                })
+                start()
+            }
+        }
+
+        private fun applyBackgroundPower() {
+            if (threeJsDriver == null) {
+                return
+            }
+            cancelBackgroundPurge()
+            val plan = ThreeJsPowerStore.resolvePlan(applicationContext, HomeTouchState.ACTIVE)
+            when (plan.backgroundMode) {
+                ThreeJsBackgroundMode.PAUSE_KEEP_WARM -> {
+                    threeJsDriver?.pause()
+                    if (plan.idlePurgeDelayMs > 0L) {
+                        scheduleBackgroundPurge(plan.idlePurgeDelayMs)
+                    }
+                }
+                ThreeJsBackgroundMode.PAUSE_PURGE_SCENE -> {
+                    threeJsDriver?.pauseAndPurgeScene()
+                    if (plan.idlePurgeDelayMs > 0L) {
+                        scheduleBackgroundPurge(plan.idlePurgeDelayMs)
+                    }
+                }
+                ThreeJsBackgroundMode.DEEP_STOP_PURGE_ALL -> {
+                    threeJsDriver?.pause()
+                    scheduleBackgroundPurge(ThreeJsPowerPolicy.DEEP_STOP_SETTLE_MS)
+                }
+            }
+        }
+
+        private fun scheduleBackgroundPurge(delayMs: Long) {
+            cancelBackgroundPurge()
+            val task = Runnable {
+                bgPurgeRunnable = null
+                if (engineVisible) {
+                    return@Runnable
+                }
+                purgeThreeJsFully()
+            }
+            bgPurgeRunnable = task
+            powerHandler.postDelayed(task, delayMs)
+        }
+
+        private fun cancelBackgroundPurge() {
+            bgPurgeRunnable?.let { powerHandler.removeCallbacks(it) }
+            bgPurgeRunnable = null
+        }
+
+        private fun purgeThreeJsFully() {
+            cancelBackgroundPurge()
+            cancelHomeIdleTimer()
+            resetThreeFadeToWaiting()
+            threeJsDriver?.stopAndPurgeCaches()
+            threeJsDriver = null
+        }
+
+        private fun onHomeSurfaceTouched() {
+            if (activeSourceKind != WallpaperSourceKind.THREE_JS) {
+                return
+            }
+            if (homeTouchState == HomeTouchState.IDLE_TIMEOUT) {
+                homeTouchState = HomeTouchState.ACTIVE
+                val plan = currentThreePlan()
+                threeJsDriver?.resumeFromHomeIdle(plan)
+            }
+            resetHomeIdleTimer()
+        }
+
+        private fun resetHomeIdleTimer() {
+            cancelHomeIdleTimer()
+            if (!engineVisible || activeSourceKind != WallpaperSourceKind.THREE_JS) {
+                return
+            }
+            val plan = currentThreePlan()
+            val timeoutMs = plan.homeIdleMode.timeoutMs
+            if (timeoutMs <= 0L) {
+                return
+            }
+            val task = Runnable {
+                homeIdleRunnable = null
+                onHomeIdleTimeout()
+            }
+            homeIdleRunnable = task
+            powerHandler.postDelayed(task, timeoutMs)
+        }
+
+        private fun cancelHomeIdleTimer() {
+            homeIdleRunnable?.let { powerHandler.removeCallbacks(it) }
+            homeIdleRunnable = null
+        }
+
+        private fun onHomeIdleTimeout() {
+            if (!engineVisible || activeSourceKind != WallpaperSourceKind.THREE_JS) {
+                return
+            }
+            homeTouchState = HomeTouchState.IDLE_TIMEOUT
+            val plan = currentThreePlan()
+            if (plan.loopMode == LoopExecutionMode.SINGLE_FRAME_FREEZE) {
+                threeJsDriver?.freezeOnHome()
+                return
+            }
+            val (width, height) = surfaceDimensions()
+            threeJsDriver?.applyPowerPlan(plan, width, height)
+        }
+
+        private fun onPowerEnvironmentChanged() {
+            if (!engineVisible) {
+                needsReload = true
+                if (threeJsDriver != null) {
+                    applyBackgroundPower()
+                }
+                return
+            }
+            if (activeSourceKind != WallpaperSourceKind.THREE_JS) {
+                return
+            }
+            homeTouchState = HomeTouchState.ACTIVE
+            val plan = currentThreePlan()
+            val (width, height) = surfaceDimensions()
+            threeJsDriver?.applyPowerPlan(plan, width, height)
+            resetHomeIdleTimer()
+        }
+
+        private fun onManualThreePurge() {
+            purgeThreeJsFully()
+            if (!engineVisible) {
+                needsReload = true
+                return
+            }
+            if (activeSourceKind == WallpaperSourceKind.THREE_JS) {
+                val activeSet = resolveActiveSet()
+                if (activeSet != null && activeSet.sourceKind == WallpaperSourceKind.THREE_JS) {
+                    activateThreeJsSet(activeSet)
+                }
+            }
+        }
+
+        private fun onScreenTurnedOff() {
+            val plan = ThreeJsPowerStore.resolvePlan(applicationContext, HomeTouchState.ACTIVE)
+            val shouldPurge =
+                plan.screenOffPolicy == ThreeJsScreenOffPolicy.IMMEDIATE_DEEP_STOP ||
+                    plan.backgroundMode == ThreeJsBackgroundMode.DEEP_STOP_PURGE_ALL
+            if (shouldPurge && threeJsDriver != null) {
+                purgeThreeJsFully()
+                needsReload = true
+            }
+        }
+
+        private fun registerThermalWatcher() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                return
+            }
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+            val listener = PowerManager.OnThermalStatusChangedListener {
+                powerHandler.post { onPowerEnvironmentChanged() }
+            }
+            runCatching {
+                pm.addThermalStatusListener(listener)
+                thermalListener = listener
+            }
+        }
+
+        private fun unregisterThermalWatcher() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                return
+            }
+            val listener = thermalListener ?: return
+            thermalListener = null
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+            runCatching {
+                pm.removeThermalStatusListener(listener)
+            }
         }
     }
 }
