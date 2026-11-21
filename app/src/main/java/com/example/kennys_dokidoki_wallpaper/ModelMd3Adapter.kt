@@ -14,7 +14,7 @@ import com.google.android.material.color.MaterialColors
  * 選択中は secondaryContainer で塗りつぶし、primary で縁取りする（MD3 の selected card）。
  * 左端の星でOpenRouterモデルをお気に入り登録できる（onToggleFavorite 未指定なら星は出ない）。
  */
-data class ModelMd3Item(
+internal data class ModelMd3Item(
     val id: String,
     val name: String,
     val contextLength: Int,
@@ -24,7 +24,7 @@ data class ModelMd3Item(
     val reasoningCapability: ChatReasoningPolicy.Capability = ChatReasoningPolicy.Capability.UNSUPPORTED
 )
 
-class ModelMd3Adapter(
+internal class ModelMd3Adapter(
     private val items: List<ModelMd3Item>,
     private val selectedId: String?,
     private val onToggleFavorite: ((ModelMd3Item) -> Unit)? = null,

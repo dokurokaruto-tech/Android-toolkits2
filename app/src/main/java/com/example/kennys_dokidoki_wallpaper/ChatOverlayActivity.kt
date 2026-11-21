@@ -1750,7 +1750,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     // --- Remote Model Data ---
-    data class RemoteModel(
+    private data class RemoteModel(
         val id: String,
         val name: String,
         val isFree: Boolean,
