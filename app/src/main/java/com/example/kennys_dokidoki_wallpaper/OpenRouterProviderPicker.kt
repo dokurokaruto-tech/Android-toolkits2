@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,7 @@ internal object OpenRouterProviderPicker {
         context: Context,
         scope: CoroutineScope,
         model: ModelMd3Item,
+        onReasoningChanged: (() -> Unit)? = null,
         onSelect: (OpenRouterEndpoint?) -> Unit
     ): AppCompatDialog {
         val (_, view) = Md3PopupDialog.inflate(context, R.layout.dialog_openrouter_providers)
@@ -34,6 +36,26 @@ internal object OpenRouterProviderPicker {
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val selectedTag = OpenRouterRouting.selected(prefs, model.id)
         view.findViewById<TextView>(R.id.tv_provider_model).text = model.name
+        val reasoningRow = view.findViewById<View>(R.id.layout_provider_reasoning)
+        val reasoningSwitch = view.findViewById<MaterialSwitch>(R.id.switch_provider_reasoning)
+        if (model.reasoningCapability == ChatReasoningPolicy.Capability.SUPPORTED) {
+            reasoningRow.visibility = View.VISIBLE
+            reasoningSwitch.isChecked = ChatReasoningPolicy.Mode.fromPrefs(prefs) == ChatReasoningPolicy.Mode.ENABLED
+            reasoningSwitch.setOnCheckedChangeListener { _, checked ->
+                val next = if (checked) {
+                    ChatReasoningPolicy.Mode.ENABLED
+                } else {
+                    ChatReasoningPolicy.Mode.DISABLED
+                }
+                ChatReasoningPolicy.save(prefs, next)
+                onReasoningChanged?.invoke()
+            }
+            reasoningRow.setOnClickListener {
+                reasoningSwitch.isChecked = !reasoningSwitch.isChecked
+            }
+        } else {
+            reasoningRow.visibility = View.GONE
+        }
         list.layoutManager = LinearLayoutManager(view.context)
         if (prefs.getString("chat_openrouter_model", null) == model.id && selectedTag == null) {
             auto.setText(R.string.or_provider_auto_active)

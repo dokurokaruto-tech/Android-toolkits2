@@ -16,12 +16,15 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.materialswitch.MaterialSwitch
 import kotlinx.coroutines.launch
 
 class LocalModelActivity : AppCompatActivity() {
 
     private lateinit var etModelUrl: EditText
     private lateinit var rvModels: RecyclerView
+    private lateinit var switchReasoning: MaterialSwitch
+    private lateinit var tvReasoningSub: TextView
     private lateinit var adapter: LocalModelAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,18 +46,54 @@ class LocalModelActivity : AppCompatActivity() {
             }
         }
 
+        val layoutReasoning = findViewById<View>(R.id.layout_local_reasoning)
+        switchReasoning = findViewById(R.id.switch_local_reasoning)
+        tvReasoningSub = findViewById(R.id.tv_local_reasoning_subtitle)
+        layoutReasoning.setOnClickListener {
+            switchReasoning.isChecked = !switchReasoning.isChecked
+        }
+
         rvModels = findViewById(R.id.rv_installed_models)
         rvModels.layoutManager = LinearLayoutManager(this)
         
+        refreshReasoningSwitch()
         refreshModelList()
     }
 
     override fun onResume() {
         super.onResume()
+        refreshReasoningSwitch()
         refreshModelList()
     }
 
+    private fun refreshReasoningSwitch() {
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val enabled = ChatReasoningPolicy.Mode.fromPrefs(prefs) == ChatReasoningPolicy.Mode.ENABLED
+        switchReasoning.setOnCheckedChangeListener(null)
+        switchReasoning.isChecked = enabled
+        val selectedName = LocalModelManager.getSelectedModel(this)?.file?.nameWithoutExtension
+            ?: LocalModelManager.getFirstAvailableModel(this)?.file?.nameWithoutExtension
+        val supported = selectedName != null && ChatReasoningPolicy.supportsByNameOrId(selectedName)
+        tvReasoningSub.text = if (selectedName != null && !supported) {
+            "推論対応モデルで有効（選択中モデルは非対応）"
+        } else if (enabled) {
+            "推論対応モデルで思考過程を実行・表示（ON）"
+        } else {
+            "推論を行わず即答（OFF）"
+        }
+        switchReasoning.setOnCheckedChangeListener { _, checked ->
+            val next = if (checked) {
+                ChatReasoningPolicy.Mode.ENABLED
+            } else {
+                ChatReasoningPolicy.Mode.DISABLED
+            }
+            ChatReasoningPolicy.save(prefs, next)
+            refreshReasoningSwitch()
+        }
+    }
+
     private fun refreshModelList() {
+        refreshReasoningSwitch()
         val models = LocalModelManager.getAllModels(this)
         adapter = LocalModelAdapter(
             models,

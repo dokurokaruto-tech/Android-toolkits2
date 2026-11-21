@@ -7,8 +7,8 @@ import org.json.JSONObject
 /**
  * 推論（Thinking / Reasoning）対応モデルの判定・推論設定・思考過程の抽出と開閉状態管理。
  *
- *   モデル情報 ──▶ supports() ─┬─ false ──▶ チップ非表示 / 追加パラメータなし
- *                             └─ true  ──▶ チップ表示   ──▶ OpenRouter(exclude=false) / Local
+ *   モデル情報 ──▶ supports() ─┬─ false ──▶ 追加パラメータなし
+ *                             └─ true  ──▶ モデル選択画面のON/OFF指定に従う
  *
  *   生成開始(思考到着) ──▶ 自動展開 (expanded = true)
  *   推論終了(本文到着/完了) ──▶ 自動格納 (expanded = false)
@@ -16,7 +16,6 @@ import org.json.JSONObject
  */
 internal object ChatReasoningPolicy {
     const val PREF_KEY = "chat_reasoning_enabled"
-    const val CHIP_LABEL = "推論"
 
     private const val ENGINE_CLOUD = "CLOUD"
     private const val ENGINE_LOCAL = "LOCAL"

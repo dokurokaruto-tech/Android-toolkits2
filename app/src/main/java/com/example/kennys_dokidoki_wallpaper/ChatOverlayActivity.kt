@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
-import android.content.res.ColorStateList
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
@@ -677,12 +676,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     /** 残数表記の左に出す「現在のモデル」ボタン。タップでモデル選択を開く */
     private lateinit var btnCurrentModel: TextView
 
-    /** チャット入力枠の上に出す MD3 Filter Chip 式の推論切替バー */
-    private lateinit var reasoningChipBar: LinearLayout
-    private lateinit var btnReasoningToggle: LinearLayout
-    private lateinit var ivReasoningChipIcon: ImageView
-    private lateinit var tvReasoningChipLabel: TextView
-
     private lateinit var chatInput: EditText
     private lateinit var btnSend: ImageButton
     private lateinit var btnGenerateFirstUserLine: ImageButton
@@ -708,53 +701,17 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private fun updateCounter() {
         openRouterBalanceLabel?.refresh()
         refreshCurrentModelButton()
-        refreshReasoningButton()
-    }
-
-    /** 現在選択中のモデルが推論対応のときだけ、入力枠の上の MD3 Filter Chip を表示・更新する。 */
-    private fun refreshReasoningButton() {
-        if (!::reasoningChipBar.isInitialized) {
-            return
-        }
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val localName = LlmInferenceEngine.loadedModelName
-            ?: LocalModelManager.getSelectedModel(this)?.file?.nameWithoutExtension
-            ?: LocalModelManager.getFirstAvailableModel(this)?.file?.nameWithoutExtension
-        if (!ChatReasoningPolicy.isCurrentTargetSupported(prefs, DEFAULT_OPENROUTER_MODEL, localName)) {
-            reasoningChipBar.visibility = View.GONE
-            return
-        }
-        val mode = ChatReasoningPolicy.Mode.fromPrefs(prefs)
-        val enabled = mode == ChatReasoningPolicy.Mode.ENABLED
-        btnReasoningToggle.setBackgroundResource(
-            if (enabled) {
-                R.drawable.bg_md3_filter_chip_on
-            } else {
-                R.drawable.bg_md3_filter_chip_off
-            }
-        )
-        ivReasoningChipIcon.setImageResource(
-            if (enabled) {
-                R.drawable.ic_md3_check
-            } else {
-                R.drawable.ic_md3_psychology
-            }
-        )
-        val tintColor = if (enabled) {
-            Color.parseColor("#E8DEF8")
-        } else {
-            Color.parseColor("#CAC4D0")
-        }
-        ivReasoningChipIcon.imageTintList = ColorStateList.valueOf(tintColor)
-        tvReasoningChipLabel.text = ChatReasoningPolicy.CHIP_LABEL
-        tvReasoningChipLabel.setTextColor(tintColor)
-        reasoningChipBar.visibility = View.VISIBLE
     }
 
     private fun toggleReasoningMode() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        ChatReasoningPolicy.toggle(prefs)
-        refreshReasoningButton()
+        val next = ChatReasoningPolicy.toggle(prefs)
+        val label = if (next == ChatReasoningPolicy.Mode.ENABLED) {
+            "推論をONにしました。"
+        } else {
+            "推論をOFFにしました。"
+        }
+        Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
     }
 
     /** 残数表記の左の「現在のモデル」ボタンを最新化する。OpenRouter以外のエンジンでは隠す */
@@ -1376,13 +1333,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         btnCurrentModel.setOnClickListener {
             showMaterialModelPicker()
         }
-        reasoningChipBar = findViewById(R.id.reasoning_chip_bar)
-        btnReasoningToggle = findViewById(R.id.btn_reasoning_toggle)
-        ivReasoningChipIcon = findViewById(R.id.iv_reasoning_chip_icon)
-        tvReasoningChipLabel = findViewById(R.id.tv_reasoning_chip_label)
-        btnReasoningToggle.setOnClickListener {
-            toggleReasoningMode()
-        }
 
         updateCounter()
         try {
@@ -1937,9 +1887,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 success = false
             }
             withContext(Dispatchers.Main) {
-                if (success) {
-                    refreshReasoningButton()
-                }
                 onComplete?.invoke(success)
             }
         }
@@ -1966,6 +1913,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val chipFree = view.findViewById<com.google.android.material.chip.Chip>(R.id.chip_free)
         val chipFav = view.findViewById<com.google.android.material.chip.Chip>(R.id.chip_fav)
         val tvCurrentModel = view.findViewById<TextView>(R.id.tv_current_model)
+        val layoutReasoning = view.findViewById<View>(R.id.layout_picker_reasoning)
+        val tvReasoningSub = view.findViewById<TextView>(R.id.tv_picker_reasoning_subtitle)
+        val switchReasoning = view.findViewById<MaterialSwitch>(R.id.switch_picker_reasoning)
         val btnSort = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_sort)
         val btnRefresh = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_refresh)
 
@@ -1982,9 +1932,43 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         // 未選択なら既定モデルが実質の選択中。表示名はキャッシュ済み一覧から解決する
         val currentModelId = currentModel ?: DEFAULT_OPENROUTER_MODEL
 
+        fun syncReasoningRow() {
+            layoutReasoning.visibility = View.VISIBLE
+            val enabled = ChatReasoningPolicy.Mode.fromPrefs(prefs) == ChatReasoningPolicy.Mode.ENABLED
+            switchReasoning.setOnCheckedChangeListener(null)
+            switchReasoning.isChecked = enabled
+            val currentSupports = openRouterModels
+                .firstOrNull { it.id == currentModelId }
+                ?.let { it.reasoningCapability == ChatReasoningPolicy.Capability.SUPPORTED }
+                ?: ChatReasoningPolicy.supportsOpenRouter(
+                    currentModelId,
+                    prefs.getString("cached_openrouter_models", null)
+                )
+            tvReasoningSub.text = if (!currentSupports) {
+                "推論対応モデルで有効（選択中モデルは非対応）"
+            } else if (enabled) {
+                "推論対応モデルで思考過程を実行・表示（ON）"
+            } else {
+                "推論を行わず即答（OFF）"
+            }
+            switchReasoning.setOnCheckedChangeListener { _, checked ->
+                val next = if (checked) {
+                    ChatReasoningPolicy.Mode.ENABLED
+                } else {
+                    ChatReasoningPolicy.Mode.DISABLED
+                }
+                ChatReasoningPolicy.save(prefs, next)
+                syncReasoningRow()
+            }
+        }
+        layoutReasoning.setOnClickListener {
+            switchReasoning.isChecked = !switchReasoning.isChecked
+        }
+
         fun updateCurrentBar() {
             tvCurrentModel.text = openRouterModels
                 .firstOrNull { it.id == currentModelId }?.name ?: currentModelId
+            syncReasoningRow()
         }
 
         fun render() {
@@ -2039,7 +2023,12 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     }
                     (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
                         .hideSoftInputFromWindow(search.windowToken, 0)
-                    providerPicker = OpenRouterProviderPicker.show(this, coroutineScope, item) { endpoint ->
+                    providerPicker = OpenRouterProviderPicker.show(
+                        this,
+                        coroutineScope,
+                        item,
+                        onReasoningChanged = { syncReasoningRow() }
+                    ) { endpoint ->
                         OpenRouterRouting.save(prefs, item.id, endpoint?.tag)
                         updateCounter()
                         val providerName = endpoint?.name ?: getString(R.string.or_provider_auto_short)
@@ -2640,7 +2629,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             prefs.edit().putString("chat_llm_engine", "LOCAL").apply()
             coroutineScope.launch {
                 LlmInferenceEngine.autoLoadModel(this@ChatOverlayActivity)
-                refreshReasoningButton()
             }
             Toast.makeText(this, "AIエンジンをローカルエンジンに切り替えました。", Toast.LENGTH_SHORT).show()
             showMainMenu()
@@ -2909,7 +2897,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         ChatReplyNotifications.viewing(this, replyNoticeOwner, currentChatId)
 
         updateSendButtonForGeneration()
-        refreshReasoningButton()
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         settingsPrefs.edit().putBoolean("is_chat_active", true).apply()
         currentChatId?.let { chatId ->
@@ -3532,7 +3519,6 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     ChatReasoningPolicy.Mode.DISABLED
                 }
                 ChatReasoningPolicy.save(prefs, next)
-                refreshReasoningButton()
             }
             .setNegativeButton("閉じる", null)
             .show()
