@@ -88,26 +88,6 @@
         app:layout_constraintEnd_toStartOf="@id/btn_options"
         app:layout_constraintTop_toTopOf="@id/btn_options" />
 
-    <!-- 推論対応モデルのときだけ表示する推論ON/OFF切替ピル -->
-    <TextView
-        android:id="@+id/btn_reasoning_toggle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="6dp"
-        android:background="@drawable/bg_counter_bubble"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
-        android:text="🧠 推論 ON"
-        android:textColor="#D0BCFF"
-        android:textSize="12sp"
-        android:textStyle="bold"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/btn_options"
-        app:layout_constraintEnd_toStartOf="@id/btn_current_model"
-        app:layout_constraintTop_toTopOf="@id/btn_options" />
-
     <!-- 現在選択中のOpenRouterモデル。タップでモデル選択を開く -->
     <TextView
         android:id="@+id/btn_current_model"
@@ -235,6 +215,53 @@
                 </GridLayout>
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
+
+        <!-- チャット入力枠の上に出す MD3 Filter Chip バー（推論対応モデルのときのみ表示） -->
+        <LinearLayout
+            android:id="@+id/reasoning_chip_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="8dp"
+            android:gravity="start|center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/btn_reasoning_toggle"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_md3_filter_chip_on"
+                android:clickable="true"
+                android:contentDescription="推論のON/OFFを切り替え"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackgroundBorderless"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingEnd="14dp">
+
+                <ImageView
+                    android:id="@+id/iv_reasoning_chip_icon"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_md3_check"
+                    app:tint="#E8DEF8" />
+
+                <TextView
+                    android:id="@+id/tv_reasoning_chip_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:letterSpacing="0.01"
+                    android:singleLine="true"
+                    android:text="推論"
+                    android:textColor="#E8DEF8"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
 
         <!-- チャット入力枠 -->
         <LinearLayout

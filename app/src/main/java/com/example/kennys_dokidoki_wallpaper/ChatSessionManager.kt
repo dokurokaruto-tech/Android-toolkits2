@@ -17,8 +17,12 @@ data class ChatNode(
     var modelName: String? = null,
     var suggestionA: String? = null,
     var suggestionB: String? = null,
-    var suggestionC: String? = null
-)
+    var suggestionC: String? = null,
+    var reasoningText: String? = null,
+    var reasoningDurationMs: Long? = null
+) {
+    internal var reasoningPhase: ChatReasoningPolicy.Phase = ChatReasoningPolicy.Phase.NONE
+}
 
 data class ChatTree(
     val nodes: MutableMap<String, ChatNode>,
@@ -212,6 +216,8 @@ object ChatSessionManager {
             nObj.put("suggestionA", node.suggestionA)
             nObj.put("suggestionB", node.suggestionB)
             nObj.put("suggestionC", node.suggestionC)
+            nObj.put("reasoningText", node.reasoningText)
+            nObj.put("reasoningDurationMs", node.reasoningDurationMs)
             val childrenArray = JSONArray()
             node.childrenIds.forEach { childrenArray.put(it) }
             nObj.put("childrenIds", childrenArray)
@@ -233,6 +239,16 @@ object ChatSessionManager {
                     val childrenArray = nObj.optJSONArray("childrenIds") ?: JSONArray()
                     val childrenIds = mutableListOf<String>()
                     for (i in 0 until childrenArray.length()) childrenIds.add(childrenArray.getString(i))
+                    val reasoningText = if (nObj.isNull("reasoningText")) {
+                        null
+                    } else {
+                        nObj.optString("reasoningText", null)?.takeIf { it.isNotBlank() }
+                    }
+                    val reasoningDurationMs = if (nObj.isNull("reasoningDurationMs")) {
+                        null
+                    } else {
+                        nObj.optLong("reasoningDurationMs", 0L).takeIf { it > 0L }
+                    }
                     nodesMap[key] = ChatNode(
                         id = key,
                         text = nObj.optString("text", ""),
@@ -243,8 +259,16 @@ object ChatSessionManager {
                         modelName = if (nObj.isNull("modelName")) null else nObj.optString("modelName", null),
                         suggestionA = if (nObj.isNull("suggestionA")) null else nObj.optString("suggestionA", null),
                         suggestionB = if (nObj.isNull("suggestionB")) null else nObj.optString("suggestionB", null),
-                        suggestionC = if (nObj.isNull("suggestionC")) null else nObj.optString("suggestionC", null)
-                    )
+                        suggestionC = if (nObj.isNull("suggestionC")) null else nObj.optString("suggestionC", null),
+                        reasoningText = reasoningText,
+                        reasoningDurationMs = reasoningDurationMs
+                    ).apply {
+                        reasoningPhase = if (reasoningText != null) {
+                            ChatReasoningPolicy.Phase.FINISHED
+                        } else {
+                            ChatReasoningPolicy.Phase.NONE
+                        }
+                    }
                 }
                 val currentNodeId = if (obj.isNull("currentNodeId")) null else obj.optString("currentNodeId", null)
                 ChatTree(nodesMap, currentNodeId)

@@ -187,9 +187,10 @@ object ChatGenerationManager {
                 ChatReasoningPolicy.Mode.fromPrefs(prefs)
             )
 
-            // 最初の可視テキストが届くまで「返信中」表示を残す
+            // 最初の可視テキストが届くまで「返信中」表示を残しつつ、思考ブロックも追跡する
             var rawLocalOutput = ""
             var visibleStarted = false
+            var reasoningStartedAt = 0L
             var tokenCount = 0
 
             withContext(Dispatchers.IO) {
@@ -208,9 +209,27 @@ object ChatGenerationManager {
                                     "生成中... ${tokenCount}トークン 🧠✨"
                                 )
                             }
-                            val visible = ChatReasoningPolicy.stripThinkBlocks(rawLocalOutput)
+                            val extracted = ChatReasoningPolicy.extract(
+                                "",
+                                rawLocalOutput,
+                                ChatReasoningPolicy.StreamStage.STREAMING
+                            )
+                            if (extracted.phase != ChatReasoningPolicy.Phase.NONE) {
+                                if (reasoningStartedAt == 0L) {
+                                    reasoningStartedAt = android.os.SystemClock.elapsedRealtime()
+                                }
+                                aiNode.reasoningText = extracted.reasoning
+                                aiNode.reasoningPhase = extracted.phase
+                                if (extracted.phase == ChatReasoningPolicy.Phase.FINISHED && aiNode.reasoningDurationMs == null) {
+                                    aiNode.reasoningDurationMs = (android.os.SystemClock.elapsedRealtime() - reasoningStartedAt).coerceAtLeast(1L)
+                                }
+                            }
+                            val visible = extracted.visibleContent
                             if (!visibleStarted) {
                                 if (visible.isBlank()) {
+                                    if (extracted.phase != ChatReasoningPolicy.Phase.NONE) {
+                                        notifyProgress(epoch, aiNode.text, false)
+                                    }
                                     return@launch
                                 }
                                 visibleStarted = true
@@ -227,7 +246,21 @@ object ChatGenerationManager {
                                 return@launch
                             }
                             thinkingJob.cancel()
-                            aiNode.text = ChatReasoningPolicy.stripThinkBlocks(rawLocalOutput)
+                            val extracted = ChatReasoningPolicy.extract(
+                                "",
+                                rawLocalOutput,
+                                ChatReasoningPolicy.StreamStage.COMPLETED
+                            )
+                            if (extracted.reasoning.isNotBlank()) {
+                                aiNode.reasoningText = extracted.reasoning
+                                aiNode.reasoningPhase = ChatReasoningPolicy.Phase.FINISHED
+                                if (reasoningStartedAt > 0L && aiNode.reasoningDurationMs == null) {
+                                    aiNode.reasoningDurationMs = (android.os.SystemClock.elapsedRealtime() - reasoningStartedAt).coerceAtLeast(1L)
+                                }
+                            } else {
+                                aiNode.reasoningPhase = ChatReasoningPolicy.Phase.NONE
+                            }
+                            aiNode.text = extracted.visibleContent
                             aiNode.modelName = LlmInferenceEngine.loadedModelName
                             saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true)
                             LlmForegroundService.updateNotification(context, "推論完了 ✅ (${tokenCount}トークン)")
@@ -339,8 +372,10 @@ object ChatGenerationManager {
             }
 
             val stream = ChatReplyStreamState()
-            val fullReply = withContext(Dispatchers.IO) {
+            val cloudOutcome = withContext(Dispatchers.IO) {
                 var rawReply = ""
+                var rawReasoning = ""
+                var reasoningStartedAt = 0L
                 var visibleStarted = false
                 try {
                     val url = URL(apiUrl)
@@ -384,12 +419,30 @@ object ChatGenerationManager {
                                         stream.finishReason(if (choice.isNull("finish_reason")) { null } else { choice.optString("finish_reason") })
                                         val delta = choice.optJSONObject("delta") ?: return@forEach
 
-                                        if (!usageCounted && provider == "OPENROUTER") {
-                                            val hasReasoning = (!delta.isNull("reasoning") && delta.optString("reasoning").isNotEmpty()) ||
-                                                (delta.optJSONArray("reasoning_details")?.length() ?: 0) > 0
-                                            if (hasReasoning) {
+                                        val reasoningDelta = ChatReasoningPolicy.reasoningDeltaFromChunk(delta)
+                                        if (reasoningDelta.isNotEmpty()) {
+                                            if (reasoningStartedAt == 0L) {
+                                                reasoningStartedAt = android.os.SystemClock.elapsedRealtime()
+                                            }
+                                            rawReasoning += reasoningDelta
+                                            if (!usageCounted) {
                                                 usageCounted = true
-                                                OpenRouterManager.countFreeUsage(context, apiKey, modelName)
+                                                if (provider == "OPENROUTER") {
+                                                    OpenRouterManager.countFreeUsage(context, apiKey, modelName)
+                                                }
+                                            }
+                                            val extracted = ChatReasoningPolicy.extract(
+                                                rawReasoning,
+                                                rawReply,
+                                                ChatReasoningPolicy.StreamStage.STREAMING
+                                            )
+                                            withContext(Dispatchers.Main) {
+                                                if (epoch != generationEpoch || epoch in interruptedEpochs) {
+                                                    return@withContext
+                                                }
+                                                aiNode.reasoningText = extracted.reasoning
+                                                aiNode.reasoningPhase = extracted.phase
+                                                notifyProgress(epoch, aiNode.text, false)
                                             }
                                         }
 
@@ -406,9 +459,35 @@ object ChatGenerationManager {
                                                     OpenRouterManager.countFreeUsage(context, apiKey, modelName)
                                                 }
                                             }
-                                            val visible = ChatReasoningPolicy.stripThinkBlocks(rawReply)
+                                            val extracted = ChatReasoningPolicy.extract(
+                                                rawReasoning,
+                                                rawReply,
+                                                ChatReasoningPolicy.StreamStage.STREAMING
+                                            )
+                                            if (extracted.phase != ChatReasoningPolicy.Phase.NONE && reasoningStartedAt == 0L) {
+                                                reasoningStartedAt = android.os.SystemClock.elapsedRealtime()
+                                            }
+                                            val finishedMs = if (
+                                                extracted.phase == ChatReasoningPolicy.Phase.FINISHED &&
+                                                reasoningStartedAt > 0L
+                                            ) {
+                                                (android.os.SystemClock.elapsedRealtime() - reasoningStartedAt).coerceAtLeast(1L)
+                                            } else {
+                                                null
+                                            }
+                                            val visible = extracted.visibleContent
                                             if (!visibleStarted) {
                                                 if (visible.isBlank()) {
+                                                    if (extracted.phase != ChatReasoningPolicy.Phase.NONE) {
+                                                        withContext(Dispatchers.Main) {
+                                                            if (epoch != generationEpoch || epoch in interruptedEpochs) {
+                                                                return@withContext
+                                                            }
+                                                            aiNode.reasoningText = extracted.reasoning
+                                                            aiNode.reasoningPhase = extracted.phase
+                                                            notifyProgress(epoch, aiNode.text, false)
+                                                        }
+                                                    }
                                                     return@forEach
                                                 }
                                                 visibleStarted = true
@@ -418,6 +497,13 @@ object ChatGenerationManager {
                                             withContext(Dispatchers.Main) {
                                                 if (epoch != generationEpoch || epoch in interruptedEpochs) {
                                                     return@withContext
+                                                }
+                                                if (extracted.phase != ChatReasoningPolicy.Phase.NONE) {
+                                                    aiNode.reasoningText = extracted.reasoning
+                                                    aiNode.reasoningPhase = extracted.phase
+                                                    if (finishedMs != null && aiNode.reasoningDurationMs == null) {
+                                                        aiNode.reasoningDurationMs = finishedMs
+                                                    }
                                                 }
                                                 aiNode.text = visible
                                                 ChatReplyNotifications.content(context, aiNode.id, content)
@@ -454,11 +540,32 @@ object ChatGenerationManager {
                     }
                     return@withContext null
                 }
-                ChatReasoningPolicy.stripThinkBlocks(rawReply)
+                val finalExtracted = ChatReasoningPolicy.extract(
+                    rawReasoning,
+                    rawReply,
+                    ChatReasoningPolicy.StreamStage.COMPLETED
+                )
+                val finalDuration = if (reasoningStartedAt > 0L) {
+                    (android.os.SystemClock.elapsedRealtime() - reasoningStartedAt).coerceAtLeast(1L)
+                } else {
+                    null
+                }
+                Triple(finalExtracted, finalDuration, true)
             }
 
             thinkingJob.cancel()
-            if (fullReply != null) {
+            if (cloudOutcome != null) {
+                val (finalExtracted, finalDuration, _) = cloudOutcome
+                if (finalExtracted.reasoning.isNotBlank()) {
+                    aiNode.reasoningText = finalExtracted.reasoning
+                    aiNode.reasoningPhase = ChatReasoningPolicy.Phase.FINISHED
+                    if (aiNode.reasoningDurationMs == null && finalDuration != null) {
+                        aiNode.reasoningDurationMs = finalDuration
+                    }
+                } else {
+                    aiNode.reasoningPhase = ChatReasoningPolicy.Phase.NONE
+                }
+                val fullReply = finalExtracted.visibleContent
                 aiNode.text = fullReply
                 aiNode.modelName = modelName
                 val error = if (stream.completed(fullReply)) { null } else { "返信が空か、正常終了を確認できませんでした。" }
@@ -492,6 +599,11 @@ object ChatGenerationManager {
         aiNode: ChatNode,
         epoch: Long
     ) {
+        if (!aiNode.reasoningText.isNullOrBlank()) {
+            aiNode.reasoningPhase = ChatReasoningPolicy.Phase.FINISHED
+        } else {
+            aiNode.reasoningPhase = ChatReasoningPolicy.Phase.NONE
+        }
         aiNode.text = ChatInterruptPolicy.interruptedBubbleText(aiNode.text)
         ChatSessionManager.saveSessionData(context, sessionId, chatTree)
         scope.launch(Dispatchers.Main) {

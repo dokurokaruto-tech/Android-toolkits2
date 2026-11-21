@@ -5,15 +5,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 推論（Thinking / Reasoning）対応モデルの判定と、チャット画面の推論ON/OFF制御。
+ * 推論（Thinking / Reasoning）対応モデルの判定・推論設定・思考過程の抽出と開閉状態管理。
  *
- *   モデル情報 ──▶ supports() ─┬─ false ──▶ トグル非表示 / 追加パラメータなし
- *                             └─ true  ──▶ トグル表示   ──▶ applyCloud() / buildLocalPrompt()
+ *   モデル情報 ──▶ supports() ─┬─ false ──▶ チップ非表示 / 追加パラメータなし
+ *                             └─ true  ──▶ チップ表示   ──▶ OpenRouter(exclude=false) / Local
+ *
+ *   生成開始(思考到着) ──▶ 自動展開 (expanded = true)
+ *   推論終了(本文到着/完了) ──▶ 自動格納 (expanded = false)
+ *   ユーザータップ ──▶ 手動で表示/非表示を切替
  */
 internal object ChatReasoningPolicy {
     const val PREF_KEY = "chat_reasoning_enabled"
-    const val LABEL_ON = "🧠 推論 ON"
-    const val LABEL_OFF = "🧠 推論 OFF"
+    const val CHIP_LABEL = "推論"
 
     private const val ENGINE_CLOUD = "CLOUD"
     private const val ENGINE_LOCAL = "LOCAL"
@@ -23,6 +26,7 @@ internal object ChatReasoningPolicy {
     private const val PARAM_INCLUDE_REASONING = "include_reasoning"
     private const val THINK_OPEN = "<think>"
     private const val THINK_CLOSE = "</think>"
+    private const val MS_PER_SECOND = 1000L
 
     private val reasoningIdHints = listOf(
         "deepseek-r1",
@@ -50,7 +54,7 @@ internal object ChatReasoningPolicy {
     )
 
     private val closedThinkBlockRegex = Regex(
-        """<think>.*?</think>\s*""",
+        """<think>(.*?)</think>\s*""",
         setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
     )
 
@@ -73,6 +77,23 @@ internal object ChatReasoningPolicy {
         }
     }
 
+    enum class Phase {
+        NONE,
+        THINKING,
+        FINISHED
+    }
+
+    enum class AccordionState {
+        EXPANDED,
+        COLLAPSED
+    }
+
+    data class ExtractedReasoning(
+        val reasoning: String,
+        val visibleContent: String,
+        val phase: Phase
+    )
+
     fun toggle(prefs: SharedPreferences): Mode {
         val next = if (Mode.fromPrefs(prefs) == Mode.ENABLED) {
             Mode.DISABLED
@@ -87,12 +108,36 @@ internal object ChatReasoningPolicy {
         prefs.edit().putBoolean(PREF_KEY, mode == Mode.ENABLED).apply()
     }
 
-    fun badgeLabel(mode: Mode): String =
-        if (mode == Mode.ENABLED) {
-            LABEL_ON
-        } else {
-            LABEL_OFF
+    /** 思考ヘッダー文言（例: "Thinking..." / "Thought for 3 seconds"）。 */
+    fun headerLabel(phase: Phase, durationMs: Long?): String {
+        if (phase == Phase.THINKING) {
+            return "Thinking..."
         }
+        val seconds = ((durationMs ?: 0L) + 500L) / MS_PER_SECOND
+        val clamped = seconds.coerceAtLeast(1L)
+        return if (durationMs == null || durationMs <= 0L) {
+            "Thought process"
+        } else if (clamped == 1L) {
+            "Thought for 1 second"
+        } else {
+            "Thought for $clamped seconds"
+        }
+    }
+
+    /**
+     * 思考ブロックの展開状態を決定する。
+     * 手動操作があれば最優先し、未操作なら推論中は展開・推論終了後は自動で折りたたむ。
+     */
+    fun resolveAccordion(phase: Phase, manualOverride: AccordionState?): AccordionState {
+        if (manualOverride != null) {
+            return manualOverride
+        }
+        return if (phase == Phase.THINKING) {
+            AccordionState.EXPANDED
+        } else {
+            AccordionState.COLLAPSED
+        }
+    }
 
     /** 現在選択中のチャットエンジン・モデルが推論切替に対応しているか。 */
     fun isCurrentTargetSupported(
@@ -142,10 +187,7 @@ internal object ChatReasoningPolicy {
         }
         val params = modelObj.optJSONArray("supported_parameters")
         if (params != null) {
-            if (containsReasoningParam(params)) {
-                return true
-            }
-            return false
+            return containsReasoningParam(params)
         }
         val pricing = modelObj.optJSONObject("pricing")
         if (hasPositivePrice(pricing?.optString("internal_reasoning"))) {
@@ -173,23 +215,112 @@ internal object ChatReasoningPolicy {
         return false
     }
 
-    /** OpenRouterリクエストJSONに推論ON/OFF指定を付与する。非対応モデルには何もしない。 */
+    /** OpenRouterリクエストJSONに推論ON/OFF指定を付与する。ON時は推論過程も受信する。 */
     fun applyOpenRouter(
         prefs: SharedPreferences,
         modelId: String,
-        request: JSONObject
+        request: JSONObject,
+        purpose: RequestPurpose = RequestPurpose.CHAT_REPLY
     ) {
         val cached = prefs.getString(CACHED_MODELS_KEY, null)
         if (!supportsOpenRouter(modelId, cached)) {
             return
         }
         val enabled = Mode.fromPrefs(prefs) == Mode.ENABLED
+        val exclude = !enabled || purpose == RequestPurpose.BACKGROUND_HELPER
         request.put(
             PARAM_REASONING,
             JSONObject()
                 .put("enabled", enabled)
-                .put("exclude", true)
+                .put("exclude", exclude)
         )
+    }
+
+    enum class RequestPurpose {
+        CHAT_REPLY,
+        BACKGROUND_HELPER
+    }
+
+    enum class StreamStage {
+        STREAMING,
+        COMPLETED
+    }
+
+    /** OpenRouter SSEの delta オブジェクトから推論トークン文字列を取り出す。 */
+    fun reasoningDeltaFromChunk(delta: JSONObject): String {
+        if (delta.has("reasoning") && !delta.isNull("reasoning")) {
+            val text = delta.optString("reasoning", "")
+            if (text.isNotEmpty()) {
+                return text
+            }
+        }
+        if (delta.has("reasoning_content") && !delta.isNull("reasoning_content")) {
+            val text = delta.optString("reasoning_content", "")
+            if (text.isNotEmpty()) {
+                return text
+            }
+        }
+        val details = delta.optJSONArray("reasoning_details") ?: return ""
+        val sb = StringBuilder()
+        for (i in 0 until details.length()) {
+            val item = details.optJSONObject(i) ?: continue
+            val text = when {
+                !item.isNull("text") -> item.optString("text", "")
+                !item.isNull("summary") -> item.optString("summary", "")
+                else -> ""
+            }
+            sb.append(text)
+        }
+        return sb.toString()
+    }
+
+    /**
+     * ストリームされた推論文字列と本文文字列（`<think>...</think>` 混在可）を統合・分離する。
+     */
+    fun extract(
+        apiReasoning: String,
+        rawContent: String,
+        stage: StreamStage
+    ): ExtractedReasoning {
+        val thoughts = mutableListOf<String>()
+        if (apiReasoning.isNotBlank()) {
+            thoughts.add(apiReasoning.trim())
+        }
+
+        closedThinkBlockRegex.findAll(rawContent).forEach { match ->
+            val inner = match.groupValues[1].trim()
+            if (inner.isNotEmpty()) {
+                thoughts.add(inner)
+            }
+        }
+
+        val withoutClosed = rawContent.replace(closedThinkBlockRegex, "")
+        val openIdx = withoutClosed.indexOf(THINK_OPEN, ignoreCase = true)
+        val hasUnclosedThink = openIdx >= 0
+        val visible: String
+        if (hasUnclosedThink) {
+            val before = withoutClosed.substring(0, openIdx).trimEnd()
+            val unclosed = withoutClosed.substring(openIdx + THINK_OPEN.length).trim()
+            if (unclosed.isNotEmpty()) {
+                thoughts.add(unclosed)
+            }
+            visible = before
+        } else {
+            visible = withoutClosed
+        }
+
+        val combinedReasoning = thoughts.joinToString("\n\n").trim()
+        if (combinedReasoning.isEmpty() && !hasUnclosedThink) {
+            return ExtractedReasoning("", visible, Phase.NONE)
+        }
+
+        val stillThinking = stage == StreamStage.STREAMING && (hasUnclosedThink || visible.isBlank())
+        val phase = if (stillThinking) {
+            Phase.THINKING
+        } else {
+            Phase.FINISHED
+        }
+        return ExtractedReasoning(combinedReasoning, visible, phase)
     }
 
     /** ローカルモデル向けに、推論OFF時は空の思考ブロックを前置して思考をスキップさせる。 */
@@ -212,12 +343,7 @@ internal object ChatReasoningPolicy {
         if (raw.isEmpty()) {
             return raw
         }
-        val withoutClosed = raw.replace(closedThinkBlockRegex, "")
-        val openIdx = withoutClosed.indexOf(THINK_OPEN, ignoreCase = true)
-        if (openIdx < 0) {
-            return withoutClosed
-        }
-        return withoutClosed.substring(0, openIdx).trimEnd()
+        return extract("", raw, StreamStage.COMPLETED).visibleContent
     }
 
     private fun supportsInCachedMetadata(modelId: String, cachedJson: String?): Boolean? {

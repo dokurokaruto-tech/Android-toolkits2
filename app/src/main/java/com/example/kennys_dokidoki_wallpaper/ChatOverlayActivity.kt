@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.res.ColorStateList
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
@@ -157,9 +158,63 @@ class ChatAdapter(
 
     private var bubbleOpacity: Int = 60
     private var bubbleWidth: Int = 670
+    private val manualReasoningOverrides = mutableMapOf<String, ChatReasoningPolicy.AccordionState>()
 
     init {
         setHasStableIds(true)
+    }
+
+    private fun effectiveReasoningPhase(node: ChatNode): ChatReasoningPolicy.Phase {
+        if (node.reasoningPhase == ChatReasoningPolicy.Phase.THINKING) {
+            val active = ChatGenerationManager.isGenerating &&
+                ChatGenerationManager.activeAiNodeId == node.id
+            return if (active) {
+                ChatReasoningPolicy.Phase.THINKING
+            } else {
+                ChatReasoningPolicy.Phase.FINISHED
+            }
+        }
+        if (node.reasoningPhase == ChatReasoningPolicy.Phase.FINISHED || !node.reasoningText.isNullOrBlank()) {
+            return ChatReasoningPolicy.Phase.FINISHED
+        }
+        return ChatReasoningPolicy.Phase.NONE
+    }
+
+    private fun bindReasoningSection(holder: ViewHolder, node: ChatNode) {
+        val phase = effectiveReasoningPhase(node)
+        val reasoning = node.reasoningText?.trim().orEmpty()
+        if (phase == ChatReasoningPolicy.Phase.NONE || (reasoning.isEmpty() && phase != ChatReasoningPolicy.Phase.THINKING)) {
+            holder.layoutReasoningSection.visibility = View.GONE
+            holder.btnReasoningHeader.setOnClickListener(null)
+            return
+        }
+
+        holder.layoutReasoningSection.visibility = View.VISIBLE
+        holder.tvReasoningHeader.text = ChatReasoningPolicy.headerLabel(phase, node.reasoningDurationMs)
+        holder.tvReasoningBody.text = reasoning
+
+        val state = ChatReasoningPolicy.resolveAccordion(phase, manualReasoningOverrides[node.id])
+        val expanded = state == ChatReasoningPolicy.AccordionState.EXPANDED && reasoning.isNotEmpty()
+        holder.layoutReasoningBody.visibility = if (expanded) View.VISIBLE else View.GONE
+        holder.ivReasoningChevron.rotation = if (expanded) 180f else 0f
+
+        holder.btnReasoningHeader.setOnClickListener {
+            val currentPhase = effectiveReasoningPhase(node)
+            val currentState = ChatReasoningPolicy.resolveAccordion(
+                currentPhase,
+                manualReasoningOverrides[node.id]
+            )
+            val next = if (currentState == ChatReasoningPolicy.AccordionState.EXPANDED) {
+                ChatReasoningPolicy.AccordionState.COLLAPSED
+            } else {
+                ChatReasoningPolicy.AccordionState.EXPANDED
+            }
+            manualReasoningOverrides[node.id] = next
+            val pos = holder.bindingAdapterPosition
+            if (pos in messages.indices) {
+                notifyItemChanged(pos)
+            }
+        }
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
@@ -176,8 +231,18 @@ class ChatAdapter(
             holder.itemView.requestLayout()
             return
         }
-        holder.textAi.text = ChatSuggestionParser.visibleText(node.text)
-        val streaming = node.text.startsWith("思考中") ||
+        bindReasoningSection(holder, node)
+        val visible = ChatSuggestionParser.visibleText(node.text)
+        val hasReasoning = effectiveReasoningPhase(node) != ChatReasoningPolicy.Phase.NONE
+        if (hasReasoning && ChatPendingBubble.isPending(visible)) {
+            holder.textAi.text = ""
+            holder.textAi.visibility = View.GONE
+        } else {
+            holder.textAi.visibility = View.VISIBLE
+            holder.textAi.text = visible
+        }
+        val streaming = (ChatGenerationManager.isGenerating && ChatGenerationManager.activeAiNodeId == node.id) ||
+            node.text.startsWith("思考中") ||
             node.text.startsWith("推論中") ||
             ChatPendingBubble.isPending(node.text) ||
             node.text.startsWith("🧠") ||
@@ -307,6 +372,12 @@ class ChatAdapter(
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val containerAi: LinearLayout = view.findViewById(R.id.container_ai)
         val bubbleAi: LinearLayout = view.findViewById(R.id.bubble_ai)
+        val layoutReasoningSection: LinearLayout = view.findViewById(R.id.layout_reasoning_section)
+        val btnReasoningHeader: LinearLayout = view.findViewById(R.id.btn_reasoning_header)
+        val tvReasoningHeader: TextView = view.findViewById(R.id.tv_reasoning_header)
+        val ivReasoningChevron: ImageView = view.findViewById(R.id.iv_reasoning_chevron)
+        val layoutReasoningBody: LinearLayout = view.findViewById(R.id.layout_reasoning_body)
+        val tvReasoningBody: TextView = view.findViewById(R.id.tv_reasoning_body)
         val textAi: TextView = view.findViewById(R.id.text_message_ai)
         val imageAi: ImageView = view.findViewById(R.id.image_message_ai)
         val btnAiPrev: TextView = view.findViewById(R.id.btn_ai_prev)
@@ -459,19 +530,27 @@ class ChatAdapter(
                 holder.imageAi.visibility = View.GONE
                 holder.imageAi.setOnClickListener(null)
             }
+            bindReasoningSection(holder, node)
             val displayText = ChatSuggestionParser.visibleText(cleanText)
-            
-            // モデル名がある場合は小さく表示するわよ！
-            if (node.modelName != null && !displayText.startsWith("推論中") && !ChatPendingBubble.isPending(displayText) && !displayText.startsWith("🧠 推論中") && !displayText.startsWith("📥 モデルをロード")) {
-                val ssb = SpannableStringBuilder(displayText)
-                ssb.append("\n\n")
-                val start = ssb.length
-                ssb.append("via ${node.modelName}")
-                ssb.setSpan(ForegroundColorSpan(Color.GRAY), start, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                ssb.setSpan(RelativeSizeSpan(0.7f), start, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                holder.textAi.text = ssb
+            val hasReasoning = effectiveReasoningPhase(node) != ChatReasoningPolicy.Phase.NONE
+
+            if (hasReasoning && ChatPendingBubble.isPending(displayText)) {
+                holder.textAi.text = ""
+                holder.textAi.visibility = View.GONE
             } else {
-                holder.textAi.text = displayText
+                holder.textAi.visibility = View.VISIBLE
+                // モデル名がある場合は小さく表示するわよ！
+                if (node.modelName != null && !displayText.startsWith("推論中") && !ChatPendingBubble.isPending(displayText) && !displayText.startsWith("🧠 推論中") && !displayText.startsWith("📥 モデルをロード")) {
+                    val ssb = SpannableStringBuilder(displayText)
+                    ssb.append("\n\n")
+                    val start = ssb.length
+                    ssb.append("via ${node.modelName}")
+                    ssb.setSpan(ForegroundColorSpan(Color.GRAY), start, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    ssb.setSpan(RelativeSizeSpan(0.7f), start, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    holder.textAi.text = ssb
+                } else {
+                    holder.textAi.text = displayText
+                }
             }
             holder.bubbleAi.background.alpha = alpha
             
@@ -485,9 +564,10 @@ class ChatAdapter(
             }
 
             holder.btnAiRegen.setOnClickListener { onRegenerate(node) }
-            holder.btnAiCopy.setOnClickListener { copyToClipboard(holder.itemView.context, node.text) }
+            holder.btnAiCopy.setOnClickListener { copyToClipboard(holder.itemView.context, displayText) }
             
-            if (node.text.startsWith("思考中") ||
+            if ((ChatGenerationManager.isGenerating && ChatGenerationManager.activeAiNodeId == node.id) ||
+                node.text.startsWith("思考中") ||
                 node.text.startsWith("推論中") ||
                 ChatPendingBubble.isPending(node.text) ||
                 node.text.startsWith("🧠") ||
@@ -597,8 +677,11 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     /** 残数表記の左に出す「現在のモデル」ボタン。タップでモデル選択を開く */
     private lateinit var btnCurrentModel: TextView
 
-    /** 推論対応モデルのときだけ表示する「推論 ON / OFF」切替ピル */
-    private lateinit var btnReasoningToggle: TextView
+    /** チャット入力枠の上に出す MD3 Filter Chip 式の推論切替バー */
+    private lateinit var reasoningChipBar: LinearLayout
+    private lateinit var btnReasoningToggle: LinearLayout
+    private lateinit var ivReasoningChipIcon: ImageView
+    private lateinit var tvReasoningChipLabel: TextView
 
     private lateinit var chatInput: EditText
     private lateinit var btnSend: ImageButton
@@ -628,9 +711,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         refreshReasoningButton()
     }
 
-    /** 現在選択中のモデルが推論対応のときだけ、推論 ON / OFF ピルを表示・更新する。 */
+    /** 現在選択中のモデルが推論対応のときだけ、入力枠の上の MD3 Filter Chip を表示・更新する。 */
     private fun refreshReasoningButton() {
-        if (!::btnReasoningToggle.isInitialized) {
+        if (!::reasoningChipBar.isInitialized) {
             return
         }
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -638,31 +721,40 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
             ?: LocalModelManager.getSelectedModel(this)?.file?.nameWithoutExtension
             ?: LocalModelManager.getFirstAvailableModel(this)?.file?.nameWithoutExtension
         if (!ChatReasoningPolicy.isCurrentTargetSupported(prefs, DEFAULT_OPENROUTER_MODEL, localName)) {
-            btnReasoningToggle.visibility = View.GONE
+            reasoningChipBar.visibility = View.GONE
             return
         }
         val mode = ChatReasoningPolicy.Mode.fromPrefs(prefs)
-        btnReasoningToggle.text = ChatReasoningPolicy.badgeLabel(mode)
-        btnReasoningToggle.setTextColor(
-            if (mode == ChatReasoningPolicy.Mode.ENABLED) {
-                Color.parseColor("#D0BCFF")
+        val enabled = mode == ChatReasoningPolicy.Mode.ENABLED
+        btnReasoningToggle.setBackgroundResource(
+            if (enabled) {
+                R.drawable.bg_md3_filter_chip_on
             } else {
-                Color.parseColor("#938F99")
+                R.drawable.bg_md3_filter_chip_off
             }
         )
-        btnReasoningToggle.visibility = View.VISIBLE
+        ivReasoningChipIcon.setImageResource(
+            if (enabled) {
+                R.drawable.ic_md3_check
+            } else {
+                R.drawable.ic_md3_psychology
+            }
+        )
+        val tintColor = if (enabled) {
+            Color.parseColor("#E8DEF8")
+        } else {
+            Color.parseColor("#CAC4D0")
+        }
+        ivReasoningChipIcon.imageTintList = ColorStateList.valueOf(tintColor)
+        tvReasoningChipLabel.text = ChatReasoningPolicy.CHIP_LABEL
+        tvReasoningChipLabel.setTextColor(tintColor)
+        reasoningChipBar.visibility = View.VISIBLE
     }
 
     private fun toggleReasoningMode() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val mode = ChatReasoningPolicy.toggle(prefs)
+        ChatReasoningPolicy.toggle(prefs)
         refreshReasoningButton()
-        val status = if (mode == ChatReasoningPolicy.Mode.ENABLED) {
-            "推論をONにしました。"
-        } else {
-            "推論をOFFにしました。"
-        }
-        Toast.makeText(this, status, Toast.LENGTH_SHORT).show()
     }
 
     /** 残数表記の左の「現在のモデル」ボタンを最新化する。OpenRouter以外のエンジンでは隠す */
@@ -1284,7 +1376,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         btnCurrentModel.setOnClickListener {
             showMaterialModelPicker()
         }
+        reasoningChipBar = findViewById(R.id.reasoning_chip_bar)
         btnReasoningToggle = findViewById(R.id.btn_reasoning_toggle)
+        ivReasoningChipIcon = findViewById(R.id.iv_reasoning_chip_icon)
+        tvReasoningChipLabel = findViewById(R.id.tv_reasoning_chip_label)
         btnReasoningToggle.setOnClickListener {
             toggleReasoningMode()
         }

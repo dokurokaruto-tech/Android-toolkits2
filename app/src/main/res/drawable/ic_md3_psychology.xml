@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorOnSurface">
+    <!-- Material Symbols psychology / brain-with-gear style outline -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M11.5,3C8.46,3 6,5.46 6,8.5c0,1.33 0.47,2.55 1.26,3.5C6.48,12.83 6,13.95 6,15.17C6,17.84 8.16,20 10.83,20H11.5V3zM9.5,17.8c-0.99,-0.25 -1.7,-1.15 -1.7,-2.22c0,-0.83 0.44,-1.56 1.15,-1.96l0.67,-0.38l-0.5,-0.59C8.4,11.81 8,10.74 8,9.62C8,7.94 9.1,6.52 10.62,6.05v11.75H9.5zM12.5,3v17h0.67C15.84,20 18,17.84 18,15.17c0,-1.22 -0.48,-2.34 -1.26,-3.17c0.79,-0.95 1.26,-2.17 1.26,-3.5C18,5.46 15.54,3 12.5,3zM14.88,12.65l-0.5,0.59l0.67,0.38c0.71,0.4 1.15,1.13 1.15,1.96c0,1.07 -0.71,1.97 -1.7,2.22h-1.12V6.05C14.9,6.52 16,7.94 16,9.62C16,10.74 15.6,11.81 14.88,12.65z" />
+</vector>

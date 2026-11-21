@@ -54,7 +54,18 @@ class ChatReasoningPolicyTest {
         ChatReasoningPolicy.applyOpenRouter(prefs, "model/reasoner", supportedEnabled)
         val reasoningOn = supportedEnabled.getJSONObject("reasoning")
         assertTrue(reasoningOn.getBoolean("enabled"))
-        assertTrue(reasoningOn.getBoolean("exclude"))
+        assertFalse(reasoningOn.getBoolean("exclude"))
+
+        val helperEnabled = JSONObject()
+        ChatReasoningPolicy.applyOpenRouter(
+            prefs,
+            "model/reasoner",
+            helperEnabled,
+            ChatReasoningPolicy.RequestPurpose.BACKGROUND_HELPER
+        )
+        val helperReasoning = helperEnabled.getJSONObject("reasoning")
+        assertTrue(helperReasoning.getBoolean("enabled"))
+        assertTrue(helperReasoning.getBoolean("exclude"))
 
         ChatReasoningPolicy.toggle(prefs)
         val supportedDisabled = JSONObject()
@@ -125,6 +136,70 @@ class ChatReasoningPolicyTest {
         )
         assertEquals("やっほー！", parsed.cleanText)
         assertEquals("おはよう", parsed.suggestionA)
+    }
+
+    @Test
+    fun extractsStreamingReasoningAndAutoCollapsesWhenFinished() {
+        val thinking = ChatReasoningPolicy.extract(
+            apiReasoning = "",
+            rawContent = "<think>ユーザーの意図を分析中",
+            stage = ChatReasoningPolicy.StreamStage.STREAMING
+        )
+        assertEquals(ChatReasoningPolicy.Phase.THINKING, thinking.phase)
+        assertEquals("ユーザーの意図を分析中", thinking.reasoning)
+        assertEquals("", thinking.visibleContent)
+        assertEquals(
+            ChatReasoningPolicy.AccordionState.EXPANDED,
+            ChatReasoningPolicy.resolveAccordion(thinking.phase, manualOverride = null)
+        )
+        assertEquals("Thinking...", ChatReasoningPolicy.headerLabel(thinking.phase, null))
+
+        val finished = ChatReasoningPolicy.extract(
+            apiReasoning = "",
+            rawContent = "<think>ユーザーの意図を分析中</think>\nこんにちは！",
+            stage = ChatReasoningPolicy.StreamStage.STREAMING
+        )
+        assertEquals(ChatReasoningPolicy.Phase.FINISHED, finished.phase)
+        assertEquals("ユーザーの意図を分析中", finished.reasoning)
+        assertEquals("こんにちは！", finished.visibleContent)
+        assertEquals(
+            ChatReasoningPolicy.AccordionState.COLLAPSED,
+            ChatReasoningPolicy.resolveAccordion(finished.phase, manualOverride = null)
+        )
+        assertEquals(
+            ChatReasoningPolicy.AccordionState.EXPANDED,
+            ChatReasoningPolicy.resolveAccordion(
+                finished.phase,
+                manualOverride = ChatReasoningPolicy.AccordionState.EXPANDED
+            )
+        )
+        assertEquals("Thought for 1 second", ChatReasoningPolicy.headerLabel(finished.phase, 1_200L))
+        assertEquals("Thought for 4 seconds", ChatReasoningPolicy.headerLabel(finished.phase, 4_100L))
+    }
+
+    @Test
+    fun extractsOpenRouterDeltaReasoningChunksAndTransitionsToFinishedOnContent() {
+        val delta = JSONObject("""{"reasoning":"Step 1. "}""")
+        val detailDelta = JSONObject("""{"reasoning_details":[{"text":"Step 2."}]}""")
+        val rawReasoning = ChatReasoningPolicy.reasoningDeltaFromChunk(delta) +
+            ChatReasoningPolicy.reasoningDeltaFromChunk(detailDelta)
+
+        val midStream = ChatReasoningPolicy.extract(
+            rawReasoning,
+            "",
+            ChatReasoningPolicy.StreamStage.STREAMING
+        )
+        assertEquals(ChatReasoningPolicy.Phase.THINKING, midStream.phase)
+        assertEquals("Step 1. Step 2.", midStream.reasoning)
+
+        val contentStarted = ChatReasoningPolicy.extract(
+            rawReasoning,
+            "お疲れさま！",
+            ChatReasoningPolicy.StreamStage.STREAMING
+        )
+        assertEquals(ChatReasoningPolicy.Phase.FINISHED, contentStarted.phase)
+        assertEquals("Step 1. Step 2.", contentStarted.reasoning)
+        assertEquals("お疲れさま！", contentStarted.visibleContent)
     }
 
     private fun preferences(

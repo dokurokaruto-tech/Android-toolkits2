@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <!-- MD3 Dark Filter Chip (Unselected): SurfaceContainerLow + Outline -->
+    <solid android:color="#D91D1B20" />
+    <corners android:radius="8dp" />
+    <stroke
+        android:width="1dp"
+        android:color="#938F99" />
+</shape>

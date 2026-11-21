@@ -97,7 +97,12 @@ internal object ChatSuggestionRetry {
                 })
                 if (provider == "OPENROUTER") {
                     OpenRouterRouting.apply(prefs, model, this)
-                    ChatReasoningPolicy.applyOpenRouter(prefs, model, this)
+                    ChatReasoningPolicy.applyOpenRouter(
+                        prefs,
+                        model,
+                        this,
+                        ChatReasoningPolicy.RequestPurpose.BACKGROUND_HELPER
+                    )
                 }
             }
 
