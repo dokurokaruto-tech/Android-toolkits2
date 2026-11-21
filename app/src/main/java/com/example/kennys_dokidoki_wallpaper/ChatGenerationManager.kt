@@ -180,9 +180,16 @@ object ChatGenerationManager {
             } else {
                 history
             }
-            val prompt = LlmInferenceEngine.buildChatPrompt(systemPrompt, mappedHistory)
+            val basePrompt = LlmInferenceEngine.buildChatPrompt(systemPrompt, mappedHistory)
+            val prompt = ChatReasoningPolicy.applyLocalPrompt(
+                basePrompt,
+                LlmInferenceEngine.loadedModelName,
+                ChatReasoningPolicy.Mode.fromPrefs(prefs)
+            )
 
-            // 「返信中」表示は最初のトークンが届くまで残す
+            // 最初の可視テキストが届くまで「返信中」表示を残す
+            var rawLocalOutput = ""
+            var visibleStarted = false
             var tokenCount = 0
 
             withContext(Dispatchers.IO) {
@@ -193,21 +200,25 @@ object ChatGenerationManager {
                             if (epoch != generationEpoch || epoch in interruptedEpochs) {
                                 return@launch
                             }
-                            if (tokenCount == 0) {
-                                thinkingJob.cancel()
-                                aiNode.text = ""
-                            }
-                            aiNode.text += token
-                            ChatReplyNotifications.content(context, aiNode.id, token)
+                            rawLocalOutput += token
                             tokenCount++
-                            notifyProgress(epoch, aiNode.text, false)
-
                             if (tokenCount % 10 == 0) {
                                 LlmForegroundService.updateNotification(
                                     context,
                                     "生成中... ${tokenCount}トークン 🧠✨"
                                 )
                             }
+                            val visible = ChatReasoningPolicy.stripThinkBlocks(rawLocalOutput)
+                            if (!visibleStarted) {
+                                if (visible.isBlank()) {
+                                    return@launch
+                                }
+                                visibleStarted = true
+                                thinkingJob.cancel()
+                            }
+                            aiNode.text = visible
+                            ChatReplyNotifications.content(context, aiNode.id, token)
+                            notifyProgress(epoch, aiNode.text, false)
                         }
                     },
                     onComplete = {
@@ -216,6 +227,7 @@ object ChatGenerationManager {
                                 return@launch
                             }
                             thinkingJob.cancel()
+                            aiNode.text = ChatReasoningPolicy.stripThinkBlocks(rawLocalOutput)
                             aiNode.modelName = LlmInferenceEngine.loadedModelName
                             saveAndNotify(epoch, context, sessionId, chatTree, aiNode, isComplete = true)
                             LlmForegroundService.updateNotification(context, "推論完了 ✅ (${tokenCount}トークン)")
@@ -322,12 +334,14 @@ object ChatGenerationManager {
                 put("stream", true)
                 if (provider == "OPENROUTER") {
                     OpenRouterRouting.apply(prefs, modelName, this)
+                    ChatReasoningPolicy.applyOpenRouter(prefs, modelName, this)
                 }
             }
 
             val stream = ChatReplyStreamState()
             val fullReply = withContext(Dispatchers.IO) {
-                var reply = ""
+                var rawReply = ""
+                var visibleStarted = false
                 try {
                     val url = URL(apiUrl)
                     val conn = url.openConnection() as HttpURLConnection
@@ -347,7 +361,7 @@ object ChatGenerationManager {
                     OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(requestBody.toString()) }
 
                     if (conn.responseCode == 200) {
-                        // 「返信中」表示は最初の1文字が届くまで残す
+                        // 「返信中」表示は最初の可視文字が届くまで残す
                         var usageCounted = false
                         val reader = conn.inputStream.bufferedReader()
                         reader.useLines { lines ->
@@ -369,27 +383,45 @@ object ChatGenerationManager {
                                         val choice = json.optJSONArray("choices")?.optJSONObject(0) ?: return@forEach
                                         stream.finishReason(if (choice.isNull("finish_reason")) { null } else { choice.optString("finish_reason") })
                                         val delta = choice.optJSONObject("delta") ?: return@forEach
-                                        
+
+                                        if (!usageCounted && provider == "OPENROUTER") {
+                                            val hasReasoning = (!delta.isNull("reasoning") && delta.optString("reasoning").isNotEmpty()) ||
+                                                (delta.optJSONArray("reasoning_details")?.length() ?: 0) > 0
+                                            if (hasReasoning) {
+                                                usageCounted = true
+                                                OpenRouterManager.countFreeUsage(context, apiKey, modelName)
+                                            }
+                                        }
+
                                         if (delta.has("content") && !delta.isNull("content")) {
                                             val content = delta.getString("content")
-                                            if (content.isEmpty()) return@forEach
-                                            reply += content
+                                            if (content.isEmpty()) {
+                                                return@forEach
+                                            }
+                                            rawReply += content
                                             if (!usageCounted) {
                                                 // 1文字でも受け取れば無料枠を消費したとみなす。停止しても減らす
                                                 usageCounted = true
-                                                thinkingJob.cancel()
                                                 if (provider == "OPENROUTER") {
                                                     OpenRouterManager.countFreeUsage(context, apiKey, modelName)
                                                 }
                                             }
-                                            
+                                            val visible = ChatReasoningPolicy.stripThinkBlocks(rawReply)
+                                            if (!visibleStarted) {
+                                                if (visible.isBlank()) {
+                                                    return@forEach
+                                                }
+                                                visibleStarted = true
+                                                thinkingJob.cancel()
+                                            }
+
                                             withContext(Dispatchers.Main) {
                                                 if (epoch != generationEpoch || epoch in interruptedEpochs) {
                                                     return@withContext
                                                 }
-                                                aiNode.text = reply
+                                                aiNode.text = visible
                                                 ChatReplyNotifications.content(context, aiNode.id, content)
-                                                notifyProgress(epoch, reply, false)
+                                                notifyProgress(epoch, visible, false)
                                             }
                                         }
                                     } catch (e: Exception) {
@@ -422,11 +454,12 @@ object ChatGenerationManager {
                     }
                     return@withContext null
                 }
-                reply
+                ChatReasoningPolicy.stripThinkBlocks(rawReply)
             }
 
             thinkingJob.cancel()
             if (fullReply != null) {
+                aiNode.text = fullReply
                 aiNode.modelName = modelName
                 val error = if (stream.completed(fullReply)) { null } else { "返信が空か、正常終了を確認できませんでした。" }
                 if (error != null) {

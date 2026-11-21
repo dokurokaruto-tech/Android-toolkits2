@@ -44,30 +44,38 @@ object ChatSuggestionParser {
         return cut
     }
 
-    /** 生成中の吹き出し用。タグ以降（未完了ブロック含む）は出さない。 */
+    /** 生成中の吹き出し用。思考ブロックやタグ以降（未完了ブロック含む）は出さない。 */
     fun visibleText(raw: String): String {
-        val cut = markerIndex(raw)
-        return if (cut >= 0) raw.substring(0, cut).trimEnd() else raw
+        val cleaned = ChatReasoningPolicy.stripThinkBlocks(raw)
+        val cut = markerIndex(cleaned)
+        return if (cut >= 0) {
+            cleaned.substring(0, cut).trimEnd()
+        } else {
+            cleaned
+        }
     }
 
     fun parse(raw: String): Result {
-        if (raw.isEmpty()) return Result(raw)
-
-        closedBlockRegex.find(raw)?.let { match ->
-            val parsed = parseBlock(match.groupValues[1])
-            val clean = raw.replace(closedBlockRegex, "").trim()
-            return Result(clean, parsed.first, parsed.second, parsed.third)
-        }
-        bracketBlockRegex.find(raw)?.let { match ->
-            val parsed = parseBlock(match.groupValues[1])
-            val clean = raw.replace(bracketBlockRegex, "").trim()
-            return Result(clean, parsed.first, parsed.second, parsed.third)
+        val cleaned = ChatReasoningPolicy.stripThinkBlocks(raw)
+        if (cleaned.isEmpty()) {
+            return Result(cleaned)
         }
 
-        val cut = markerIndex(raw)
+        closedBlockRegex.find(cleaned)?.let { match ->
+            val parsed = parseBlock(match.groupValues[1])
+            val clean = cleaned.replace(closedBlockRegex, "").trim()
+            return Result(clean, parsed.first, parsed.second, parsed.third)
+        }
+        bracketBlockRegex.find(cleaned)?.let { match ->
+            val parsed = parseBlock(match.groupValues[1])
+            val clean = cleaned.replace(bracketBlockRegex, "").trim()
+            return Result(clean, parsed.first, parsed.second, parsed.third)
+        }
+
+        val cut = markerIndex(cleaned)
         if (cut >= 0) {
-            val head = raw.substring(0, cut).trimEnd()
-            val tail = raw.substring(cut)
+            val head = cleaned.substring(0, cut).trimEnd()
+            val tail = cleaned.substring(cut)
             val body = tail
                 .lineSequence()
                 .drop(1)
@@ -82,7 +90,7 @@ object ChatSuggestionParser {
             return Result(head.trim(), parsed.first, parsed.second, parsed.third)
         }
 
-        return Result(raw)
+        return Result(cleaned)
     }
 
     fun applyTo(node: ChatNode) {

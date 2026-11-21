@@ -50,7 +50,11 @@ internal object ChatSuggestionRetry {
         val engine = prefs.getString("chat_llm_engine", "CLOUD") ?: "CLOUD"
         val messages = history.map { it.copy() } + ChatNode(text = request, isUser = true)
         return runCatching {
-            if (engine == "LOCAL") local(systemPrompt, messages) else cloud(context, systemPrompt, messages)
+            if (engine == "LOCAL") {
+                local(prefs, systemPrompt, messages)
+            } else {
+                cloud(context, systemPrompt, messages)
+            }
         }.getOrNull()
     }
 
@@ -93,6 +97,7 @@ internal object ChatSuggestionRetry {
                 })
                 if (provider == "OPENROUTER") {
                     OpenRouterRouting.apply(prefs, model, this)
+                    ChatReasoningPolicy.applyOpenRouter(prefs, model, this)
                 }
             }
 
@@ -111,25 +116,42 @@ internal object ChatSuggestionRetry {
                 if (provider == "OPENROUTER" && content.isNotEmpty()) {
                     OpenRouterManager.countFreeUsage(context, apiKey, model)
                 }
-                content
+                ChatReasoningPolicy.stripThinkBlocks(content)
             } finally {
                 conn.disconnect()
             }
         }
 
-    private suspend fun local(system: String, messages: List<ChatNode>): String? {
+    private suspend fun local(
+        prefs: android.content.SharedPreferences,
+        system: String,
+        messages: List<ChatNode>
+    ): String? {
         if (!LlmInferenceEngine.isModelLoaded()) {
             return null
         }
-        val prompt = LlmInferenceEngine.buildChatPrompt(system, messages)
+        val basePrompt = LlmInferenceEngine.buildChatPrompt(system, messages)
+        val prompt = ChatReasoningPolicy.applyLocalPrompt(
+            basePrompt,
+            LlmInferenceEngine.loadedModelName,
+            ChatReasoningPolicy.Mode.fromPrefs(prefs)
+        )
         return suspendCancellableCoroutine { cont ->
             val sb = StringBuilder()
             CoroutineScope(Dispatchers.IO).launch {
                 LlmInferenceEngine.generate(
                     prompt = prompt,
                     onToken = { sb.append(it) },
-                    onComplete = { if (cont.isActive) cont.resume(sb.toString()) },
-                    onError = { if (cont.isActive) cont.resume(null) }
+                    onComplete = {
+                        if (cont.isActive) {
+                            cont.resume(ChatReasoningPolicy.stripThinkBlocks(sb.toString()))
+                        }
+                    },
+                    onError = {
+                        if (cont.isActive) {
+                            cont.resume(null)
+                        }
+                    }
                 )
             }
         }

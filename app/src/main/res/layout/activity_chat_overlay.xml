@@ -88,6 +88,26 @@
         app:layout_constraintEnd_toStartOf="@id/btn_options"
         app:layout_constraintTop_toTopOf="@id/btn_options" />
 
+    <!-- 推論対応モデルのときだけ表示する推論ON/OFF切替ピル -->
+    <TextView
+        android:id="@+id/btn_reasoning_toggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="6dp"
+        android:background="@drawable/bg_counter_bubble"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:text="🧠 推論 ON"
+        android:textColor="#D0BCFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/btn_options"
+        app:layout_constraintEnd_toStartOf="@id/btn_current_model"
+        app:layout_constraintTop_toTopOf="@id/btn_options" />
+
     <!-- 現在選択中のOpenRouterモデル。タップでモデル選択を開く -->
     <TextView
         android:id="@+id/btn_current_model"

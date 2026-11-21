@@ -597,6 +597,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     /** 残数表記の左に出す「現在のモデル」ボタン。タップでモデル選択を開く */
     private lateinit var btnCurrentModel: TextView
 
+    /** 推論対応モデルのときだけ表示する「推論 ON / OFF」切替ピル */
+    private lateinit var btnReasoningToggle: TextView
+
     private lateinit var chatInput: EditText
     private lateinit var btnSend: ImageButton
     private lateinit var btnGenerateFirstUserLine: ImageButton
@@ -622,6 +625,44 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     private fun updateCounter() {
         openRouterBalanceLabel?.refresh()
         refreshCurrentModelButton()
+        refreshReasoningButton()
+    }
+
+    /** 現在選択中のモデルが推論対応のときだけ、推論 ON / OFF ピルを表示・更新する。 */
+    private fun refreshReasoningButton() {
+        if (!::btnReasoningToggle.isInitialized) {
+            return
+        }
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val localName = LlmInferenceEngine.loadedModelName
+            ?: LocalModelManager.getSelectedModel(this)?.file?.nameWithoutExtension
+            ?: LocalModelManager.getFirstAvailableModel(this)?.file?.nameWithoutExtension
+        if (!ChatReasoningPolicy.isCurrentTargetSupported(prefs, DEFAULT_OPENROUTER_MODEL, localName)) {
+            btnReasoningToggle.visibility = View.GONE
+            return
+        }
+        val mode = ChatReasoningPolicy.Mode.fromPrefs(prefs)
+        btnReasoningToggle.text = ChatReasoningPolicy.badgeLabel(mode)
+        btnReasoningToggle.setTextColor(
+            if (mode == ChatReasoningPolicy.Mode.ENABLED) {
+                Color.parseColor("#D0BCFF")
+            } else {
+                Color.parseColor("#938F99")
+            }
+        )
+        btnReasoningToggle.visibility = View.VISIBLE
+    }
+
+    private fun toggleReasoningMode() {
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val mode = ChatReasoningPolicy.toggle(prefs)
+        refreshReasoningButton()
+        val status = if (mode == ChatReasoningPolicy.Mode.ENABLED) {
+            "推論をONにしました。"
+        } else {
+            "推論をOFFにしました。"
+        }
+        Toast.makeText(this, status, Toast.LENGTH_SHORT).show()
     }
 
     /** 残数表記の左の「現在のモデル」ボタンを最新化する。OpenRouter以外のエンジンでは隠す */
@@ -1243,6 +1284,10 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         btnCurrentModel.setOnClickListener {
             showMaterialModelPicker()
         }
+        btnReasoningToggle = findViewById(R.id.btn_reasoning_toggle)
+        btnReasoningToggle.setOnClickListener {
+            toggleReasoningMode()
+        }
 
         updateCounter()
         try {
@@ -1712,7 +1757,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         val contextLength: Int,
         val pricePerMillion: Double,
         val outputPricePerMillion: Double,
-        val created: Long
+        val created: Long,
+        val reasoningCapability: ChatReasoningPolicy.Capability = ChatReasoningPolicy.Capability.UNSUPPORTED
     )
 
     private var openRouterModels: List<RemoteModel> = emptyList()
@@ -1741,7 +1787,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     contextLength = obj.optInt("context_length", 0),
                     pricePerMillion = price * 1000000.0,
                     outputPricePerMillion = outputPrice * 1000000.0,
-                    created = obj.optLong("created", 0)
+                    created = obj.optLong("created", 0),
+                    reasoningCapability = ChatReasoningPolicy.capabilityOf(obj)
                 ))
             }
             openRouterModels = newList
@@ -1779,7 +1826,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                             contextLength = obj.optInt("context_length", 0),
                             pricePerMillion = price * 1000000.0,
                             outputPricePerMillion = outputPrice * 1000000.0,
-                            created = obj.optLong("created", 0)
+                            created = obj.optLong("created", 0),
+                            reasoningCapability = ChatReasoningPolicy.capabilityOf(obj)
                         ))
                     }
                     openRouterModels = newList
@@ -1794,6 +1842,9 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 success = false
             }
             withContext(Dispatchers.Main) {
+                if (success) {
+                    refreshReasoningButton()
+                }
                 onComplete?.invoke(success)
             }
         }
@@ -1876,7 +1927,8 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 val items = sorted.map {
                     ModelMd3Item(
                         it.id, it.name, it.contextLength, it.isFree,
-                        it.pricePerMillion, it.outputPricePerMillion
+                        it.pricePerMillion, it.outputPricePerMillion,
+                        it.reasoningCapability
                     )
                 }
                 rv.adapter = ModelMd3Adapter(
@@ -2491,9 +2543,24 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                 return@addMenuIcon
             }
             prefs.edit().putString("chat_llm_engine", "LOCAL").apply()
-            coroutineScope.launch { LlmInferenceEngine.autoLoadModel(this@ChatOverlayActivity) }
+            coroutineScope.launch {
+                LlmInferenceEngine.autoLoadModel(this@ChatOverlayActivity)
+                refreshReasoningButton()
+            }
             Toast.makeText(this, "AIエンジンをローカルエンジンに切り替えました。", Toast.LENGTH_SHORT).show()
             showMainMenu()
+        }
+
+        val localName = LlmInferenceEngine.loadedModelName
+            ?: LocalModelManager.getSelectedModel(this)?.file?.nameWithoutExtension
+            ?: LocalModelManager.getFirstAvailableModel(this)?.file?.nameWithoutExtension
+        if (ChatReasoningPolicy.isCurrentTargetSupported(prefs, DEFAULT_OPENROUTER_MODEL, localName)) {
+            val mode = ChatReasoningPolicy.Mode.fromPrefs(prefs)
+            val reasoningLabel = if (mode == ChatReasoningPolicy.Mode.ENABLED) "● 推論 ON" else "推論 OFF"
+            addMenuIcon(grid, reasoningLabel, R.drawable.ic_md3_lightbulb) {
+                toggleReasoningMode()
+                showModelMenu()
+            }
         }
     }
 
@@ -2747,6 +2814,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
         ChatReplyNotifications.viewing(this, replyNoticeOwner, currentChatId)
 
         updateSendButtonForGeneration()
+        refreshReasoningButton()
         val settingsPrefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         settingsPrefs.edit().putBoolean("is_chat_active", true).apply()
         currentChatId?.let { chatId ->
@@ -2873,7 +2941,7 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        if (key?.startsWith("chat_") == true || key == "openrouter_api_key") {
+        if (key?.startsWith("chat_") == true || key == "openrouter_api_key" || key == "cached_openrouter_models") {
             runOnUiThread {
                 applyVisualConfigs()
                 updateCounter()
@@ -3304,11 +3372,30 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
     }
 
     private fun showOptionsMenu(view: View) {
-        val items = arrayOf("ビジュアル設定", "チャットの結びつけ", "性格を選択", "新しいチャットを開始", "返信通知のON / OFF")
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val localName = LlmInferenceEngine.loadedModelName
+            ?: LocalModelManager.getSelectedModel(this)?.file?.nameWithoutExtension
+            ?: LocalModelManager.getFirstAvailableModel(this)?.file?.nameWithoutExtension
+        val supportsReasoning = ChatReasoningPolicy.isCurrentTargetSupported(
+            prefs,
+            DEFAULT_OPENROUTER_MODEL,
+            localName
+        )
+        val items = buildList {
+            add("ビジュアル設定")
+            add("チャットの結びつけ")
+            add("性格を選択")
+            add("新しいチャットを開始")
+            add("返信通知のON / OFF")
+            if (supportsReasoning) {
+                add("推論（思考）のON / OFF")
+            }
+        }.toTypedArray()
         MaterialAlertDialogBuilder(md3Context)
             .setTitle("チャットオプション")
             .setItems(items) { _, which ->
                 when (which) {
+                    5 -> showReasoningOptions()
                     4 -> showReplyNoticeOptions()
                     0 -> showVisualConfigDialog()
                     1 -> showSessionSelectionDialog()
@@ -3330,6 +3417,29 @@ class ChatOverlayActivity : androidx.appcompat.app.AppCompatActivity(), SharedPr
                     }
                 }
             }
+            .show()
+    }
+
+    private fun showReasoningOptions() {
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val current = if (ChatReasoningPolicy.Mode.fromPrefs(prefs) == ChatReasoningPolicy.Mode.ENABLED) {
+            1
+        } else {
+            0
+        }
+        MaterialAlertDialogBuilder(md3Context)
+            .setTitle("推論（思考）のON / OFF")
+            .setSingleChoiceItems(arrayOf("OFF（推論せず即答）", "ON（推論を行う）"), current) { dialog, which ->
+                dialog.dismiss()
+                val next = if (which == 1) {
+                    ChatReasoningPolicy.Mode.ENABLED
+                } else {
+                    ChatReasoningPolicy.Mode.DISABLED
+                }
+                ChatReasoningPolicy.save(prefs, next)
+                refreshReasoningButton()
+            }
+            .setNegativeButton("閉じる", null)
             .show()
     }
 

@@ -20,7 +20,8 @@ data class ModelMd3Item(
     val contextLength: Int,
     val isFree: Boolean,
     val pricePerMillion: Double,
-    val outputPricePerMillion: Double = 0.0
+    val outputPricePerMillion: Double = 0.0,
+    val reasoningCapability: ChatReasoningPolicy.Capability = ChatReasoningPolicy.Capability.UNSUPPORTED
 )
 
 class ModelMd3Adapter(
@@ -124,7 +125,12 @@ class ModelMd3Adapter(
         } else {
             "${item.contextLength}"
         }
-        return "Context $ctxStr  •  $priceStr"
+        val base = "Context $ctxStr  •  $priceStr"
+        return if (item.reasoningCapability == ChatReasoningPolicy.Capability.SUPPORTED) {
+            "$base  •  推論対応"
+        } else {
+            base
+        }
     }
 
     private companion object {
